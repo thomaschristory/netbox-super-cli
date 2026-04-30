@@ -52,7 +52,6 @@ dev = [
     "mypy>=1.10",
     "ruff>=0.5",
     "pre-commit>=3.7",
-    "types-PyYAML",
 ]
 
 [tool.ruff]
@@ -61,18 +60,18 @@ line-length = 100
 
 [tool.ruff.lint]
 select = [
-    "E", "F", "W",
-    "I",
-    "B",
-    "UP",
-    "RUF",
-    "SIM",
-    "PL",
-    "TID",
-    "C4",
+    "E", "F", "W",       # pycodestyle / pyflakes
+    "I",                 # isort
+    "B",                 # bugbear
+    "UP",                # pyupgrade
+    "RUF",               # ruff-specific
+    "SIM",               # simplify
+    "PL",                # pylint
+    "TID",               # tidy imports
+    "C4",                # comprehensions
 ]
 ignore = [
-    "PLR0913",
+    "PLR0913",           # too many arguments — Typer commands need them
 ]
 
 [tool.mypy]

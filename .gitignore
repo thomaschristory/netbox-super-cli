@@ -24,3 +24,8 @@ venv/
 
 # nsc local state (must never be committed)
 .nsc/
+
+# Secrets
+.env
+.env.*
+*.env
