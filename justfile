@@ -35,3 +35,7 @@ hooks-all:
 # Smoke-run the CLI
 nsc *args:
     uv run nsc {{args}}
+
+# Bump all pre-commit hook revs to latest
+update:
+    uv run pre-commit autoupdate
