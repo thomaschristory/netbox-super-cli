@@ -1,14 +1,11 @@
-"""Root Typer application.
-
-Phase 1 only registers the meta-command `commands`. Resource-tree registration
-happens in Phase 2.
-"""
+"""Root Typer application."""
 
 from __future__ import annotations
 
 import typer
 
 from nsc._version import __version__
+from nsc.cli import commands_dump
 
 app = typer.Typer(
     name="nsc",
@@ -37,8 +34,10 @@ def _root(
     """Root callback — global options live here."""
 
 
+commands_dump.register(app)
+
+
 def main() -> None:
-    """Entry point used by `pyproject.toml` console scripts."""
     app()
 
 
