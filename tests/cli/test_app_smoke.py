@@ -18,6 +18,5 @@ def test_version_flag_prints_version() -> None:
 def test_no_args_shows_help() -> None:
     runner = CliRunner()
     result = runner.invoke(app, [])
-    # Typer with `no_args_is_help=True` exits 0 and prints help.
-    assert result.exit_code in (0, 2)
+    assert result.exit_code == 2
     assert "netbox-super-cli" in result.stdout

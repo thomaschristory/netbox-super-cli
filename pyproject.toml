@@ -74,6 +74,12 @@ ignore = [
     "PLR0913",           # too many arguments — Typer commands need them
 ]
 
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = [
+    "PLR2004",           # magic values in tests are fine (status codes, expected values)
+    "S101",              # asserts are how pytest works
+]
+
 [tool.mypy]
 python_version = "3.12"
 strict = true
