@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+build/
+dist/
+*.egg
+
+# venv
+.venv/
+venv/
+
+# uv
+# (uv.lock IS committed)
+
+# IDE
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# nsc local state (must never be committed)
+.nsc/
