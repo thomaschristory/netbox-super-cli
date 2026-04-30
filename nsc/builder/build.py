@@ -24,7 +24,6 @@ from nsc.schema.models import Operation as SchemaOperation
 from nsc.schema.models import Parameter as SchemaParameter
 
 _PARAM_SEGMENT = re.compile(r"^\{[^}]+\}$")
-_OP_TRAILING_VERB = re.compile(r"_(list|create|update|partial_update|destroy|retrieve|read)$")
 _HTTP_METHODS: tuple[tuple[str, HttpMethod], ...] = (
     ("get", HttpMethod.GET),
     ("post", HttpMethod.POST),
@@ -175,6 +174,8 @@ def _classify(
 ) -> str:
     has_id = "{id}" in path
     extra_path_segments = path.rstrip("/").split("/")[-1]
+    # Path is a custom action endpoint if `{id}` appears AND the last segment
+    # is a literal name (not itself a path parameter like `{id}`).
     is_action_endpoint = has_id and not _PARAM_SEGMENT.match(extra_path_segments)
 
     if is_action_endpoint:
@@ -220,7 +221,10 @@ def _to_model_operation(
     else:
         operation_id = schema_op.operation_id
 
-    parameters = [_to_model_parameter(p) for p in (*item.parameters, *schema_op.parameters)]
+    seen: dict[str, Parameter] = {}
+    for source_param in (*item.parameters, *schema_op.parameters):
+        seen[source_param.name] = _to_model_parameter(source_param)
+    parameters = list(seen.values())
 
     return Operation(
         operation_id=operation_id,
