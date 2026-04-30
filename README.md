@@ -19,7 +19,7 @@ uv tool install netbox-super-cli
 
 Phase 1 isn't published yet; install from source:
 ```
-git clone https://github.com/mick27/netbox-super-cli
+git clone https://github.com/thomaschristory/netbox-super-cli
 cd netbox-super-cli
 uv sync
 uv run nsc --version
