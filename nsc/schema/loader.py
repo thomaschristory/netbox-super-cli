@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import gzip
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -34,6 +35,11 @@ def load_schema(source: str, *, verify_ssl: bool = True, timeout: float = 30.0) 
     can be absolute or relative to the current working directory.
     """
     body = _fetch_body(source, verify_ssl=verify_ssl, timeout=timeout)
+    if source.endswith(".gz"):
+        try:
+            body = gzip.decompress(body)
+        except gzip.BadGzipFile as exc:
+            raise SchemaLoadError(f"{source}: not valid gzip ({exc})") from exc
     try:
         h = canonical_sha256(body)
     except ValueError as exc:

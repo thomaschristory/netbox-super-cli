@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import gzip as _gzip
 import json
 from pathlib import Path
 
@@ -57,3 +58,24 @@ def test_http_error_raises_load_error() -> None:
     respx.get(url).mock(return_value=httpx.Response(500, text="boom"))
     with pytest.raises(SchemaLoadError, match="500"):
         load_schema(url)
+
+
+def test_loads_from_gzipped_local_file(tmp_path: Path) -> None:
+    p = tmp_path / "schema.json.gz"
+    p.write_bytes(_gzip.compress(json.dumps(MINIMAL).encode("utf-8")))
+    loaded = load_schema(str(p))
+    assert loaded.document.info.title == "NetBox"
+    assert loaded.source == str(p)
+    # Hash is computed against the decompressed body — should match the
+    # hash of the same content stored uncompressed.
+    p2 = tmp_path / "schema.json"
+    p2.write_text(json.dumps(MINIMAL))
+    loaded2 = load_schema(str(p2))
+    assert loaded.hash == loaded2.hash
+
+
+def test_invalid_gzip_raises(tmp_path: Path) -> None:
+    p = tmp_path / "bad.json.gz"
+    p.write_bytes(b"not really gzipped")
+    with pytest.raises(SchemaLoadError, match="not valid gzip"):
+        load_schema(str(p))

@@ -8,9 +8,8 @@ repos:
       - id: check-toml
       - id: check-merge-conflict
       - id: check-added-large-files
-        # Bundled NetBox OpenAPI schemas are legitimately ~10–15 MB.
-        # The guard still catches accidental binary blobs.
-        args: [--maxkb=16384]
+        # 2 MB is enough now that bundled schemas are gzipped.
+        args: [--maxkb=2048]
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.15.12
     hooks:

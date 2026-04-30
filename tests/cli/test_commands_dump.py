@@ -12,7 +12,7 @@ from nsc.cli.app import app
 
 def _bundled_schema() -> Path:
     bundled = Path(__file__).resolve().parents[2] / "nsc" / "schemas" / "bundled"
-    candidates = sorted(bundled.glob("netbox-*.json"))
+    candidates = sorted(bundled.glob("netbox-*.json.gz"))
     assert candidates
     return candidates[-1]
 

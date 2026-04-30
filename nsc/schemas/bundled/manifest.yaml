@@ -2,4 +2,4 @@
 # Maintained by `just fetch-schemas` (added in Phase 4).
 schemas:
   - version: "4.6.0-beta2"
-    file: "netbox-4.6.0-beta2.json"
+    file: "netbox-4.6.0-beta2.json.gz"

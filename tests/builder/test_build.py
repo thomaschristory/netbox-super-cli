@@ -14,7 +14,7 @@ from nsc.schema.loader import load_schema
 @pytest.fixture(scope="module")
 def bundled_schema_path() -> Path:
     bundled = Path(__file__).resolve().parents[2] / "nsc" / "schemas" / "bundled"
-    candidates = sorted(bundled.glob("netbox-*.json"))
+    candidates = sorted(bundled.glob("netbox-*.json.gz"))
     assert candidates, "no bundled schema available"
     return candidates[-1]
 
