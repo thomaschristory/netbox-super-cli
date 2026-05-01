@@ -158,3 +158,13 @@ def test_file_plus_fields_applies_to_every_record(tmp_path: Path) -> None:
         {"name": "b", "status": "active"},
     ]
     assert result.is_explicit_list is True
+
+
+def test_stdin_yaml_flow_style_falls_back_from_json_to_yaml() -> None:
+    # YAML flow-style mapping starts with `{` so the sniff routes to JSON,
+    # but JSON requires quoted keys. We must fall back to YAML rather than
+    # surfacing a JSON-specific error.
+    stdin = io.StringIO("{name: foo, status: active}\n")
+    result = collect(file=Path("-"), fields=[], stdin=stdin)
+    assert result.records == [{"name": "foo", "status": "active"}]
+    assert result.source == "stdin"

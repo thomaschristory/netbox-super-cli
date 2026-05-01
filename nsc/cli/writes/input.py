@@ -68,7 +68,7 @@ def collect(
 
     field_overlay = _parse_fields(fields)
 
-    records = _merge(file_records, field_overlay, is_list=is_list, used_file=used_file)
+    records = _merge(file_records, field_overlay, used_file=used_file)
     source: Literal["file", "stdin", "fields_only", "file_plus_fields"]
     if used_stdin:
         source = "stdin"
@@ -118,11 +118,21 @@ def _decode_utf8(raw: bytes, path: Path) -> str:
 
 def _parse_text(text: str, *, hint: str | None) -> tuple[list[dict[str, Any]], bool]:
     stripped = text.lstrip()
-    if hint == ".json" or (hint is None and stripped.startswith(("{", "["))):
+    if hint == ".json":
         try:
             parsed = json.loads(text)
         except json.JSONDecodeError as exc:
             raise InputError(f"could not parse JSON input: {exc}") from exc
+    elif hint is None and stripped.startswith(("{", "[")):
+        # Sniffed JSON-shape on stdin; try strict JSON first, fall back to YAML
+        # so flow-style YAML (e.g. `{name: foo}`) still parses.
+        try:
+            parsed = json.loads(text)
+        except json.JSONDecodeError:
+            try:
+                parsed = yaml.safe_load(text)
+            except yaml.YAMLError as exc:
+                raise InputError(f"could not parse stdin as JSON or YAML: {exc}") from exc
     else:
         try:
             parsed = yaml.safe_load(text)
@@ -180,7 +190,6 @@ def _merge(
     file_records: list[dict[str, Any]],
     overlay: dict[str, Any],
     *,
-    is_list: bool,
     used_file: bool,
 ) -> list[dict[str, Any]]:
     if not used_file and not file_records:
@@ -189,7 +198,6 @@ def _merge(
     for record in file_records:
         merged = _deep_merge(_deep_copy(record), overlay)
         out.append(merged)
-    _ = is_list
     return out
 
 
