@@ -7,14 +7,17 @@ No NetBox-specific knowledge is hard-coded.
 from __future__ import annotations
 
 import re
+from typing import Literal
 
 from nsc.model.command_model import (
     CommandModel,
+    FieldShape,
     HttpMethod,
     Operation,
     Parameter,
     ParameterLocation,
     PrimitiveType,
+    RequestBodyShape,
     Resource,
     Tag,
 )
@@ -234,7 +237,7 @@ def _to_model_operation(
         summary=schema_op.summary,
         description=schema_op.description,
         parameters=parameters,
-        has_request_body=schema_op.request_body is not None,
+        request_body=_to_request_body_shape(schema_op, doc),
         default_columns=_default_columns_from_response(schema_op, doc),
     )
 
@@ -254,6 +257,71 @@ def _to_model_parameter(p: SchemaParameter) -> Parameter:
         description=p.description,
         enum=enum_values,
     )
+
+
+def _to_request_body_shape(
+    schema_op: SchemaOperation, doc: OpenAPIDocument
+) -> RequestBodyShape | None:
+    if schema_op.request_body is None:
+        return None
+    media = schema_op.request_body.content.get("application/json")
+    if media is None or media.schema_ is None:
+        return None
+    schema = _resolve_ref(media.schema_, doc)
+    if schema is None:
+        return None
+    top_level = _classify_top_level(schema)
+    if top_level is None:
+        return None
+    required = list(schema.required or []) if schema.type == "object" else []
+    fields = _flat_fields(schema, doc) if top_level in ("object", "object_or_array") else {}
+    return RequestBodyShape(top_level=top_level, required=required, fields=fields)
+
+
+def _classify_top_level(
+    schema: SchemaObject,
+) -> Literal["object", "array", "object_or_array"] | None:
+    if schema.type in ("object", "array"):
+        return schema.type  # type: ignore[return-value]
+    one_of = schema.model_extra.get("oneOf") if schema.model_extra else None
+    any_of = schema.model_extra.get("anyOf") if schema.model_extra else None
+    candidates = one_of or any_of or None
+    if not candidates:
+        return None
+    types = {
+        raw.get("type")
+        for raw in candidates
+        if isinstance(raw, dict) and raw.get("type") in ("object", "array")
+    }
+    if {"object", "array"}.issubset(types):
+        return "object_or_array"
+    if types == {"object"}:
+        return "object"
+    return "array" if types == {"array"} else None
+
+
+def _flat_fields(schema: SchemaObject, doc: OpenAPIDocument) -> dict[str, FieldShape]:
+    out: dict[str, FieldShape] = {}
+    target = schema
+    if schema.type != "object":
+        # object_or_array — pick the object branch out of oneOf/anyOf
+        candidates = (
+            (schema.model_extra or {}).get("oneOf") or (schema.model_extra or {}).get("anyOf") or []
+        )
+        for raw in candidates:
+            if isinstance(raw, dict) and raw.get("type") == "object":
+                target = SchemaObject.model_validate(raw)
+                break
+        else:
+            return out
+    if not target.properties:
+        return out
+    for name, prop in target.properties.items():
+        resolved = _resolve_ref(prop, doc) or prop
+        primitive = _primitive(resolved)
+        enum = [str(v) for v in resolved.enum] if resolved.enum else None
+        out[name] = FieldShape(primitive=primitive, enum=enum)
+    return out
 
 
 def _primitive(schema: SchemaObject) -> PrimitiveType:
