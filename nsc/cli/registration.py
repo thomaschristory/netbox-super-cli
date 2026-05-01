@@ -108,7 +108,7 @@ def _build_closure(
         if output:
             update["output_format"] = OutputFormat(output)
         ctx = ctx.model_copy(update=update)
-        handler(operation, tag_name, resource_name, ctx, **kwargs)
+        handler(operation, op_tag=tag_name, op_resource=resource_name, ctx=ctx, **kwargs)
 
     impl.__signature__ = inspect.Signature(parameters=sig_params)  # type: ignore[attr-defined]
     impl.__name__ = operation.operation_id
@@ -143,6 +143,9 @@ def _to_typed_option(p: Parameter) -> inspect.Parameter:
             help=p.description or "",
         )
         py_type = bool | None
+    elif p.primitive is PrimitiveType.ARRAY:
+        option = typer.Option(None, flag_name, help=p.description or "")
+        py_type = list[str] | None
     else:
         option = typer.Option(None, flag_name, help=p.description or "")
         py_type = py_type | None

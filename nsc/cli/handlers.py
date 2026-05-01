@@ -22,8 +22,8 @@ def parse_filters(raw: list[str]) -> dict[str, str]:
 
 def handle_list(
     operation: Operation,
-    tag: str,
-    resource: str,
+    op_tag: str,
+    op_resource: str,
     ctx: RuntimeContext,
     *,
     stream: TextIO | None = None,
@@ -43,7 +43,7 @@ def handle_list(
     render(
         rows,
         format=ctx.output_format,
-        columns=ctx.resolve_columns(tag, resource, operation),
+        columns=ctx.resolve_columns(op_tag, op_resource, operation),
         stream=stream if stream is not None else sys.stdout,
         compact=ctx.compact,
     )
@@ -51,8 +51,8 @@ def handle_list(
 
 def handle_get(
     operation: Operation,
-    tag: str,
-    resource: str,
+    op_tag: str,
+    op_resource: str,
     ctx: RuntimeContext,
     *,
     stream: TextIO | None = None,
@@ -63,7 +63,7 @@ def handle_get(
     render(
         obj,
         format=ctx.output_format,
-        columns=ctx.resolve_columns(tag, resource, operation),
+        columns=ctx.resolve_columns(op_tag, op_resource, operation),
         stream=stream if stream is not None else sys.stdout,
         compact=ctx.compact,
     )
@@ -71,14 +71,14 @@ def handle_get(
 
 def handle_custom_action(
     operation: Operation,
-    tag: str,
-    resource: str,
+    op_tag: str,
+    op_resource: str,
     ctx: RuntimeContext,
     *,
     stream: TextIO | None = None,
     **kwargs: Any,
 ) -> None:
-    handle_get(operation, tag, resource, ctx, stream=stream, **kwargs)
+    handle_get(operation, op_tag, op_resource, ctx, stream=stream, **kwargs)
 
 
 def _split_params(

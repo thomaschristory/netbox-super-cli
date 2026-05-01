@@ -202,3 +202,23 @@ def test_enum_param_becomes_choice() -> None:
     assert bad.exit_code != 0
     good = CliRunner().invoke(app, ["dcim", "devices", "list", "--status", "active"])
     assert good.exit_code == 0
+
+
+def test_array_param_becomes_repeatable_option() -> None:
+    app = typer.Typer()
+    client = MagicMock()
+    client.paginate.return_value = iter([])
+    model = _model_with_list_op(
+        [
+            Parameter(
+                name="tag",
+                location=ParameterLocation.QUERY,
+                primitive=PrimitiveType.ARRAY,
+            )
+        ]
+    )
+    ctx = _ctx(client)
+    register_dynamic_commands(app, model, lambda: ctx)
+    result = CliRunner().invoke(app, ["dcim", "devices", "list", "--tag", "red", "--tag", "blue"])
+    assert result.exit_code == 0, result.stdout
+    client.paginate.assert_called_once_with("/api/dcim/devices/", {"tag": ["red", "blue"]})
