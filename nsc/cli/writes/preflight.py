@@ -25,7 +25,7 @@ from nsc.model.command_model import (
     RequestBodyShape,
 )
 
-_TRUTHY_BOOL_STRINGS = {"true", "false", "1", "0", "yes", "no"}
+_BOOL_STRINGS = {"true", "false", "1", "0", "yes", "no"}
 
 
 class _Frozen(BaseModel):
@@ -123,7 +123,7 @@ def _matches_number(value: Any) -> bool:
 def _matches_boolean(value: Any) -> bool:
     if isinstance(value, bool):
         return True
-    return isinstance(value, str) and value.strip().lower() in _TRUTHY_BOOL_STRINGS
+    return isinstance(value, str) and value.strip().lower() in _BOOL_STRINGS
 
 
 def _matches_array(value: Any) -> bool:

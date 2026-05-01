@@ -185,6 +185,22 @@ def test_unknown_field_passes_through_silently() -> None:
     assert result.ok is True
 
 
+def test_nullable_field_accepts_none() -> None:
+    rbs = RequestBodyShape(
+        top_level="object",
+        fields={"comment": FieldShape(primitive=PrimitiveType.STRING, nullable=True)},
+    )
+    assert check(_input({"comment": None}), _op(rbs)).ok is True
+
+
+def test_non_nullable_field_rejects_none() -> None:
+    rbs = RequestBodyShape(
+        top_level="object",
+        fields={"comment": FieldShape(primitive=PrimitiveType.STRING)},
+    )
+    assert check(_input({"comment": None}), _op(rbs)).ok is False
+
+
 def test_multi_record_records_indices() -> None:
     rbs = RequestBodyShape(
         top_level="object",
