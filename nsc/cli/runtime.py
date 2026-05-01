@@ -157,6 +157,12 @@ class RuntimeContext(BaseModel):
     limit: int | None = None
     fetch_all: bool = False
     compact: bool = False
+    apply: bool = False
+    explain: bool = False
+    strict: bool = False
+    file: str | None = None
+    fields: list[str] = []
+    file_format: str | None = None
 
     def resolve_columns(self, tag: str, resource: str, operation: Operation) -> list[str] | None:
         if self.columns_override is not None:

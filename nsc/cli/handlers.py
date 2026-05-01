@@ -1,16 +1,45 @@
-"""Three read handlers consumed by the dynamic Typer commands."""
+"""Read and write handlers consumed by the dynamic Typer commands."""
 
 from __future__ import annotations
 
+import json as _json
 import sys
+from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any, TextIO
 
 import typer
 
 from nsc.cli.runtime import RuntimeContext, apply_limit, emit_envelope, map_error
+from nsc.cli.writes.apply import ResolvedRequest
+from nsc.cli.writes.apply import resolve as resolve_request
+from nsc.cli.writes.confirmation import (
+    refuse_all_on_writes,
+    refuse_delete_without_id,
+    refuse_list_input_in_3b,
+)
+from nsc.cli.writes.input import InputError, RawWriteInput
+from nsc.cli.writes.input import collect as collect_input
+from nsc.cli.writes.preflight import PreflightResult
+from nsc.cli.writes.preflight import check as preflight_check
+from nsc.config.models import OutputFormat
+from nsc.config.settings import default_paths
+from nsc.http.audit import AuditEntry, append_audit_jsonl
 from nsc.http.errors import NetBoxAPIError, NetBoxClientError
-from nsc.model.command_model import Operation, ParameterLocation
+from nsc.model.command_model import HttpMethod, Operation, ParameterLocation
+from nsc.output.errors import ClientError, ErrorEnvelope, ErrorType, client_envelope
+from nsc.output.explain import (
+    ExplainTrace,
+)
+from nsc.output.explain import (
+    render_to_json as render_explain_json,
+)
+from nsc.output.explain import (
+    render_to_rich_stdout as render_explain_rich,
+)
 from nsc.output.render import render
+
+_STATUS_NOT_FOUND_DELETE = 404
 
 
 def parse_filters(raw: list[str]) -> dict[str, str]:
@@ -92,6 +121,314 @@ def handle_custom_action(
     **kwargs: Any,
 ) -> None:
     handle_get(operation, op_tag, op_resource, ctx, stream=stream, **kwargs)
+
+
+def handle_create(
+    operation: Operation,
+    op_tag: str,
+    op_resource: str,
+    ctx: RuntimeContext,
+    *,
+    stream: TextIO | None = None,
+    **kwargs: Any,
+) -> None:
+    _handle_write(
+        operation,
+        op_tag=op_tag,
+        op_resource=op_resource,
+        ctx=ctx,
+        path_vars=_extract_path_vars(operation, kwargs),
+        stream=stream,
+        require_id=False,
+    )
+
+
+def handle_update(
+    operation: Operation,
+    op_tag: str,
+    op_resource: str,
+    ctx: RuntimeContext,
+    *,
+    stream: TextIO | None = None,
+    **kwargs: Any,
+) -> None:
+    _handle_write(
+        operation,
+        op_tag=op_tag,
+        op_resource=op_resource,
+        ctx=ctx,
+        path_vars=_extract_path_vars(operation, kwargs),
+        stream=stream,
+        require_id=True,
+    )
+
+
+def handle_delete(
+    operation: Operation,
+    op_tag: str,
+    op_resource: str,
+    ctx: RuntimeContext,
+    *,
+    stream: TextIO | None = None,
+    **kwargs: Any,
+) -> None:
+    _handle_write(
+        operation,
+        op_tag=op_tag,
+        op_resource=op_resource,
+        ctx=ctx,
+        path_vars=_extract_path_vars(operation, kwargs),
+        stream=stream,
+        require_id=True,
+    )
+
+
+def handle_custom_action_write(
+    operation: Operation,
+    op_tag: str,
+    op_resource: str,
+    ctx: RuntimeContext,
+    *,
+    stream: TextIO | None = None,
+    **kwargs: Any,
+) -> None:
+    _handle_write(
+        operation,
+        op_tag=op_tag,
+        op_resource=op_resource,
+        ctx=ctx,
+        path_vars=_extract_path_vars(operation, kwargs),
+        stream=stream,
+        require_id=False,
+    )
+
+
+def _handle_write(
+    operation: Operation,
+    *,
+    op_tag: str,
+    op_resource: str,
+    ctx: RuntimeContext,
+    path_vars: dict[str, str],
+    stream: TextIO | None,
+    require_id: bool,
+) -> None:
+    out = stream if stream is not None else sys.stdout
+    try:
+        if ctx.fetch_all:
+            refuse_all_on_writes(operation_id=operation.operation_id)
+        path_param_names = {
+            p.name for p in operation.parameters if p.location is ParameterLocation.PATH
+        }
+        if require_id and "id" in path_param_names and not path_vars.get("id"):
+            refuse_delete_without_id(operation_id=operation.operation_id)
+
+        is_delete = operation.http_method is HttpMethod.DELETE
+        if is_delete:
+            raw = RawWriteInput(records=[{}], source="fields_only")
+        else:
+            raw = collect_input(
+                file=Path(ctx.file) if ctx.file else None,
+                fields=list(ctx.fields),
+                stdin=sys.stdin if ctx.file == "-" else None,
+            )
+        refuse_list_input_in_3b(raw, operation_id=operation.operation_id)
+
+        preflight = preflight_check(raw, operation)
+        resolved = resolve_request(
+            raw,
+            operation,
+            path_vars=path_vars,
+            base_url=str(ctx.resolved_profile.url),
+            headers={
+                "Authorization": f"Token {ctx.resolved_profile.token}",
+                "Accept": "application/json",
+            },
+        )
+        field_overrides = {f.split("=", 1)[0].split(".")[0] for f in ctx.fields if "=" in f}
+        trace = ExplainTrace.build_for(
+            operation, raw, preflight, resolved, field_overrides=field_overrides
+        )
+
+        if not ctx.apply:
+            _emit_dry_run_audit(operation, resolved, preflight, ctx)
+            _render_explain_or_dry_run(trace, ctx, stream=out)
+            if not preflight.ok:
+                env = _preflight_envelope(operation, preflight, applied=False)
+                code = emit_envelope(env, output_format=ctx.output_format)
+                raise typer.Exit(code)
+            return
+
+        if not preflight.ok:
+            _emit_dry_run_audit(operation, resolved, preflight, ctx, preflight_blocked=True)
+            env = _preflight_envelope(operation, preflight, applied=False)
+            code = emit_envelope(env, output_format=ctx.output_format)
+            raise typer.Exit(code)
+
+        if ctx.explain:
+            _render_explain_or_dry_run(trace, ctx, stream=out)
+
+        response = _send_one(operation, resolved[0], ctx)
+        _render_response(
+            operation,
+            response,
+            ctx,
+            op_tag=op_tag,
+            op_resource=op_resource,
+            stream=out,
+            is_delete=is_delete,
+        )
+    except ClientError as exc:
+        code = emit_envelope(exc.envelope, output_format=ctx.output_format)
+        raise typer.Exit(code) from exc
+    except InputError as exc:
+        env = client_envelope(str(exc), operation_id=operation.operation_id)
+        code = emit_envelope(env, output_format=ctx.output_format)
+        raise typer.Exit(code) from exc
+    except (NetBoxAPIError, NetBoxClientError) as exc:
+        if (
+            isinstance(exc, NetBoxAPIError)
+            and exc.status_code == _STATUS_NOT_FOUND_DELETE
+            and operation.http_method is HttpMethod.DELETE
+            and not ctx.strict
+        ):
+            _render_delete_already_absent(ctx, stream=out)
+            return
+        env = map_error(exc, operation_id=operation.operation_id)
+        code = emit_envelope(env, output_format=ctx.output_format)
+        raise typer.Exit(code) from exc
+
+
+def _extract_path_vars(operation: Operation, kwargs: dict[str, Any]) -> dict[str, str]:
+    path_names = {p.name for p in operation.parameters if p.location is ParameterLocation.PATH}
+    return {k: str(v) for k, v in kwargs.items() if k in path_names and v is not None}
+
+
+def _emit_dry_run_audit(
+    operation: Operation,
+    resolved: list[ResolvedRequest],
+    preflight: PreflightResult,
+    ctx: RuntimeContext,
+    *,
+    preflight_blocked: bool = False,
+) -> None:
+    log_dir = default_paths().logs_dir
+    for r in resolved:
+        entry = AuditEntry(
+            timestamp=_now_iso(),
+            operation_id=operation.operation_id,
+            method=operation.http_method,
+            url=r.url,
+            request_headers={
+                "Authorization": f"Token {ctx.resolved_profile.token}",
+                "Accept": "application/json",
+            },
+            request_query=dict(r.query or {}),
+            request_body=r.body,
+            response_status_code=None,
+            response_headers={},
+            response_body=None,
+            duration_ms=None,
+            attempt_n=1,
+            final_attempt=True,
+            error_kind="preflight" if preflight_blocked else None,
+            dry_run=True,
+            preflight_blocked=preflight_blocked,
+            record_indices=list(r.record_indices),
+            applied=False,
+            explain=ctx.explain,
+        )
+        append_audit_jsonl(entry, path=log_dir / "audit.jsonl")
+    _ = preflight  # currently consumed only via preflight_blocked
+
+
+def _now_iso() -> str:
+    return datetime.now(UTC).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+
+
+def _render_explain_or_dry_run(trace: ExplainTrace, ctx: RuntimeContext, *, stream: TextIO) -> None:
+    if ctx.output_format is OutputFormat.JSON:
+        print(render_explain_json(trace), file=stream)
+    elif ctx.output_format is OutputFormat.TABLE:
+        render_explain_rich(trace, stream=stream)
+    else:
+        # CSV/YAML/JSONL on dry-run → JSON to stdout (the formatters expect rows,
+        # not a structured trace). Consistent with spec §4.2.3 fallback rules.
+        print(render_explain_json(trace), file=stream)
+
+
+def _send_one(
+    operation: Operation, request: ResolvedRequest, ctx: RuntimeContext
+) -> dict[str, Any]:
+    relative = operation.path.format(**request.path_vars)
+    if operation.http_method is HttpMethod.POST:
+        return ctx.client.post(relative, json=request.body, operation_id=operation.operation_id)
+    if operation.http_method is HttpMethod.PATCH:
+        return ctx.client.patch(relative, json=request.body, operation_id=operation.operation_id)
+    if operation.http_method is HttpMethod.PUT:
+        return ctx.client.put(relative, json=request.body, operation_id=operation.operation_id)
+    if operation.http_method is HttpMethod.DELETE:
+        return ctx.client.delete(relative, operation_id=operation.operation_id)
+    raise RuntimeError(f"unsupported write method: {operation.http_method}")
+
+
+def _render_response(
+    operation: Operation,
+    response: dict[str, Any],
+    ctx: RuntimeContext,
+    *,
+    op_tag: str,
+    op_resource: str,
+    stream: TextIO,
+    is_delete: bool,
+) -> None:
+    if is_delete:
+        _render_delete_ok(ctx, stream=stream)
+        return
+    render(
+        response,
+        format=ctx.output_format,
+        columns=ctx.resolve_columns(op_tag, op_resource, operation),
+        stream=stream,
+        compact=ctx.compact,
+    )
+
+
+def _render_delete_ok(ctx: RuntimeContext, *, stream: TextIO) -> None:
+    payload = {"deleted": True}
+    if ctx.output_format is OutputFormat.JSON:
+        print(_json.dumps(payload), file=stream)
+    else:
+        print("deleted", file=stream)
+
+
+def _render_delete_already_absent(ctx: RuntimeContext, *, stream: TextIO) -> None:
+    payload = {"deleted": False, "reason": "already_absent"}
+    if ctx.output_format is OutputFormat.JSON:
+        print(_json.dumps(payload), file=stream)
+    else:
+        print("already absent (no change)", file=stream)
+
+
+def _preflight_envelope(
+    operation: Operation, preflight: PreflightResult, *, applied: bool
+) -> ErrorEnvelope:
+    issues = [
+        {
+            "record_index": i.record_index,
+            "field_path": i.field_path,
+            "kind": i.kind,
+            "message": i.message,
+            "expected": i.expected,
+        }
+        for i in preflight.issues
+    ]
+    return ErrorEnvelope(
+        error="preflight validation failed",
+        type=ErrorType.VALIDATION,
+        operation_id=operation.operation_id,
+        details={"source": "preflight", "issues": issues, "applied": applied},
+    )
 
 
 def _split_params(
