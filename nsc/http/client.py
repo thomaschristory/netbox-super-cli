@@ -1,18 +1,36 @@
-"""Sync httpx-based NetBox client (Phase 2: reads only)."""
+"""Sync httpx-based NetBox client (Phase 3a: reads + retry + audit)."""
 
 from __future__ import annotations
 
 import sys
+import time
 from collections.abc import Iterator
+from datetime import UTC, datetime
 from types import TracebackType
 from typing import Any, Protocol, cast
 from urllib.parse import parse_qs, urlsplit
 
 import httpx
 
+from nsc.config.settings import default_paths
+from nsc.http.audit import (
+    AuditEntry,
+    append_audit_jsonl,
+    write_last_request,
+)
 from nsc.http.errors import NetBoxAPIError, NetBoxClientError
+from nsc.http.retry import (
+    ErrorClass,
+    backoff_delay,
+    classify_error,
+    policy_for_method,
+    should_retry,
+)
+from nsc.model.command_model import HttpMethod
 
 _BODY_SNIPPET_BYTES = 2048
+_HTTP_5XX_MIN = 500
+_HTTP_4XX_MIN = 400
 
 
 class _ProfileLike(Protocol):
@@ -27,6 +45,7 @@ class NetBoxClient:
         if profile.token is None:
             raise ValueError("NetBoxClient requires a non-None token on the profile")
         self._url = str(profile.url).rstrip("/")
+        self._debug = debug
         self._client = httpx.Client(
             base_url=self._url,
             headers={
@@ -53,11 +72,7 @@ class NetBoxClient:
         self._client.close()
 
     def get(self, path: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
-        try:
-            response = self._client.get(path, params=params)
-        except httpx.RequestError as exc:
-            raise NetBoxClientError(url=self._absolute(path, params), cause=exc) from exc
-        self._raise_for_status(response)
+        response = self._send_with_retry(HttpMethod.GET, path, params=params)
         return _parse_json(response)
 
     def paginate(
@@ -80,11 +95,7 @@ class NetBoxClient:
                 req_path = parsed.path
                 qs = parse_qs(parsed.query, keep_blank_values=True)
                 req_params = {k: v[0] for k, v in qs.items()} if qs else None
-            try:
-                response = self._client.get(req_path, params=req_params)
-            except httpx.RequestError as exc:
-                raise NetBoxClientError(url=str(url), cause=exc) from exc
-            self._raise_for_status(response)
+            response = self._send_with_retry(HttpMethod.GET, req_path, params=req_params)
             payload = _parse_json(response)
             for record in payload.get("results", []):
                 yield record
@@ -93,6 +104,61 @@ class NetBoxClient:
                     return
             url = payload.get("next")
             first = False
+
+    def _send_with_retry(
+        self,
+        method: HttpMethod,
+        path: str,
+        *,
+        params: dict[str, Any] | None = None,
+    ) -> httpx.Response:
+        policy = policy_for_method(method)
+        attempt = 0
+        while True:
+            attempt += 1
+            started = time.monotonic()
+            try:
+                response = self._client.request(method.value, path, params=params)
+            except httpx.RequestError as exc:
+                error_class: ErrorClass | None = classify_error(exc)
+                duration_ms = int((time.monotonic() - started) * 1000)
+                retry = should_retry(
+                    policy, attempt=attempt, status_code=None, error_class=error_class
+                )
+                self._record_attempt(
+                    method=method,
+                    path=path,
+                    params=params,
+                    response=None,
+                    duration_ms=duration_ms,
+                    attempt=attempt,
+                    final=not retry,
+                )
+                if not retry:
+                    raise NetBoxClientError(url=self._absolute(path, params), cause=exc) from exc
+                time.sleep(backoff_delay(policy, attempt=attempt))
+                continue
+            duration_ms = int((time.monotonic() - started) * 1000)
+            retry = should_retry(
+                policy,
+                attempt=attempt,
+                status_code=response.status_code,
+                error_class=None,
+            )
+            self._record_attempt(
+                method=method,
+                path=path,
+                params=params,
+                response=response,
+                duration_ms=duration_ms,
+                attempt=attempt,
+                final=not retry,
+            )
+            if not retry:
+                if response.is_success:
+                    return response
+                self._raise_for_status(response)
+            time.sleep(backoff_delay(policy, attempt=attempt))
 
     def _absolute(self, path: str, params: dict[str, Any] | None) -> str:
         request = self._client.build_request("GET", path, params=params)
@@ -103,7 +169,7 @@ class NetBoxClient:
             return
         try:
             body = response.text[:_BODY_SNIPPET_BYTES]
-        except Exception:  # pragma: no cover  (httpx already decoded; defensive)
+        except Exception:  # pragma: no cover
             body = ""
         raise NetBoxAPIError(
             status_code=response.status_code,
@@ -112,7 +178,69 @@ class NetBoxClient:
             headers=dict(response.headers),
         )
 
+    def _record_attempt(
+        self,
+        *,
+        method: HttpMethod,
+        path: str,
+        params: dict[str, Any] | None,
+        response: httpx.Response | None,
+        duration_ms: int,
+        attempt: int,
+        final: bool,
+    ) -> None:
+        url = self._absolute(path, params)
+        # httpx lowercases all header names; title-case them so the audit log
+        # uses the conventional HTTP capitalisation (e.g. "Authorization").
+        request_headers = {k.title(): v for k, v in self._client.headers.items()}
+        if response is not None:
+            status_code: int = response.status_code
+            response_headers = dict(response.headers)
+            try:
+                response_body: Any = response.json() if response.content else None
+            except ValueError:
+                response_body = response.text[:_BODY_SNIPPET_BYTES]
+            if status_code >= _HTTP_5XX_MIN:
+                error_kind: str | None = "5xx"
+            elif status_code >= _HTTP_4XX_MIN:
+                error_kind = "4xx"
+            else:
+                error_kind = None
+            audit_status: int | None = status_code
+        else:
+            audit_status = None
+            response_headers = {}
+            response_body = None
+            error_kind = "transport"
+
+        entry = AuditEntry(
+            timestamp=_now_iso(),
+            operation_id=None,
+            method=method,
+            url=url,
+            request_headers=request_headers,
+            request_query=dict(params or {}),
+            request_body=None,
+            response_status_code=audit_status,
+            response_headers=response_headers,
+            response_body=response_body,
+            duration_ms=duration_ms,
+            attempt_n=attempt,
+            final_attempt=final,
+            error_kind=error_kind,
+            dry_run=False,
+            preflight_blocked=False,
+            record_indices=[],
+            applied=False,
+            explain=False,
+        )
+        log_dir = default_paths().logs_dir
+        write_last_request(entry, path=log_dir / "last-request.json")
+        if self._debug:
+            append_audit_jsonl(entry, path=log_dir / "audit.jsonl")
+
     def _event_hooks(self) -> dict[str, list[Any]]:
+        # Phase 2 stderr streaming — keep alongside Phase 3a audit.jsonl writes.
         def on_request(request: httpx.Request) -> None:
             print(f">>> {request.method} {request.url}", file=sys.stderr)
             for k, v in request.headers.items():
@@ -129,6 +257,10 @@ class NetBoxClient:
                 print(f"<<< {body}", file=sys.stderr)
 
         return {"request": [on_request], "response": [on_response]}
+
+
+def _now_iso() -> str:
+    return datetime.now(UTC).isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
 
 def _parse_json(response: httpx.Response) -> dict[str, Any]:
