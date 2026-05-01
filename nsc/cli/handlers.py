@@ -5,7 +5,10 @@ from __future__ import annotations
 import sys
 from typing import Any, TextIO
 
-from nsc.cli.runtime import RuntimeContext, apply_limit
+import typer
+
+from nsc.cli.runtime import RuntimeContext, apply_limit, emit_envelope, map_error
+from nsc.http.errors import NetBoxAPIError, NetBoxClientError
 from nsc.model.command_model import Operation, ParameterLocation
 from nsc.output.render import render
 
@@ -29,24 +32,29 @@ def handle_list(
     stream: TextIO | None = None,
     **kwargs: Any,
 ) -> None:
-    params, _ = _split_params(operation, kwargs)
-    params.update(parse_filters([f"{k}={v}" for k, v in ctx.filters]))
-    iterator = ctx.client.paginate(operation.path, params)
-    rows = list(
-        apply_limit(
-            iterator,
-            limit=ctx.limit,
-            fetch_all=ctx.fetch_all,
-            page_size=ctx.page_size,
+    try:
+        params, _ = _split_params(operation, kwargs)
+        params.update(parse_filters([f"{k}={v}" for k, v in ctx.filters]))
+        iterator = ctx.client.paginate(operation.path, params)
+        rows = list(
+            apply_limit(
+                iterator,
+                limit=ctx.limit,
+                fetch_all=ctx.fetch_all,
+                page_size=ctx.page_size,
+            )
         )
-    )
-    render(
-        rows,
-        format=ctx.output_format,
-        columns=ctx.resolve_columns(op_tag, op_resource, operation),
-        stream=stream if stream is not None else sys.stdout,
-        compact=ctx.compact,
-    )
+        render(
+            rows,
+            format=ctx.output_format,
+            columns=ctx.resolve_columns(op_tag, op_resource, operation),
+            stream=stream if stream is not None else sys.stdout,
+            compact=ctx.compact,
+        )
+    except (NetBoxAPIError, NetBoxClientError) as exc:
+        env = map_error(exc, operation_id=operation.operation_id)
+        code = emit_envelope(env, output_format=ctx.output_format)
+        raise typer.Exit(code) from exc
 
 
 def handle_get(
@@ -58,15 +66,20 @@ def handle_get(
     stream: TextIO | None = None,
     **kwargs: Any,
 ) -> None:
-    params, path_vars = _split_params(operation, kwargs)
-    obj = ctx.client.get(operation.path.format(**path_vars), params)
-    render(
-        obj,
-        format=ctx.output_format,
-        columns=ctx.resolve_columns(op_tag, op_resource, operation),
-        stream=stream if stream is not None else sys.stdout,
-        compact=ctx.compact,
-    )
+    try:
+        params, path_vars = _split_params(operation, kwargs)
+        obj = ctx.client.get(operation.path.format(**path_vars), params)
+        render(
+            obj,
+            format=ctx.output_format,
+            columns=ctx.resolve_columns(op_tag, op_resource, operation),
+            stream=stream if stream is not None else sys.stdout,
+            compact=ctx.compact,
+        )
+    except (NetBoxAPIError, NetBoxClientError) as exc:
+        env = map_error(exc, operation_id=operation.operation_id)
+        code = emit_envelope(env, output_format=ctx.output_format)
+        raise typer.Exit(code) from exc
 
 
 def handle_custom_action(

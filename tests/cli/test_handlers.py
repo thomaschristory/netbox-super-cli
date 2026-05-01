@@ -6,10 +6,12 @@ from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
+import typer
 
 from nsc.cli.handlers import handle_custom_action, handle_get, handle_list, parse_filters
 from nsc.cli.runtime import ResolvedProfile, RuntimeContext, apply_limit
 from nsc.config.models import Config, OutputFormat
+from nsc.http.errors import NetBoxAPIError
 from nsc.model.command_model import (
     HttpMethod,
     Operation,
@@ -173,3 +175,24 @@ def test_apply_limit_with_explicit_limit() -> None:
 def test_apply_limit_with_limit_and_all_limit_wins() -> None:
     out = list(apply_limit(iter(range(100)), limit=3, fetch_all=True, page_size=50))
     assert out == [0, 1, 2]
+
+
+def test_handle_list_emits_envelope_on_api_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    """handle_list should catch NetBoxAPIError and exit with mapped code."""
+    operation = Operation(
+        operation_id="dcim_devices_list",
+        http_method=HttpMethod.GET,
+        path="/api/dcim/devices/",
+    )
+    client = MagicMock()
+    client.paginate.side_effect = NetBoxAPIError(
+        status_code=404,
+        url="https://nb/api/dcim/devices/",
+        body_snippet="not found",
+        headers={},
+    )
+    ctx = _ctx(client, output_format=OutputFormat.JSON)
+    buf = io.StringIO()
+    with pytest.raises(typer.Exit) as ei:
+        handle_list(operation, "dcim", "devices", ctx, stream=buf)
+    assert ei.value.exit_code == 9  # EXIT_CODES[ErrorType.NOT_FOUND]

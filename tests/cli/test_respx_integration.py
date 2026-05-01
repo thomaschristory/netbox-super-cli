@@ -12,6 +12,7 @@ import respx
 from typer.testing import CliRunner
 
 from nsc.cli.app import app
+from nsc.output.errors import EXIT_CODES, ErrorType
 
 
 @pytest.fixture(autouse=True)
@@ -94,7 +95,7 @@ def test_circuits_providers_list_csv(
 
 
 @respx.mock
-def test_401_response_exits_one_with_helpful_error(
+def test_401_response_emits_auth_envelope(
     fixture_response: Callable[[str], dict[str, Any]],
 ) -> None:
     _mock_schema(respx.mock)
@@ -102,10 +103,55 @@ def test_401_response_exits_one_with_helpful_error(
         return_value=httpx.Response(401, json=fixture_response("auth_401.json"))
     )
     result = CliRunner().invoke(app, ["dcim", "devices", "list", "--output", "json"])
-    assert result.exit_code == 1
-    combined = (result.stdout or "") + (result.stderr or "")
-    assert "401" in combined
-    assert "Invalid token" in combined
+    assert result.exit_code == 8  # EXIT_CODES[ErrorType.AUTH]
+    parsed = json.loads(result.stdout)
+    assert parsed["type"] == "auth"
+    assert parsed["status_code"] == 401
+    assert parsed["endpoint"].endswith("/api/dcim/devices/")
+
+
+@pytest.mark.parametrize(
+    "status_code,expected_type",
+    [
+        (401, ErrorType.AUTH),
+        (403, ErrorType.AUTH),
+        (404, ErrorType.NOT_FOUND),
+        (409, ErrorType.CONFLICT),
+        (429, ErrorType.RATE_LIMITED),
+        (400, ErrorType.VALIDATION),
+        (503, ErrorType.SERVER),
+    ],
+)
+@respx.mock
+def test_read_http_status_maps_to_envelope_and_exit_code(
+    status_code: int,
+    expected_type: ErrorType,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("nsc.http.client.time.sleep", lambda _s: None)
+    _mock_schema(respx.mock)
+    respx.get("https://nb.example/api/dcim/devices/").mock(
+        return_value=httpx.Response(status_code, json={"detail": "x"})
+    )
+    result = CliRunner().invoke(app, ["dcim", "devices", "list", "--output", "json"])
+    assert result.exit_code == EXIT_CODES[expected_type]
+    parsed = json.loads(result.stdout)
+    assert parsed["type"] == expected_type.value
+    assert parsed["endpoint"].endswith("/api/dcim/devices/")
+    assert parsed["status_code"] == status_code
+
+
+@respx.mock
+def test_read_connect_error_maps_to_transport_envelope(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("nsc.http.client.time.sleep", lambda _s: None)
+    _mock_schema(respx.mock)
+    respx.get("https://nb.example/api/dcim/devices/").mock(side_effect=httpx.ConnectError("nope"))
+    result = CliRunner().invoke(app, ["dcim", "devices", "list", "--output", "json"])
+    assert result.exit_code == EXIT_CODES[ErrorType.TRANSPORT]
+    parsed = json.loads(result.stdout)
+    assert parsed["type"] == "transport"
 
 
 @respx.mock

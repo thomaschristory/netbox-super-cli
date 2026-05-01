@@ -8,14 +8,36 @@ read handlers.
 
 from __future__ import annotations
 
+import sys
+import uuid
 from collections.abc import Iterable, Iterator, Mapping
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, HttpUrl, SkipValidation
 
 from nsc.config.models import Config, OutputFormat, Profile
+from nsc.config.settings import default_paths
 from nsc.http.client import NetBoxClient
+from nsc.http.errors import NetBoxAPIError, NetBoxClientError
 from nsc.model.command_model import CommandModel, Operation
+from nsc.output.errors import (
+    EXIT_CODES,
+    ErrorEnvelope,
+    ErrorType,
+    RenderTarget,
+    render_to_json,
+    render_to_rich_stderr,
+    select_render_target,
+)
+
+# Named constants to satisfy PLR2004 (no magic numbers in comparisons).
+_STATUS_UNAUTHORIZED = 401
+_STATUS_FORBIDDEN = 403
+_STATUS_NOT_FOUND = 404
+_STATUS_CONFLICT = 409
+_STATUS_TOO_MANY = 429
+_STATUS_4XX_MIN = 400
+_STATUS_5XX_MIN = 500
 
 
 class _Frozen(BaseModel):
@@ -164,3 +186,81 @@ def apply_limit(
         if cap is not None and n >= cap:
             return
         yield record
+
+
+def _audit_log_path() -> str | None:
+    p = default_paths().logs_dir / "audit.jsonl"
+    return str(p) if p.exists() else None
+
+
+def _api_error_type(status_code: int) -> ErrorType:
+    if status_code in (_STATUS_UNAUTHORIZED, _STATUS_FORBIDDEN):
+        return ErrorType.AUTH
+    if status_code == _STATUS_NOT_FOUND:
+        return ErrorType.NOT_FOUND
+    if status_code == _STATUS_CONFLICT:
+        return ErrorType.CONFLICT
+    if status_code == _STATUS_TOO_MANY:
+        return ErrorType.RATE_LIMITED
+    if _STATUS_4XX_MIN <= status_code < _STATUS_5XX_MIN:
+        return ErrorType.VALIDATION
+    return ErrorType.SERVER
+
+
+def map_error(
+    exc: BaseException,
+    *,
+    operation_id: str | None = None,
+    attempt_n: int | None = None,
+) -> ErrorEnvelope:
+    """Translate a known nsc exception into an ErrorEnvelope. Unknown → internal."""
+    if isinstance(exc, NetBoxAPIError):
+        et = _api_error_type(exc.status_code)
+        details: dict[str, Any] = {}
+        if et is ErrorType.SERVER:
+            details = {"body_excerpt": exc.body_snippet, "retry_safe": False}
+        elif et is ErrorType.AUTH:
+            details = {"reason": "rejected"}
+        elif et is ErrorType.VALIDATION:
+            details = {"source": "server", "body_excerpt": exc.body_snippet}
+        return ErrorEnvelope(
+            error=str(exc),
+            type=et,
+            endpoint=exc.url,
+            status_code=exc.status_code,
+            attempt_n=attempt_n,
+            audit_log_path=_audit_log_path(),
+            operation_id=operation_id,
+            details=details,
+        )
+    if isinstance(exc, NetBoxClientError):
+        return ErrorEnvelope(
+            error=str(exc),
+            type=ErrorType.TRANSPORT,
+            endpoint=exc.url,
+            attempt_n=attempt_n,
+            audit_log_path=_audit_log_path(),
+            operation_id=operation_id,
+            details={"cause": "connect", "retry_safe": True},
+        )
+    if isinstance(exc, NoProfileError):
+        return ErrorEnvelope(error=str(exc), type=ErrorType.CONFIG)
+    if isinstance(exc, UnknownProfileError):
+        return ErrorEnvelope(error=str(exc), type=ErrorType.CONFIG)
+    return ErrorEnvelope(
+        error=f"internal error: {exc}",
+        type=ErrorType.INTERNAL,
+        details={"traceback_id": str(uuid.uuid4())},
+    )
+
+
+def emit_envelope(env: ErrorEnvelope, *, output_format: OutputFormat) -> int:
+    """Write the envelope to the right target and return the exit code."""
+    target = select_render_target(output_format=output_format, stdout_is_tty=sys.stdout.isatty())
+    if target is RenderTarget.JSON_STDOUT:
+        print(render_to_json(env), file=sys.stdout)
+    elif target is RenderTarget.JSON_STDERR:
+        print(render_to_json(env), file=sys.stderr)
+    else:
+        render_to_rich_stderr(env, stream=sys.stderr)
+    return EXIT_CODES.get(env.type, 1)

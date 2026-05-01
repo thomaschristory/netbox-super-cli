@@ -18,9 +18,12 @@ from nsc.cli.runtime import (
     NoProfileError,
     RuntimeContext,
     UnknownProfileError,
+    emit_envelope,
+    map_error,
 )
 from nsc.config import default_paths
 from nsc.config.loader import ConfigParseError, load_config
+from nsc.config.models import OutputFormat
 from nsc.http.errors import NetBoxAPIError, NetBoxClientError
 from nsc.schema.source import SchemaSourceError
 
@@ -156,6 +159,7 @@ class _BootstrappingGroup(TyperGroup):
         error = _invocation["error"]
         if error is not None and args and args[0] not in self.commands:
             if isinstance(error, SchemaSourceError):
+                # Exit code 3 matches EXIT_CODES[ErrorType.SCHEMA] — keep in sync.
                 typer.echo(f"Error: {error}", err=True)
                 raise typer.Exit(3)
             ctx.fail(str(error))
@@ -229,9 +233,16 @@ commands_dump.register(app)
 def main() -> None:
     try:
         app()
+    except typer.Exit:
+        raise
     except (NetBoxAPIError, NetBoxClientError) as exc:
-        typer.echo(f"Error: {exc.render_for_cli()}", err=True)
-        raise typer.Exit(1) from exc
+        env = map_error(exc)
+        code = emit_envelope(env, output_format=OutputFormat.TABLE)
+        raise typer.Exit(code) from exc
+    except Exception as exc:  # catch-all to produce internal envelope
+        env = map_error(exc)
+        code = emit_envelope(env, output_format=OutputFormat.TABLE)
+        raise typer.Exit(code) from exc
 
 
 if __name__ == "__main__":
