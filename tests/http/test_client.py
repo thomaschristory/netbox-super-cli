@@ -343,3 +343,42 @@ def test_audit_jsonl_appended_for_every_write_attempt(
     assert entry["request"]["body"] == {"name": "rack-01"}
     assert entry["response"]["status_code"] == 201
     assert entry["request"]["headers"]["Authorization"] == "<redacted>"
+
+
+@respx.mock
+def test_read_does_not_append_to_audit_jsonl_when_not_debug(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("NSC_HOME", str(tmp_path))
+    respx.get("https://nb.example/api/dcim/devices/").mock(
+        return_value=httpx.Response(200, json={"results": []})
+    )
+    client = NetBoxClient(_FakeProfile())
+    client.get("/api/dcim/devices/")
+    assert (tmp_path / "logs" / "last-request.json").exists()
+    assert not (tmp_path / "logs" / "audit.jsonl").exists()
+
+
+def test_write_appends_audit_jsonl_once_per_attempt_on_retry(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("NSC_HOME", str(tmp_path))
+    monkeypatch.setattr("nsc.http.client.time.sleep", lambda _s: None)
+    with respx.mock(base_url="https://nb.example") as router:
+        router.post("/api/dcim/devices/").mock(side_effect=httpx.ConnectError("nope"))
+        client = NetBoxClient(_FakeProfile())
+        with pytest.raises(NetBoxClientError):
+            client.post(
+                "/api/dcim/devices/",
+                json={"name": "x"},
+                operation_id="dcim_devices_create",
+            )
+    audit_path = tmp_path / "logs" / "audit.jsonl"
+    lines = audit_path.read_text(encoding="utf-8").strip().splitlines()
+    assert len(lines) == 3
+    entries = [json.loads(line) for line in lines]
+    assert [e["attempt_n"] for e in entries] == [1, 2, 3]
+    assert [e["final_attempt"] for e in entries] == [False, False, True]
+    assert all(e["error_kind"] == "transport" for e in entries)
