@@ -15,7 +15,7 @@ from nsc.config.models import Config, Profile
 
 
 class _Frozen(BaseModel):
-    model_config = ConfigDict(frozen=True, extra="forbid", use_attribute_docstrings=True)
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
 
 class CLIOverrides(_Frozen):
