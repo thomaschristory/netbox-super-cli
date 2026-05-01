@@ -113,3 +113,26 @@ def render_to_rich_stderr(env: ErrorEnvelope, *, stream: TextIO) -> None:
     if env.details:
         body_lines.append(f"details:  {env.details}")
     console.print(Panel("\n".join(body_lines), title="nsc error", border_style="red"))
+
+
+class ClientError(Exception):
+    """A user-facing CLI usage error that should map directly to an ErrorEnvelope.
+
+    Carries a fully-shaped envelope so the handler can re-emit it without
+    re-classifying.
+    """
+
+    def __init__(self, envelope: ErrorEnvelope) -> None:
+        super().__init__(envelope.error)
+        self.envelope = envelope
+
+
+def client_envelope(
+    message: str, *, operation_id: str | None = None, **details: Any
+) -> ErrorEnvelope:
+    return ErrorEnvelope(
+        error=message,
+        type=ErrorType.CLIENT,
+        operation_id=operation_id,
+        details=details if details else {},
+    )
