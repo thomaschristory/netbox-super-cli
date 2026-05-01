@@ -2,7 +2,7 @@
 
 A Python CLI for [NetBox](https://netbox.dev/) that builds its command tree dynamically from your install's live OpenAPI schema. The same binary works against any NetBox version and exposes plugin-provided endpoints automatically — the schema, not hand-written code, defines the surface.
 
-> **Status:** Phase 1 complete. Schema → CommandModel pipeline works end-to-end against the live NetBox OpenAPI schema. The dynamic CLI tree, profiles, writes, and the rest of v1 land in Phases 2–5. Not yet on PyPI. See `docs/superpowers/specs/2026-04-30-netbox-super-cli-design.md` for the design and `docs/superpowers/plans/` for per-phase plans.
+> **Status:** Phase 2 complete. Dynamic read CLI is fully operational: live schema fetch, disk cache, configurable profiles, paginated list/get/filter commands, and JSON/YAML/CSV/table output. Not yet on PyPI. See `docs/superpowers/specs/2026-04-30-netbox-super-cli-design.md` for the design and `docs/superpowers/plans/` for per-phase plans.
 
 ## Why
 
@@ -25,7 +25,20 @@ uv sync
 uv run nsc --version
 ```
 
-## Try it (Phase 1)
+## Phase 2 — Dynamic CLI for reads (current)
+
+```sh
+export NSC_URL=https://netbox.example.com
+export NSC_TOKEN=$(cat ~/.netbox-token)
+
+uv run nsc dcim devices list
+uv run nsc dcim devices list --site-id 42 --status active --all --output json
+uv run nsc dcim devices get 7
+uv run nsc circuits providers list --output csv
+uv run nsc ipam prefixes list --filter created__gte=2026-01-01 --output yaml
+```
+
+## Try it (schema introspection)
 
 ```
 # Dump every endpoint in the bundled NetBox schema as JSON

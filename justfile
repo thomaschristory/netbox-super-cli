@@ -39,3 +39,7 @@ nsc *args:
 # Bump all pre-commit hook revs to latest
 update:
     uv run pre-commit autoupdate
+
+# Run startup-time benchmark (NSC_BENCH=1 gate)
+bench:
+    NSC_BENCH=1 uv run pytest tests/benchmarks/ -v -s

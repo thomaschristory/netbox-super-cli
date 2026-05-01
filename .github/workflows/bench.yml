@@ -1,0 +1,23 @@
+name: bench
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  startup-time:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v4
+      - name: Install
+        run: uv sync --all-extras --dev
+      - name: Benchmark
+        run: NSC_BENCH=1 uv run pytest tests/benchmarks/ -v -s
+        continue-on-error: true
+      - name: Step summary
+        if: always()
+        run: |
+          echo "Bench job ran. See the previous step's stdout for the median timing." >> "$GITHUB_STEP_SUMMARY"
