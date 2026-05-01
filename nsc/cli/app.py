@@ -34,7 +34,6 @@ _META_COMMANDS: frozenset[str] = frozenset({"commands"})
 def _extract_global_overrides(args: list[str]) -> CLIOverrides:
     """Scan raw argv for global flags without consuming the full Click context."""
     kwargs: dict[str, object] = {}
-    i = 0
     two_arg = {
         "--profile": "profile",
         "--url": "url",
@@ -43,19 +42,28 @@ def _extract_global_overrides(args: list[str]) -> CLIOverrides:
         "--output": "output",
         "-o": "output",
     }
+    i = 0
     while i < len(args):
         a = args[i]
+        if a.startswith("--") and "=" in a:
+            flag, _, value = a.partition("=")
+            if flag in two_arg:
+                kwargs[two_arg[flag]] = value
+            i += 1
+            continue
         if a in two_arg and i + 1 < len(args):
             kwargs[two_arg[a]] = args[i + 1]
             i += 2
-        elif a == "--insecure":
+            continue
+        if a == "--insecure":
             kwargs["insecure"] = True
             i += 1
-        elif a == "--no-insecure":
+            continue
+        if a == "--no-insecure":
             kwargs["insecure"] = False
             i += 1
-        else:
-            i += 1
+            continue
+        i += 1
     return CLIOverrides(**kwargs)  # type: ignore[arg-type]
 
 
@@ -128,10 +136,15 @@ class _BootstrappingGroup(TyperGroup):
     def resolve_command(
         self, ctx: click.Context, args: list[str]
     ) -> tuple[str | None, click.Command | None, list[str]]:
-        # Surface a bootstrap error as a Click usage error (exit 2) when the
-        # requested command was not registered (because bootstrap failed).
-        if _invocation["error"] is not None and args and args[0] not in self.commands:
-            ctx.fail(str(_invocation["error"]))
+        # Surface a bootstrap error when the requested command was not registered
+        # (because bootstrap failed). SchemaSourceError exits 3 per spec; all
+        # other bootstrap errors are usage errors (exit 2).
+        error = _invocation["error"]
+        if error is not None and args and args[0] not in self.commands:
+            if isinstance(error, SchemaSourceError):
+                typer.echo(f"Error: {error}", err=True)
+                raise typer.Exit(3)
+            ctx.fail(str(error))
         return super().resolve_command(ctx, args)
 
 
