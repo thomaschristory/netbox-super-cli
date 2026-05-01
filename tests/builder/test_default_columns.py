@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from nsc.builder.build import build_command_model
+from nsc.model.command_model import Operation
 from nsc.schema.loader import LoadedSchema
 from nsc.schema.models import OpenAPIDocument
 
@@ -49,13 +50,13 @@ def _doc_with_list_op(record_props: dict[str, dict[str, str]]) -> OpenAPIDocumen
     )
 
 
-def _build(doc: OpenAPIDocument):
+def _build(doc: OpenAPIDocument) -> Operation | None:
     loaded = LoadedSchema(document=doc, hash="testhash", source="memory", body=b"")
     model = build_command_model(loaded)
     return model.tags["dcim"].resources["devices"].list_op
 
 
-def test_default_columns_includes_id_name_then_pads_with_scalars():
+def test_default_columns_includes_id_name_then_pads_with_scalars() -> None:
     doc = _doc_with_list_op(
         {
             "id": {"type": "integer"},
@@ -70,7 +71,7 @@ def test_default_columns_includes_id_name_then_pads_with_scalars():
     assert op.default_columns == ["id", "name", "url", "status", "extra"]
 
 
-def test_default_columns_caps_at_six():
+def test_default_columns_caps_at_six() -> None:
     props = {f"f{i}": {"type": "string"} for i in range(20)}
     props["id"] = {"type": "integer"}
     doc = _doc_with_list_op(props)
@@ -80,7 +81,7 @@ def test_default_columns_caps_at_six():
     assert "id" in op.default_columns
 
 
-def test_default_columns_handles_slug_and_display_when_no_name():
+def test_default_columns_handles_slug_and_display_when_no_name() -> None:
     doc = _doc_with_list_op(
         {
             "id": {"type": "integer"},
@@ -92,7 +93,7 @@ def test_default_columns_handles_slug_and_display_when_no_name():
     assert op.default_columns == ["id", "slug", "display"]
 
 
-def test_default_columns_skips_object_and_array_fields_during_padding():
+def test_default_columns_skips_object_and_array_fields_during_padding() -> None:
     doc = _doc_with_list_op(
         {
             "id": {"type": "integer"},
@@ -107,7 +108,7 @@ def test_default_columns_skips_object_and_array_fields_during_padding():
     assert op.default_columns == ["id", "name", "model"]
 
 
-def test_default_columns_resolves_ref_to_components_schemas():
+def test_default_columns_resolves_ref_to_components_schemas() -> None:
     doc = OpenAPIDocument.model_validate(
         {
             "openapi": "3.0.3",
@@ -160,7 +161,7 @@ def test_default_columns_resolves_ref_to_components_schemas():
     assert op.default_columns == ["id", "name", "status"]
 
 
-def test_default_columns_is_none_when_response_has_no_recognizable_shape():
+def test_default_columns_is_none_when_response_has_no_recognizable_shape() -> None:
     doc = OpenAPIDocument.model_validate(
         {
             "openapi": "3.0.3",
@@ -183,7 +184,7 @@ def test_default_columns_is_none_when_response_has_no_recognizable_shape():
     assert op.default_columns is None
 
 
-def test_default_columns_for_get_uses_response_schema_directly_not_results():
+def test_default_columns_for_get_uses_response_schema_directly_not_results() -> None:
     doc = OpenAPIDocument.model_validate(
         {
             "openapi": "3.0.3",
