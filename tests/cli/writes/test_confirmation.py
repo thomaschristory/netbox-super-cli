@@ -53,3 +53,9 @@ def test_refuse_unknown_format_value() -> None:
 def test_refuse_unknown_format_passes_for_supported() -> None:
     refuse_unknown_format_for_writes("yaml")
     refuse_unknown_format_for_writes(None)
+
+
+def test_refuse_unknown_format_is_case_insensitive() -> None:
+    refuse_unknown_format_for_writes("YAML")
+    refuse_unknown_format_for_writes("Json")
+    refuse_unknown_format_for_writes("YML")

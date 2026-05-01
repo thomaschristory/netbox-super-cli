@@ -134,5 +134,5 @@ def client_envelope(
         error=message,
         type=ErrorType.CLIENT,
         operation_id=operation_id,
-        details=details if details else {},
+        details=details,
     )
