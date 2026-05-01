@@ -51,3 +51,9 @@ def test_table_uses_record_keys_when_no_columns_given() -> None:
     render_table([{"id": 1, "name": "x"}], stream=buf, columns=None)
     text = buf.getvalue()
     assert "id" in text and "name" in text and "x" in text
+
+
+def test_table_renders_placeholder_for_empty_list() -> None:
+    buf = io.StringIO()
+    render_table([], stream=buf)
+    assert "(no records)" in buf.getvalue()
