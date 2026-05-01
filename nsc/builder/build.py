@@ -113,7 +113,7 @@ def _assimilate(
         resource = _MutableResource(resource_name)
         tag.resources[resource_name] = resource
 
-    op = _to_model_operation(path, http_method, schema_op, item)
+    op = _to_model_operation(path, http_method, schema_op, item, doc)
     classification = _classify(http_method, path, schema_op, resource_name)
     _attach(resource, classification, op, is_collection_path)
 
@@ -212,6 +212,7 @@ def _to_model_operation(
     http_method: HttpMethod,
     schema_op: SchemaOperation,
     item: PathItem,
+    doc: OpenAPIDocument,
 ) -> Operation:
     if schema_op.operation_id is None:
         # Synthesize one — operationId is required in practice but we degrade
@@ -234,6 +235,7 @@ def _to_model_operation(
         description=schema_op.description,
         parameters=parameters,
         has_request_body=schema_op.request_body is not None,
+        default_columns=_default_columns_from_response(schema_op, doc),
     )
 
 
@@ -261,6 +263,63 @@ def _primitive(schema: SchemaObject) -> PrimitiveType:
         return PrimitiveType(schema.type)
     except ValueError:
         return PrimitiveType.UNKNOWN
+
+
+_SCALAR_TYPES = {"string", "integer", "number", "boolean"}
+_PRIORITY_NAMES = ("name", "slug", "display")
+_MAX_DEFAULT_COLUMNS = 6
+
+
+def _resolve_ref(schema: SchemaObject, doc: OpenAPIDocument) -> SchemaObject | None:
+    if schema.ref is None:
+        return schema
+    # OpenAPI refs look like "#/components/schemas/<Name>" — we only support that form.
+    prefix = "#/components/schemas/"
+    if not schema.ref.startswith(prefix):
+        return None
+    name = schema.ref[len(prefix) :]
+    return doc.components.schemas.get(name)
+
+
+def _record_shape(response_schema: SchemaObject, doc: OpenAPIDocument) -> SchemaObject | None:
+    resolved = _resolve_ref(response_schema, doc)
+    if resolved is None:
+        return None
+    props = resolved.properties or {}
+    results = props.get("results")
+    if results is not None and results.type == "array" and results.items is not None:
+        return _resolve_ref(results.items, doc)
+    return resolved
+
+
+def _default_columns_from_response(
+    schema_op: SchemaOperation, doc: OpenAPIDocument
+) -> list[str] | None:
+    response = schema_op.responses.get("200")
+    if response is None:
+        return None
+    media = response.content.get("application/json")
+    if media is None or media.schema_ is None:
+        return None
+    record = _record_shape(media.schema_, doc)
+    if record is None or not record.properties:
+        return None
+
+    cols: list[str] = []
+    if "id" in record.properties:
+        cols.append("id")
+    for name in _PRIORITY_NAMES:
+        if name in record.properties and name not in cols:
+            cols.append(name)
+    for name, prop in record.properties.items():
+        if len(cols) >= _MAX_DEFAULT_COLUMNS:
+            break
+        if name in cols:
+            continue
+        if (prop.type or "") not in _SCALAR_TYPES:
+            continue
+        cols.append(name)
+    return cols if cols else None
 
 
 def _tag_description(name: str, doc: OpenAPIDocument) -> str | None:
