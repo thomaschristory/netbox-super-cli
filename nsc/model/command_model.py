@@ -63,6 +63,7 @@ class Operation(_Frozen):
     description: str | None = None
     parameters: list[Parameter] = Field(default_factory=list)
     has_request_body: bool = False
+    default_columns: list[str] | None = None
 
 
 class Resource(_Frozen):

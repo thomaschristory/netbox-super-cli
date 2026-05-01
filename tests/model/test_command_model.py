@@ -72,3 +72,24 @@ def test_iter_all_operations_walks_the_tree() -> None:
     assert tag == "dcim"
     assert resource == "devices"
     assert op.operation_id == "dcim_devices_list"
+
+
+def test_operation_has_optional_default_columns_field_defaulting_to_none() -> None:
+    op = Operation(
+        operation_id="dcim_devices_list",
+        http_method=HttpMethod.GET,
+        path="/api/dcim/devices/",
+    )
+    assert op.default_columns is None
+
+
+def test_operation_round_trips_default_columns_through_json() -> None:
+    op = Operation(
+        operation_id="dcim_devices_list",
+        http_method=HttpMethod.GET,
+        path="/api/dcim/devices/",
+        default_columns=["id", "name", "site"],
+    )
+    payload = op.model_dump_json()
+    restored = Operation.model_validate_json(payload)
+    assert restored.default_columns == ["id", "name", "site"]
