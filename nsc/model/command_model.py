@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from enum import StrEnum
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -55,6 +56,18 @@ class Parameter(_Frozen):
     enum: list[str] | None = None
 
 
+class FieldShape(_Frozen):
+    primitive: PrimitiveType = PrimitiveType.UNKNOWN
+    enum: list[str] | None = None
+    nullable: bool = False
+
+
+class RequestBodyShape(_Frozen):
+    top_level: Literal["object", "array", "object_or_array"]
+    required: list[str] = Field(default_factory=list)
+    fields: dict[str, FieldShape] = Field(default_factory=dict)
+
+
 class Operation(_Frozen):
     operation_id: str
     http_method: HttpMethod
@@ -62,7 +75,7 @@ class Operation(_Frozen):
     summary: str | None = None
     description: str | None = None
     parameters: list[Parameter] = Field(default_factory=list)
-    has_request_body: bool = False
+    request_body: RequestBodyShape | None = None
     default_columns: list[str] | None = None
 
 
