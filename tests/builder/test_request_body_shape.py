@@ -134,3 +134,94 @@ def test_get_operation_has_no_request_body() -> None:
     model = _build(doc)
     built = _find_op(model, "dcim_devices_list")
     assert built.request_body is None
+
+
+def test_request_body_one_of_with_ref_object_and_inline_array_yields_object_or_array() -> None:
+    # NetBox's actual create-endpoint shape: a $ref to the writable request
+    # schema OR an inline array of the same.
+    schema = SchemaObject.model_validate(
+        {
+            "oneOf": [
+                {"$ref": "#/components/schemas/WritableThing"},
+                {"type": "array", "items": {"$ref": "#/components/schemas/WritableThing"}},
+            ]
+        }
+    )
+    components = Components(
+        schemas={
+            "WritableThing": SchemaObject(
+                type="object",
+                required=["name"],
+                properties={
+                    "name": SchemaObject(type="string"),
+                    "status": SchemaObject(type="string", enum=["active", "planned"]),
+                },
+            )
+        }
+    )
+    response_ok = Response(
+        description="ok",
+        content={"application/json": MediaType(schema_=SchemaObject(type="object"))},
+    )
+    op = Operation(
+        operation_id="dcim_devices_create",
+        tags=["dcim"],
+        responses={"201": response_ok},
+        request_body=RequestBody(
+            content={"application/json": MediaType(schema_=schema)},
+        ),
+    )
+    doc = OpenAPIDocument(
+        openapi="3.0.3",
+        info=Info(title="t", version="v"),
+        paths={"/api/dcim/devices/": PathItem(post=op)},
+        components=components,
+    )
+
+    model = _build(doc)
+    built = _find_op(model, "dcim_devices_create")
+    assert built.request_body is not None
+    assert built.request_body.top_level == "object_or_array"
+    assert built.request_body.required == ["name"]
+    assert built.request_body.fields["name"].primitive is PrimitiveType.STRING
+    assert built.request_body.fields["status"].enum == ["active", "planned"]
+
+
+def test_request_body_one_of_with_only_ref_object_branch_is_object() -> None:
+    schema = SchemaObject.model_validate(
+        {"oneOf": [{"$ref": "#/components/schemas/WritableThing"}]}
+    )
+    components = Components(
+        schemas={
+            "WritableThing": SchemaObject(
+                type="object",
+                required=["name"],
+                properties={"name": SchemaObject(type="string")},
+            )
+        }
+    )
+    response_ok = Response(
+        description="ok",
+        content={"application/json": MediaType(schema_=SchemaObject(type="object"))},
+    )
+    op = Operation(
+        operation_id="x_create",
+        tags=["x"],
+        responses={"201": response_ok},
+        request_body=RequestBody(
+            content={"application/json": MediaType(schema_=schema)},
+        ),
+    )
+    doc = OpenAPIDocument(
+        openapi="3.0.3",
+        info=Info(title="t", version="v"),
+        paths={"/api/x/things/": PathItem(post=op)},
+        components=components,
+    )
+
+    model = _build(doc)
+    built = _find_op(model, "x_create")
+    assert built.request_body is not None
+    assert built.request_body.top_level == "object"
+    assert built.request_body.required == ["name"]
+    assert built.request_body.fields["name"].primitive is PrimitiveType.STRING

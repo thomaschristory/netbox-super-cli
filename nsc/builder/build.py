@@ -270,16 +270,36 @@ def _to_request_body_shape(
     schema = _resolve_ref(media.schema_, doc)
     if schema is None:
         return None
-    top_level = _classify_top_level(schema)
+    top_level = _classify_top_level(schema, doc)
     if top_level is None:
         return None
-    required = list(schema.required or []) if schema.type == "object" else []
+    if top_level in ("object", "object_or_array"):
+        branch = _object_branch(schema, doc)
+        required = list(branch.required or []) if branch is not None else []
+    else:
+        required = []
     fields = _flat_fields(schema, doc) if top_level in ("object", "object_or_array") else {}
     return RequestBodyShape(top_level=top_level, required=required, fields=fields)
 
 
+def _branch_type(raw: object, doc: OpenAPIDocument) -> str | None:
+    """Return the top-level "type" for a oneOf/anyOf branch, resolving $ref once."""
+    if not isinstance(raw, dict):
+        return None
+    direct = raw.get("type")
+    if direct in {"object", "array"}:
+        return str(direct)
+    ref = raw.get("$ref")
+    if isinstance(ref, str):
+        candidate = SchemaObject.model_validate({"$ref": ref})
+        resolved = _resolve_ref(candidate, doc)
+        if resolved is not None and resolved.type in ("object", "array"):
+            return resolved.type
+    return None
+
+
 def _classify_top_level(
-    schema: SchemaObject,
+    schema: SchemaObject, doc: OpenAPIDocument
 ) -> Literal["object", "array", "object_or_array"] | None:
     if schema.type in ("object", "array"):
         return schema.type  # type: ignore[return-value]
@@ -288,11 +308,7 @@ def _classify_top_level(
     candidates = one_of or any_of or None
     if not candidates:
         return None
-    types = {
-        raw.get("type")
-        for raw in candidates
-        if isinstance(raw, dict) and raw.get("type") in ("object", "array")
-    }
+    types = {t for raw in candidates if (t := _branch_type(raw, doc)) is not None}
     if {"object", "array"}.issubset(types):
         return "object_or_array"
     if types == {"object"}:
@@ -300,22 +316,31 @@ def _classify_top_level(
     return "array" if types == {"array"} else None
 
 
+def _object_branch(schema: SchemaObject, doc: OpenAPIDocument) -> SchemaObject | None:
+    """Find the object-shaped variant of a oneOf/anyOf, resolving $ref branches."""
+    if schema.type == "object":
+        return schema
+    candidates = (
+        (schema.model_extra or {}).get("oneOf") or (schema.model_extra or {}).get("anyOf") or []
+    )
+    for raw in candidates:
+        if not isinstance(raw, dict):
+            continue
+        if raw.get("type") == "object":
+            return SchemaObject.model_validate(raw)
+        ref = raw.get("$ref")
+        if isinstance(ref, str):
+            resolved = _resolve_ref(SchemaObject.model_validate({"$ref": ref}), doc)
+            if resolved is not None and resolved.type == "object":
+                return resolved
+    return None
+
+
 def _flat_fields(schema: SchemaObject, doc: OpenAPIDocument) -> dict[str, FieldShape]:
+    target = _object_branch(schema, doc)
+    if target is None or not target.properties:
+        return {}
     out: dict[str, FieldShape] = {}
-    target = schema
-    if schema.type != "object":
-        # object_or_array — pick the object branch out of oneOf/anyOf
-        candidates = (
-            (schema.model_extra or {}).get("oneOf") or (schema.model_extra or {}).get("anyOf") or []
-        )
-        for raw in candidates:
-            if isinstance(raw, dict) and raw.get("type") == "object":
-                target = SchemaObject.model_validate(raw)
-                break
-        else:
-            return out
-    if not target.properties:
-        return out
     for name, prop in target.properties.items():
         resolved = _resolve_ref(prop, doc) or prop
         primitive = _primitive(resolved)
