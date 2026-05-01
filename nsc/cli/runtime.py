@@ -7,11 +7,14 @@ function, both consumed by the bootstrap.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Iterable, Iterator, Mapping
+from typing import Any
 
-from pydantic import BaseModel, ConfigDict, HttpUrl
+from pydantic import BaseModel, ConfigDict, HttpUrl, SkipValidation
 
-from nsc.config.models import Config, Profile
+from nsc.config.models import Config, OutputFormat, Profile
+from nsc.http.client import NetBoxClient
+from nsc.model.command_model import CommandModel, Operation
 
 
 class _Frozen(BaseModel):
@@ -109,3 +112,54 @@ def _bool_env(raw: str | None) -> bool | None:
     if raw is None:
         return None
     return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
+class RuntimeContext(BaseModel):
+    """Per-invocation runtime state.
+
+    Not frozen because `client` (a NetBoxClient wrapping httpx.Client) is mutable.
+    """
+
+    model_config = ConfigDict(arbitrary_types_allowed=True, extra="forbid")
+
+    resolved_profile: ResolvedProfile
+    config: Config
+    command_model: SkipValidation[CommandModel]
+    client: SkipValidation[NetBoxClient]
+    output_format: OutputFormat
+    debug: bool = False
+    page_size: int = 50
+    columns_override: list[str] | None = None
+    filters: list[tuple[str, str]] = []
+    limit: int | None = None
+    fetch_all: bool = False
+    compact: bool = False
+
+    def resolve_columns(self, tag: str, resource: str, operation: Operation) -> list[str] | None:
+        if self.columns_override is not None:
+            return self.columns_override
+        per_tag = self.config.columns.get(tag, {})
+        configured = per_tag.get(resource)
+        if configured is not None:
+            return configured
+        return operation.default_columns
+
+
+def apply_limit(
+    iterator: Iterable[dict[str, Any]],
+    *,
+    limit: int | None,
+    fetch_all: bool,
+    page_size: int,
+) -> Iterator[dict[str, Any]]:
+    cap: int | None
+    if limit is not None:
+        cap = limit
+    elif fetch_all:
+        cap = None
+    else:
+        cap = page_size
+    for n, record in enumerate(iterator):
+        if cap is not None and n >= cap:
+            return
+        yield record
