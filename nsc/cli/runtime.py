@@ -1,8 +1,9 @@
 """Runtime context, profile resolution, exit-code mapping.
 
-`RuntimeContext` itself (carrying the live `NetBoxClient`) is completed in the
-bootstrap wiring task. This module owns the data classes and the resolution
-function, both consumed by the bootstrap.
+`RuntimeContext` carries the live `NetBoxClient`, command model, config, and
+output preferences for a single invocation. It is populated by the bootstrap
+pipeline in the root Typer callback (Task 12) and consumed by the dynamic
+read handlers.
 """
 
 from __future__ import annotations
