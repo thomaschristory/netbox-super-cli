@@ -1,0 +1,8 @@
+default_profile: prod
+profiles:
+  prod:
+    url: https://nb.example
+    token: t0ken
+defaults:
+  output: table
+  page_size: 50

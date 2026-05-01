@@ -1,0 +1,9 @@
+{
+  "count": 2,
+  "next": null,
+  "previous": null,
+  "results": [
+    {"id": 1, "name": "Acme", "slug": "acme"},
+    {"id": 2, "name": "Beta Telco", "slug": "beta-telco"}
+  ]
+}

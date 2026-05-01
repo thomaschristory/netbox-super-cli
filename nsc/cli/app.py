@@ -7,6 +7,7 @@ from typing import Annotated, Any
 import click
 import typer
 from typer.core import TyperGroup
+from typer.main import get_group_from_info
 
 from nsc._version import __version__
 from nsc.cli import commands_dump
@@ -130,6 +131,19 @@ class _BootstrappingGroup(TyperGroup):
             _invocation["runtime"] = runtime
             # `app` is defined after this class; by call time it is available.
             register_dynamic_commands(app, runtime.command_model, lambda: runtime)
+            # Sync newly added Typer sub-apps into this Click group's commands
+            # dict. Typer builds its Click group once at invocation time from
+            # `app.registered_groups`; commands added inside `make_context`
+            # would otherwise be invisible to `resolve_command`.
+            for group_info in app.registered_groups:
+                sub = get_group_from_info(
+                    group_info,
+                    pretty_exceptions_short=app.pretty_exceptions_short,
+                    rich_markup_mode=app.rich_markup_mode,
+                    suggest_commands=app.suggest_commands,
+                )
+                if sub.name and sub.name not in self.commands:
+                    self.commands[sub.name] = sub
 
         return super().make_context(info_name, args, parent, **extra)
 

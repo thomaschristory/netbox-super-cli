@@ -1,0 +1,8 @@
+{
+  "count": 3,
+  "next": null,
+  "previous": "https://nb.example/api/dcim/devices/?cursor=p1",
+  "results": [
+    {"id": 3, "name": "charlie", "status": {"value": "decommissioned", "label": "Decommissioned"}, "site": {"name": "DC2"}}
+  ]
+}

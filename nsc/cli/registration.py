@@ -12,6 +12,7 @@ from click import Choice
 from nsc.cli.handlers import handle_custom_action, handle_get, handle_list
 from nsc.cli.runtime import RuntimeContext
 from nsc.config.models import OutputFormat
+from nsc.http.errors import NetBoxAPIError, NetBoxClientError
 from nsc.model.command_model import (
     CommandModel,
     HttpMethod,
@@ -68,6 +69,11 @@ def _register_command(
     app.command(name=name, help=operation.summary or operation.description or "")(closure)
 
 
+_GLOBAL_FLAG_NAMES: frozenset[str] = frozenset(
+    {"output", "compact", "columns", "limit", "all_", "filter_"}
+)
+
+
 def _build_closure(
     operation: Operation,
     tag_name: str,
@@ -81,6 +87,8 @@ def _build_closure(
             sig_params.append(_to_positional(p))
         elif p.location is ParameterLocation.QUERY:
             if "__" in p.name:
+                continue
+            if p.name in _GLOBAL_FLAG_NAMES:
                 continue
             sig_params.append(_to_typed_option(p))
 
@@ -108,7 +116,11 @@ def _build_closure(
         if output:
             update["output_format"] = OutputFormat(output)
         ctx = ctx.model_copy(update=update)
-        handler(operation, op_tag=tag_name, op_resource=resource_name, ctx=ctx, **kwargs)
+        try:
+            handler(operation, op_tag=tag_name, op_resource=resource_name, ctx=ctx, **kwargs)
+        except (NetBoxAPIError, NetBoxClientError) as exc:
+            typer.echo(f"Error: {exc.render_for_cli()}", err=True)
+            raise typer.Exit(1) from exc
 
     impl.__signature__ = inspect.Signature(parameters=sig_params)  # type: ignore[attr-defined]
     impl.__name__ = operation.operation_id

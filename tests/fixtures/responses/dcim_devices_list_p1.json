@@ -1,0 +1,9 @@
+{
+  "count": 3,
+  "next": "https://nb.example/api/dcim/devices/?cursor=p2",
+  "previous": null,
+  "results": [
+    {"id": 1, "name": "alpha", "status": {"value": "active", "label": "Active"}, "site": {"name": "DC1"}},
+    {"id": 2, "name": "bravo", "status": {"value": "active", "label": "Active"}, "site": {"name": "DC1"}}
+  ]
+}
