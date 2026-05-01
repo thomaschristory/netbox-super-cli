@@ -75,6 +75,51 @@ class NetBoxClient:
         response = self._send_with_retry(HttpMethod.GET, path, params=params)
         return _parse_json(response)
 
+    def post(
+        self,
+        path: str,
+        *,
+        json: Any | None = None,
+        operation_id: str | None = None,
+    ) -> dict[str, Any]:
+        response = self._send_with_retry(
+            HttpMethod.POST, path, json_body=json, operation_id=operation_id
+        )
+        return _parse_json(response)
+
+    def patch(
+        self,
+        path: str,
+        *,
+        json: Any | None = None,
+        operation_id: str | None = None,
+    ) -> dict[str, Any]:
+        response = self._send_with_retry(
+            HttpMethod.PATCH, path, json_body=json, operation_id=operation_id
+        )
+        return _parse_json(response)
+
+    def put(
+        self,
+        path: str,
+        *,
+        json: Any | None = None,
+        operation_id: str | None = None,
+    ) -> dict[str, Any]:
+        response = self._send_with_retry(
+            HttpMethod.PUT, path, json_body=json, operation_id=operation_id
+        )
+        return _parse_json(response)
+
+    def delete(
+        self,
+        path: str,
+        *,
+        operation_id: str | None = None,
+    ) -> dict[str, Any]:
+        response = self._send_with_retry(HttpMethod.DELETE, path, operation_id=operation_id)
+        return _parse_json(response)
+
     def paginate(
         self,
         path: str,
@@ -111,14 +156,17 @@ class NetBoxClient:
         path: str,
         *,
         params: dict[str, Any] | None = None,
+        json_body: Any | None = None,
+        operation_id: str | None = None,
     ) -> httpx.Response:
         policy = policy_for_method(method)
         attempt = 0
+        is_write = method not in {HttpMethod.GET, HttpMethod.HEAD, HttpMethod.OPTIONS}
         while True:
             attempt += 1
             started = time.monotonic()
             try:
-                response = self._client.request(method.value, path, params=params)
+                response = self._client.request(method.value, path, params=params, json=json_body)
             except httpx.RequestError as exc:
                 error_class: ErrorClass | None = classify_error(exc)
                 duration_ms = int((time.monotonic() - started) * 1000)
@@ -129,10 +177,13 @@ class NetBoxClient:
                     method=method,
                     path=path,
                     params=params,
+                    request_body=json_body,
                     response=None,
                     duration_ms=duration_ms,
                     attempt=attempt,
                     final=not retry,
+                    operation_id=operation_id,
+                    is_write=is_write,
                 )
                 if not retry:
                     raise NetBoxClientError(url=self._absolute(path, params), cause=exc) from exc
@@ -149,10 +200,13 @@ class NetBoxClient:
                 method=method,
                 path=path,
                 params=params,
+                request_body=json_body,
                 response=response,
                 duration_ms=duration_ms,
                 attempt=attempt,
                 final=not retry,
+                operation_id=operation_id,
+                is_write=is_write,
             )
             if not retry:
                 if response.is_success:
@@ -184,10 +238,13 @@ class NetBoxClient:
         method: HttpMethod,
         path: str,
         params: dict[str, Any] | None,
+        request_body: Any | None,
         response: httpx.Response | None,
         duration_ms: int,
         attempt: int,
         final: bool,
+        operation_id: str | None,
+        is_write: bool,
     ) -> None:
         url = self._absolute(path, params)
         # httpx lowercases all header names; title-case them so the audit log
@@ -215,12 +272,12 @@ class NetBoxClient:
 
         entry = AuditEntry(
             timestamp=_now_iso(),
-            operation_id=None,
+            operation_id=operation_id,
             method=method,
             url=url,
             request_headers=request_headers,
             request_query=dict(params or {}),
-            request_body=None,
+            request_body=request_body,
             response_status_code=audit_status,
             response_headers=response_headers,
             response_body=response_body,
@@ -231,12 +288,12 @@ class NetBoxClient:
             dry_run=False,
             preflight_blocked=False,
             record_indices=[],
-            applied=False,
+            applied=is_write,
             explain=False,
         )
         log_dir = default_paths().logs_dir
         write_last_request(entry, path=log_dir / "last-request.json")
-        if self._debug:
+        if is_write or self._debug:
             append_audit_jsonl(entry, path=log_dir / "audit.jsonl")
 
     def _event_hooks(self) -> dict[str, list[Any]]:

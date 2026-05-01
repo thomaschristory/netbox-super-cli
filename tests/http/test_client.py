@@ -213,3 +213,133 @@ def test_debug_mode_appends_to_audit_jsonl(tmp_path: Path, monkeypatch: pytest.M
     audit = tmp_path / "logs" / "audit.jsonl"
     assert audit.exists()
     assert len(audit.read_text().splitlines()) == 1
+
+
+# ---------------------------------------------------------------------------
+# Phase 3b: write methods + audit hooks
+# ---------------------------------------------------------------------------
+
+
+@respx.mock
+def test_post_sends_json_body_and_returns_response() -> None:
+    route = respx.post("https://nb.example/api/dcim/devices/").mock(
+        return_value=httpx.Response(201, json={"id": 247, "name": "rack-01"})
+    )
+    client = NetBoxClient(_FakeProfile())
+    body = client.post(
+        "/api/dcim/devices/",
+        json={"name": "rack-01"},
+        operation_id="dcim_devices_create",
+    )
+    assert body == {"id": 247, "name": "rack-01"}
+    assert route.called
+    sent = json.loads(route.calls.last.request.content)
+    assert sent == {"name": "rack-01"}
+
+
+@respx.mock
+def test_post_5xx_does_not_retry() -> None:
+    route = respx.post("https://nb.example/api/dcim/devices/").mock(
+        return_value=httpx.Response(503, json={"detail": "down"})
+    )
+    client = NetBoxClient(_FakeProfile())
+    with pytest.raises(NetBoxAPIError):
+        client.post(
+            "/api/dcim/devices/",
+            json={"name": "x"},
+            operation_id="dcim_devices_create",
+        )
+    assert route.call_count == 1
+
+
+def test_post_connect_error_retries_then_surfaces_transport(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("nsc.http.client.time.sleep", lambda _s: None)
+    with respx.mock(base_url="https://nb.example") as router:
+        route = router.post("/api/dcim/devices/").mock(side_effect=httpx.ConnectError("nope"))
+        client = NetBoxClient(_FakeProfile())
+        with pytest.raises(NetBoxClientError):
+            client.post(
+                "/api/dcim/devices/",
+                json={"name": "x"},
+                operation_id="dcim_devices_create",
+            )
+        assert route.call_count == 3
+
+
+@respx.mock
+def test_patch_sends_partial_body() -> None:
+    route = respx.patch("https://nb.example/api/dcim/devices/42/").mock(
+        return_value=httpx.Response(200, json={"id": 42, "status": "decommissioned"})
+    )
+    client = NetBoxClient(_FakeProfile())
+    body = client.patch(
+        "/api/dcim/devices/42/",
+        json={"status": "decommissioned"},
+        operation_id="dcim_devices_partial_update",
+    )
+    assert body == {"id": 42, "status": "decommissioned"}
+    sent = json.loads(route.calls.last.request.content)
+    assert sent == {"status": "decommissioned"}
+
+
+@respx.mock
+def test_put_sends_full_body() -> None:
+    route = respx.put("https://nb.example/api/dcim/devices/42/").mock(
+        return_value=httpx.Response(200, json={"id": 42})
+    )
+    client = NetBoxClient(_FakeProfile())
+    client.put(
+        "/api/dcim/devices/42/",
+        json={"name": "x", "status": "active"},
+        operation_id="dcim_devices_update",
+    )
+    assert route.called
+
+
+@respx.mock
+def test_delete_sends_no_body_returns_empty_dict() -> None:
+    route = respx.delete("https://nb.example/api/dcim/devices/42/").mock(
+        return_value=httpx.Response(204)
+    )
+    client = NetBoxClient(_FakeProfile())
+    result = client.delete("/api/dcim/devices/42/", operation_id="dcim_devices_destroy")
+    assert result == {}
+    assert route.called
+
+
+@respx.mock
+def test_delete_404_raises_apierror_with_status() -> None:
+    respx.delete("https://nb.example/api/dcim/devices/42/").mock(
+        return_value=httpx.Response(404, json={"detail": "Not found."})
+    )
+    client = NetBoxClient(_FakeProfile())
+    with pytest.raises(NetBoxAPIError) as exc_info:
+        client.delete("/api/dcim/devices/42/", operation_id="dcim_devices_destroy")
+    assert exc_info.value.status_code == 404
+
+
+@respx.mock
+def test_audit_jsonl_appended_for_every_write_attempt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("NSC_HOME", str(tmp_path))
+    respx.post("https://nb.example/api/dcim/devices/").mock(
+        return_value=httpx.Response(201, json={"id": 1})
+    )
+    client = NetBoxClient(_FakeProfile())
+    client.post(
+        "/api/dcim/devices/",
+        json={"name": "rack-01"},
+        operation_id="dcim_devices_create",
+    )
+    log = (tmp_path / "logs" / "audit.jsonl").read_text(encoding="utf-8").strip().splitlines()
+    assert len(log) == 1
+    entry = json.loads(log[0])
+    assert entry["method"] == "POST"
+    assert entry["operation_id"] == "dcim_devices_create"
+    assert entry["request"]["body"] == {"name": "rack-01"}
+    assert entry["response"]["status_code"] == 201
+    assert entry["request"]["headers"]["Authorization"] == "<redacted>"
