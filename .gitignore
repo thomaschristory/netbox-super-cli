@@ -29,3 +29,6 @@ venv/
 .env
 .env.*
 *.env
+
+# Local-only design notes (kept out of git history)
+docs/superpowers/
