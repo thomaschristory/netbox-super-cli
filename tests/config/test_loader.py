@@ -123,3 +123,31 @@ def test_defaults_section_overrides(tmp_path: Path) -> None:
     assert cfg.defaults.output is OutputFormat.JSON
     assert cfg.defaults.page_size == 200
     assert cfg.defaults.timeout == 60.0
+
+
+@pytest.mark.skip(reason="depends on writer.py from Task 3; unskipped there")
+def test_loader_preserves_comments_through_round_trip(tmp_path: Path) -> None:
+    """A read followed by a write of the same doc preserves comments.
+
+    This is a foundational guarantee for `nsc config set/unset` (Phase 4a).
+    Phase 4a's loader uses ruamel.yaml's round-trip mode; this asserts a
+    parsed doc still carries comments when re-emitted.
+    """
+    from nsc.config.writer import dump_round_trip, load_round_trip  # noqa: PLC0415
+
+    body = (
+        "# top comment\n"
+        "default_profile: prod  # default\n"
+        "profiles:\n"
+        "  prod:\n"
+        "    url: https://nb.example/\n"
+        "    token: secret  # inline comment\n"
+    )
+    path = _write(tmp_path, body)
+
+    doc = load_round_trip(path)
+    out = dump_round_trip(doc)
+
+    assert "# top comment" in out
+    assert "# default" in out
+    assert "# inline comment" in out
