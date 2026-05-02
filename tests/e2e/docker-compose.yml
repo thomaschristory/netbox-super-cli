@@ -1,7 +1,11 @@
 # Live-NetBox e2e stack (Phase 3d). Used by GitHub Actions and `just e2e`.
 #
-# Token: 0123456789abcdef0123456789abcdef01234567 (hard-coded; superuser API token
-# baked in by netboxcommunity/netbox via SUPERUSER_API_TOKEN).
+# Token: 0123456789abcdef0123456789abcdef01234567 (hard-coded). The token is NOT
+# created by SUPERUSER_API_TOKEN — see tests/e2e/README.md ("Why we don't use
+# SUPERUSER_API_TOKEN") for the full story. In short: NetBox 4.5+ defaults to
+# v2 tokens which can't be pinned to a known plaintext via env var, so
+# wait_for_netbox.sh creates the v1 token via `docker exec` once Django is up.
+# v1 tokens remain valid for authentication in 4.5.x.
 # Bound to 127.0.0.1:8080 — never publish to 0.0.0.0; this stack runs as
 # DEBUG=true and is intentionally insecure.
 
@@ -30,7 +34,6 @@ services:
       SUPERUSER_NAME: admin
       SUPERUSER_EMAIL: admin@example.com
       SUPERUSER_PASSWORD: admin
-      SUPERUSER_API_TOKEN: '0123456789abcdef0123456789abcdef01234567'
       SKIP_STARTUP_SCRIPTS: 'true'
       DEBUG: 'true'
     ports:
