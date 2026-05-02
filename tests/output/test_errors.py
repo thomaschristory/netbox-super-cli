@@ -11,6 +11,7 @@ from pydantic import ValidationError
 from nsc.config.models import OutputFormat
 from nsc.model.command_model import HttpMethod
 from nsc.output.errors import (
+    ERROR_TYPE_PRECEDENCE,
     EXIT_CODES,
     ErrorEnvelope,
     ErrorType,
@@ -18,6 +19,8 @@ from nsc.output.errors import (
     render_to_json,
     render_to_rich_stderr,
     select_render_target,
+    summary_envelope,
+    worst_error_type,
 )
 
 
@@ -138,3 +141,92 @@ def test_render_to_rich_stderr_writes_panel_to_provided_stream() -> None:
     assert "boom" in out
     assert "server" in out
     assert "503" in out
+
+
+def test_error_type_precedence_is_complete_and_ordered() -> None:
+    expected = [
+        ErrorType.INTERNAL,
+        ErrorType.TRANSPORT,
+        ErrorType.SERVER,
+        ErrorType.VALIDATION,
+        ErrorType.CONFLICT,
+        ErrorType.RATE_LIMITED,
+        ErrorType.NOT_FOUND,
+        ErrorType.AUTH,
+        ErrorType.CLIENT,
+        ErrorType.SCHEMA,
+        ErrorType.CONFIG,
+    ]
+    assert expected == ERROR_TYPE_PRECEDENCE
+
+
+def test_worst_error_type_picks_the_first_in_precedence_order() -> None:
+    assert worst_error_type([ErrorType.AUTH, ErrorType.SERVER, ErrorType.VALIDATION]) is (
+        ErrorType.SERVER
+    )
+    assert worst_error_type([ErrorType.NOT_FOUND]) is ErrorType.NOT_FOUND
+
+
+def test_worst_error_type_raises_on_empty() -> None:
+    with pytest.raises(ValueError):
+        worst_error_type([])
+
+
+def test_summary_envelope_stop_shape() -> None:
+    failure = ErrorEnvelope(
+        error="server returned 400",
+        type=ErrorType.VALIDATION,
+        status_code=400,
+        record_index=2,
+        operation_id="dcim_devices_create",
+    )
+    env = summary_envelope(
+        attempted=3,
+        failures=[failure],
+        on_error="stop",
+        operation_id="dcim_devices_create",
+        total_records=5,
+    )
+    assert env.type is ErrorType.VALIDATION
+    assert env.record_index == 2
+    assert env.details["partial_progress"] == {
+        "success": 2,
+        "failed": 1,
+        "remaining": 2,
+    }
+    assert env.details["on_error"] == "stop"
+
+
+def test_summary_envelope_continue_shape() -> None:
+    f1 = ErrorEnvelope(
+        error="server returned 400",
+        type=ErrorType.VALIDATION,
+        status_code=400,
+        record_index=0,
+        operation_id="x_create",
+    )
+    f3 = ErrorEnvelope(
+        error="server returned 401",
+        type=ErrorType.AUTH,
+        status_code=401,
+        record_index=2,
+        operation_id="x_create",
+    )
+    env = summary_envelope(
+        attempted=5,
+        failures=[f1, f3],
+        on_error="continue",
+        operation_id="x_create",
+        total_records=5,
+    )
+    assert env.type is ErrorType.VALIDATION  # validation > auth
+    assert env.record_index is None  # multiple failure indices — not a single index
+    assert env.details["partial_progress"] == {
+        "success": 3,
+        "failed": 2,
+        "remaining": 0,
+    }
+    assert env.details["on_error"] == "continue"
+    assert len(env.details["failures"]) == 2
+    assert {f["record_index"] for f in env.details["failures"]} == {0, 2}
+    assert all("type" in f and "status_code" in f for f in env.details["failures"])

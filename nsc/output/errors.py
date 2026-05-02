@@ -136,3 +136,118 @@ def client_envelope(
         operation_id=operation_id,
         details=details,
     )
+
+
+ERROR_TYPE_PRECEDENCE: list[ErrorType] = [
+    ErrorType.INTERNAL,
+    ErrorType.TRANSPORT,
+    ErrorType.SERVER,
+    ErrorType.VALIDATION,
+    ErrorType.CONFLICT,
+    ErrorType.RATE_LIMITED,
+    ErrorType.NOT_FOUND,
+    ErrorType.AUTH,
+    ErrorType.CLIENT,
+    ErrorType.SCHEMA,
+    ErrorType.CONFIG,
+]
+"""Strict ordering for picking a single exit code from a mixed-failure run.
+
+Used by `--on-error continue` to map a list of per-record failures to one
+final exit code. Spec §4.5.
+"""
+
+
+def worst_error_type(types: list[ErrorType]) -> ErrorType:
+    if not types:
+        raise ValueError("worst_error_type called with empty list")
+    seen = set(types)
+    for candidate in ERROR_TYPE_PRECEDENCE:
+        if candidate in seen:
+            return candidate
+    raise AssertionError(f"unreachable: {types!r} contains no known ErrorType")
+
+
+def summary_envelope(
+    *,
+    attempted: int,
+    failures: list[ErrorEnvelope],
+    on_error: str,
+    operation_id: str | None,
+    total_records: int,
+) -> ErrorEnvelope:
+    """Build the final envelope for a multi-record loop (spec §4.5, §7.3).
+
+    Args:
+        attempted: Number of records the loop reached (success + failure).
+        failures: Per-record failure envelopes (one per failed attempt).
+        on_error: "stop" or "continue" — controls envelope shape.
+        operation_id: Operation that the loop ran.
+        total_records: Total records in the input (for partial_progress.remaining).
+
+    Returns:
+        ErrorEnvelope whose `type` equals the worst failure type by
+        precedence, with `details.partial_progress = {success, failed, remaining}`.
+        On "stop" sets `record_index` to the first failure's index. On "continue"
+        adds `details.failures: [{record_index, type, status_code, error}, ...]`.
+    """
+    if not failures:
+        raise ValueError("summary_envelope requires at least one failure")
+    failed = len(failures)
+    success = attempted - failed
+    remaining = max(0, total_records - attempted)
+    chosen_type = worst_error_type([f.type for f in failures])
+
+    details: dict[str, Any] = {
+        "partial_progress": {
+            "success": success,
+            "failed": failed,
+            "remaining": remaining,
+        },
+        "on_error": on_error,
+        "applied": True,
+    }
+
+    if on_error == "stop":
+        first = failures[0]
+        return ErrorEnvelope(
+            error=first.error,
+            type=chosen_type,
+            operation_id=operation_id,
+            status_code=first.status_code,
+            record_index=first.record_index,
+            details=details,
+        )
+
+    details["failures"] = [
+        {
+            "record_index": f.record_index,
+            "type": f.type.value,
+            "status_code": f.status_code,
+            "error": f.error,
+        }
+        for f in failures
+    ]
+    return ErrorEnvelope(
+        error=(f"{failed} of {attempted} records failed (worst type: {chosen_type.value})"),
+        type=chosen_type,
+        operation_id=operation_id,
+        record_index=None,
+        details=details,
+    )
+
+
+__all__ = [
+    "ERROR_TYPE_PRECEDENCE",
+    "EXIT_CODES",
+    "ClientError",
+    "ErrorEnvelope",
+    "ErrorType",
+    "RenderTarget",
+    "client_envelope",
+    "render_to_json",
+    "render_to_rich_stderr",
+    "select_render_target",
+    "summary_envelope",
+    "worst_error_type",
+]
