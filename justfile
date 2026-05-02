@@ -43,3 +43,12 @@ update:
 # Run startup-time benchmark (NSC_BENCH=1 gate)
 bench:
     NSC_BENCH=1 uv run pytest tests/benchmarks/ -v -s
+
+# Run live-NetBox e2e suite (requires Docker)
+e2e:
+    docker compose -f tests/e2e/docker-compose.yml up -d
+    tests/e2e/wait_for_netbox.sh
+    NSC_E2E=1 NSC_URL=http://127.0.0.1:8080 NSC_TOKEN=0123456789abcdef0123456789abcdef01234567 uv run pytest tests/e2e/ -v; \
+        rc=$?; \
+        docker compose -f tests/e2e/docker-compose.yml down -v; \
+        exit $rc

@@ -4,6 +4,70 @@ These tests exercise `nsc` against a real NetBox 4.5.9 container instead of
 mocked HTTP. They are gated out of the default `just test` invocation
 (`NSC_E2E=1` required) and require Docker to run.
 
+## Run locally
+
+```sh
+just e2e            # bring stack up, run suite, tear stack down
+```
+
+That recipe expands to:
+
+```sh
+docker compose -f tests/e2e/docker-compose.yml up -d
+tests/e2e/wait_for_netbox.sh
+NSC_E2E=1 \
+    NSC_URL=http://127.0.0.1:8080 \
+    NSC_TOKEN=0123456789abcdef0123456789abcdef01234567 \
+    uv run pytest tests/e2e/ -v
+docker compose -f tests/e2e/docker-compose.yml down -v
+```
+
+## Iterating without restarting NetBox
+
+Cold-start of the NetBox container takes ~90–180 s (database migrations).
+For tight iteration, leave the stack running and re-invoke pytest directly:
+
+```sh
+docker compose -f tests/e2e/docker-compose.yml up -d
+tests/e2e/wait_for_netbox.sh
+# loop:
+NSC_E2E=1 NSC_URL=http://127.0.0.1:8080 \
+    NSC_TOKEN=0123456789abcdef0123456789abcdef01234567 \
+    uv run pytest tests/e2e/test_full_cycle.py -v
+# when done:
+docker compose -f tests/e2e/docker-compose.yml down -v
+```
+
+The `clean_tags` fixture wipes `/api/extras/tags/` before and after every
+test, so individual tests are hermetic regardless of whether you teardown
+between runs.
+
+## Token
+
+The compose file does NOT bake in an API token via `SUPERUSER_API_TOKEN`;
+NetBox 4.5+ ignores that for hard-coded values (see "Why we don't use
+SUPERUSER_API_TOKEN" below). Instead, `wait_for_netbox.sh` installs a
+deterministic v1 token via `docker exec` once Django is up:
+
+```
+0123456789abcdef0123456789abcdef01234567
+```
+
+That token has no meaning outside this disposable container. Don't reuse it
+anywhere real. The CI workflow uses the same value (it's not a secret —
+it's part of the test fixture).
+
+## Conventions
+
+- Tests **always** invoke the CLI through the `run_nsc` fixture
+  (`subprocess.run([sys.executable, "-m", "nsc", ...])`). Never via
+  `typer.testing.CliRunner` — that bypasses the entry point we're trying
+  to verify.
+- Each test that mutates state takes the `clean_tags` fixture so it
+  starts and ends with an empty `extras/tags/` collection.
+- The `netbox_client` fixture is for *test infrastructure* (bootstrap,
+  state assertions). The CLI under test always goes through `run_nsc`.
+
 ## Why we don't use `SUPERUSER_API_TOKEN`
 
 The Phase 3 design (`docs/superpowers/specs/2026-05-01-netbox-super-cli-phase-3-design.md` §8.2)
