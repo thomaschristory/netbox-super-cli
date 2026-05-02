@@ -15,21 +15,12 @@ from typer.testing import CliRunner
 from nsc.cli.app import app
 
 
-def _setup_home(tmp_path: Path, fixture_profile_yaml: Path) -> Path:
-    src = (fixture_profile_yaml / "config.yaml").read_text(encoding="utf-8")
-    home = tmp_path / "home"
-    home.mkdir()
-    (home / "config.yaml").write_text(src, encoding="utf-8")
-    return home
-
-
-@pytest.mark.skip(reason="depends on Task 10 registering write commands")
 def test_dry_run_create_appends_synthetic_audit_entry(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     fixture_profile_yaml: Path,
 ) -> None:
-    home = _setup_home(tmp_path, fixture_profile_yaml)
+    home = fixture_profile_yaml
     monkeypatch.setenv("NSC_HOME", str(home))
     # Schema fetched from the bundled fallback — no network needed.
     payload = tmp_path / "device.json"

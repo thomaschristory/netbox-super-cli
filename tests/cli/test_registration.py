@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import MagicMock
 
 import typer
 from typer.testing import CliRunner
 
+from nsc.builder.build import build_command_model
 from nsc.cli.registration import register_dynamic_commands
 from nsc.cli.runtime import ResolvedProfile, RuntimeContext
 from nsc.config.models import Config, OutputFormat
@@ -19,6 +21,7 @@ from nsc.model.command_model import (
     Resource,
     Tag,
 )
+from nsc.schema.loader import load_schema
 
 
 def _ctx(client: Any) -> RuntimeContext:
@@ -158,7 +161,7 @@ def test_get_command_takes_path_var_as_positional() -> None:
     client.get.assert_called_once_with("/api/dcim/devices/7/", {})
 
 
-def test_post_patch_put_delete_are_skipped_in_phase_2() -> None:
+def test_post_and_delete_are_registered_in_phase_3b() -> None:
     app = typer.Typer()
     client = MagicMock()
     create_op = Operation(
@@ -178,8 +181,10 @@ def test_post_patch_put_delete_are_skipped_in_phase_2() -> None:
     model = CommandModel(info_title="t", info_version="1.0.0", schema_hash="h", tags={"dcim": tag})
     ctx = _ctx(client)
     register_dynamic_commands(app, model, lambda: ctx)
-    result = CliRunner().invoke(app, ["dcim", "devices", "create"])
-    assert result.exit_code != 0
+    closures = _collect_closures(app)
+    cmds = closures.get(("dcim", "devices"), [])
+    assert "create" in cmds
+    assert "delete" in cmds
 
 
 def test_enum_param_becomes_choice() -> None:
@@ -222,3 +227,52 @@ def test_array_param_becomes_repeatable_option() -> None:
     result = CliRunner().invoke(app, ["dcim", "devices", "list", "--tag", "red", "--tag", "blue"])
     assert result.exit_code == 0, result.stdout
     client.paginate.assert_called_once_with("/api/dcim/devices/", {"tag": ["red", "blue"]})
+
+
+def _stub_ctx(model: CommandModel) -> Any:
+    """Minimal RuntimeContext stub for closure construction in unit tests."""
+    return SimpleNamespace(command_model=model)
+
+
+def _collect_closures(app: typer.Typer) -> dict[tuple[str, str], list[str]]:
+    """Return {(tag, resource): [command_name, ...]} from a Typer app."""
+    out: dict[tuple[str, str], list[str]] = {}
+    for tag_info in app.registered_groups:
+        tag_name = tag_info.name or ""
+        tag_app = tag_info.typer_instance
+        if tag_app is None:
+            continue
+        for res_info in tag_app.registered_groups:
+            res_name = res_info.name or ""
+            res_app = res_info.typer_instance
+            if res_app is None:
+                continue
+            for cmd_info in res_app.registered_commands:
+                if cmd_info.name:
+                    out.setdefault((tag_name, res_name), []).append(cmd_info.name)
+    return out
+
+
+def test_create_command_registered_for_resource_with_create_op() -> None:
+    loaded = load_schema("nsc/schemas/bundled/netbox-4.6.0-beta2.json.gz")
+    model = build_command_model(loaded)
+    sample_tag = "dcim"
+    sample_resource = "devices"
+    assert model.tags[sample_tag].resources[sample_resource].create_op is not None
+
+    app = typer.Typer()
+    register_dynamic_commands(app, model, lambda: _stub_ctx(model))
+    closures = _collect_closures(app)
+    assert any(
+        name in {"create", "update", "delete"}
+        for name in closures.get((sample_tag, sample_resource), [])
+    )
+
+
+def test_custom_action_post_registered_as_write_command() -> None:
+    loaded = load_schema("nsc/schemas/bundled/netbox-4.6.0-beta2.json.gz")
+    model = build_command_model(loaded)
+    app = typer.Typer()
+    register_dynamic_commands(app, model, lambda: _stub_ctx(model))
+    closures = _collect_closures(app)
+    assert any("available-asns" in name for name in closures.get(("ipam", "asn-ranges"), []))

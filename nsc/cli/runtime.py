@@ -98,8 +98,8 @@ def resolve_profile(
     timeout = base.timeout if (base and base.timeout is not None) else config.defaults.timeout
 
     schema_url_raw = _first_set(
-        overrides.schema,
-        env.get("NSC_SCHEMA"),
+        _url_only(overrides.schema),
+        _url_only(env.get("NSC_SCHEMA")),
         str(base.schema_url) if base and base.schema_url else None,
     )
 
@@ -135,6 +135,20 @@ def _bool_env(raw: str | None) -> bool | None:
     if raw is None:
         return None
     return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _url_only(value: str | None) -> str | None:
+    """Return the value only if it looks like an HTTP(S) URL; else None.
+
+    `--schema`/`NSC_SCHEMA` may be a local path, in which case it should not
+    populate the profile's `schema_url` (which is HttpUrl-validated). The
+    schema_override flow consumes the raw value directly from `CLIOverrides`.
+    """
+    if value is None or not value:
+        return None
+    if value.startswith(("http://", "https://")):
+        return value
+    return None
 
 
 class RuntimeContext(BaseModel):
