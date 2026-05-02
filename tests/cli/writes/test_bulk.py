@@ -2,22 +2,27 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Literal
 
 import pytest
 
+from nsc.cli.writes.apply import ResolvedRequest
 from nsc.cli.writes.bulk import (
     BulkCapability,
+    LoopAttempt,
     RoutingMode,
     UnsupportedBulkError,
     detect_bulk_capability,
     route_to_bulk_or_loop,
+    run_loop,
 )
 from nsc.model.command_model import (
     HttpMethod,
     Operation,
     RequestBodyShape,
 )
+from nsc.output.errors import ErrorEnvelope, ErrorType
 
 
 def _op(top_level: Literal["object", "array", "object_or_array"] | None) -> Operation:
@@ -144,3 +149,154 @@ def test_routing_zero_records_raises() -> None:
             capability=BulkCapability.BULK,
             bulk_flag=None,
         )
+
+
+def _req(index: int) -> ResolvedRequest:
+    return ResolvedRequest(
+        method=HttpMethod.POST,
+        url="https://nb.example/api/x/",
+        body={"i": index},
+        operation_id="x_create",
+        record_indices=[index],
+    )
+
+
+def _ok(_op: object, _req: ResolvedRequest) -> dict[str, object]:
+    return {"id": 1}
+
+
+def _fail_at(
+    target: int, err_type: ErrorType = ErrorType.VALIDATION, status: int = 400
+) -> Callable[[object, ResolvedRequest], dict[str, object]]:
+    def send(_op: object, request: ResolvedRequest) -> dict[str, object]:
+        if request.record_indices == [target]:
+            raise _SimulatedFailure(
+                ErrorEnvelope(
+                    error=f"server returned {status}",
+                    type=err_type,
+                    status_code=status,
+                    record_index=target,
+                    operation_id="x_create",
+                )
+            )
+        return {"id": 1}
+
+    return send
+
+
+class _SimulatedFailure(Exception):
+    def __init__(self, envelope: ErrorEnvelope) -> None:
+        super().__init__(envelope.error)
+        self.envelope = envelope
+
+
+def _to_envelope(exc: BaseException) -> ErrorEnvelope:
+    assert isinstance(exc, _SimulatedFailure)
+    return exc.envelope
+
+
+def test_run_loop_all_success_sends_every_request() -> None:
+    audited: list[tuple[int, bool]] = []
+
+    def audit(req: ResolvedRequest, _resp: dict | None, err: BaseException | None) -> None:
+        audited.append((req.record_indices[0], err is None))
+
+    requests = [_req(0), _req(1), _req(2)]
+    result = run_loop(
+        requests,
+        operation=None,  # type: ignore[arg-type]  # send_one ignores op in this test
+        on_error="stop",
+        send_one=_ok,
+        audit_attempt=audit,
+        to_envelope=_to_envelope,
+    )
+    assert result.attempted == 3
+    assert result.successes == 3
+    assert result.failures == []
+    assert audited == [(0, True), (1, True), (2, True)]
+
+
+def test_run_loop_stop_aborts_on_first_failure() -> None:
+    audited: list[tuple[int, bool]] = []
+
+    def audit(req: ResolvedRequest, _resp: dict | None, err: BaseException | None) -> None:
+        audited.append((req.record_indices[0], err is None))
+
+    result = run_loop(
+        [_req(0), _req(1), _req(2), _req(3), _req(4)],
+        operation=None,  # type: ignore[arg-type]
+        on_error="stop",
+        send_one=_fail_at(2),
+        audit_attempt=audit,
+        to_envelope=_to_envelope,
+    )
+    assert result.attempted == 3  # 0 OK, 1 OK, 2 fail → stop
+    assert result.successes == 2
+    assert len(result.failures) == 1
+    assert result.failures[0].record_index == 2
+    assert result.failures[0].type is ErrorType.VALIDATION
+    # Audit fired for the 2 successes AND the failure (one entry per attempt).
+    assert audited == [(0, True), (1, True), (2, False)]
+
+
+def test_run_loop_continue_attempts_every_record() -> None:
+    audited: list[tuple[int, bool]] = []
+
+    def audit(req: ResolvedRequest, _resp: dict | None, err: BaseException | None) -> None:
+        audited.append((req.record_indices[0], err is None))
+
+    def mixed(_op: object, request: ResolvedRequest) -> dict[str, object]:
+        idx = request.record_indices[0]
+        if idx == 0:
+            raise _SimulatedFailure(
+                ErrorEnvelope(
+                    error="bad",
+                    type=ErrorType.VALIDATION,
+                    status_code=400,
+                    record_index=0,
+                    operation_id="x_create",
+                )
+            )
+        if idx == 2:
+            raise _SimulatedFailure(
+                ErrorEnvelope(
+                    error="auth",
+                    type=ErrorType.AUTH,
+                    status_code=401,
+                    record_index=2,
+                    operation_id="x_create",
+                )
+            )
+        return {"id": 1}
+
+    result = run_loop(
+        [_req(i) for i in range(5)],
+        operation=None,  # type: ignore[arg-type]
+        on_error="continue",
+        send_one=mixed,
+        audit_attempt=audit,
+        to_envelope=_to_envelope,
+    )
+    assert result.attempted == 5
+    assert result.successes == 3
+    assert [f.record_index for f in result.failures] == [0, 2]
+    # All five attempts audited (3 successes, 2 failures).
+    assert [a[0] for a in audited] == [0, 1, 2, 3, 4]
+    assert [a[1] for a in audited] == [False, True, False, True, True]
+
+
+def test_loop_attempt_records_carry_response_or_envelope() -> None:
+    result = run_loop(
+        [_req(0), _req(1)],
+        operation=None,  # type: ignore[arg-type]
+        on_error="continue",
+        send_one=_fail_at(1),
+        audit_attempt=lambda *_a: None,
+        to_envelope=_to_envelope,
+    )
+    assert isinstance(result.attempts[0], LoopAttempt)
+    assert result.attempts[0].response == {"id": 1}
+    assert result.attempts[0].failure is None
+    assert result.attempts[1].response is None
+    assert result.attempts[1].failure is not None
+    assert result.attempts[1].failure.type is ErrorType.VALIDATION

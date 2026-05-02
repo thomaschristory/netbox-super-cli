@@ -12,11 +12,16 @@ Pure logic. No I/O, no Typer, no httpx. Three responsibilities:
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import assert_never
+from typing import TYPE_CHECKING, Any, Literal, assert_never
 
 from nsc.model.command_model import Operation
+from nsc.output.errors import ErrorEnvelope
+
+if TYPE_CHECKING:
+    from nsc.cli.writes.apply import ResolvedRequest
 
 
 class BulkCapability(StrEnum):
@@ -144,11 +149,81 @@ def route_to_bulk_or_loop(
     )
 
 
+@dataclass(frozen=True)
+class LoopAttempt:
+    request: ResolvedRequest
+    response: dict[str, Any] | None
+    failure: ErrorEnvelope | None
+
+
+@dataclass(frozen=True)
+class LoopResult:
+    attempts: list[LoopAttempt]
+
+    @property
+    def attempted(self) -> int:
+        return len(self.attempts)
+
+    @property
+    def successes(self) -> int:
+        return sum(1 for a in self.attempts if a.failure is None)
+
+    @property
+    def failures(self) -> list[ErrorEnvelope]:
+        return [a.failure for a in self.attempts if a.failure is not None]
+
+
+SendOne = Callable[[Operation, "ResolvedRequest"], dict[str, Any]]
+AuditAttempt = Callable[["ResolvedRequest", dict[str, Any] | None, BaseException | None], None]
+ToEnvelope = Callable[[BaseException], ErrorEnvelope]
+
+
+def run_loop(
+    requests: list[ResolvedRequest],
+    *,
+    operation: Operation,
+    on_error: Literal["stop", "continue"],
+    send_one: SendOne,
+    audit_attempt: AuditAttempt,
+    to_envelope: ToEnvelope,
+) -> LoopResult:
+    """Sequentially send N requests; collect successes and failures (spec §4.5).
+
+    The loop never spawns concurrency. Audit fires once per attempted request
+    (success and failure). On `on_error="stop"` the loop aborts on the first
+    failure; on `"continue"` it attempts every request.
+
+    `send_one` does the wire send; `audit_attempt` writes the audit entry;
+    `to_envelope` converts a raised exception into an ErrorEnvelope. Callers
+    inject these so this loop has no dependency on httpx or the audit module.
+    """
+    attempts: list[LoopAttempt] = []
+    for request in requests:
+        try:
+            response = send_one(operation, request)
+        except BaseException as exc:
+            failure = to_envelope(exc)
+            audit_attempt(request, None, exc)
+            attempts.append(LoopAttempt(request=request, response=None, failure=failure))
+            if on_error == "stop":
+                break
+            continue
+        audit_attempt(request, response, None)
+        attempts.append(LoopAttempt(request=request, response=response, failure=None))
+    return LoopResult(attempts=attempts)
+
+
 __all__ = [
+    "AuditAttempt",
     "BulkCapability",
+    "LoopAttempt",
+    "LoopResult",
     "RoutingDecision",
     "RoutingMode",
+    "SendOne",
+    "ToEnvelope",
     "UnsupportedBulkError",
     "detect_bulk_capability",
     "route_to_bulk_or_loop",
+    "run_loop",
 ]
