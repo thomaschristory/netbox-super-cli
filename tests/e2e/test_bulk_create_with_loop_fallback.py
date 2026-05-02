@@ -52,15 +52,8 @@ def test_bulk_create_uses_single_request(
     # Audit log: bulk path → one entry covering all 5 records
     entries = _audit_lines(tmp_nsc_home)
     bulk_entries = [e for e in entries if e["method"] == "POST"]
-    assert len(bulk_entries) == 1, [e["request"]["body"] for e in bulk_entries]
-    # plan §Task 4 expected record_indices == [0, 1, 2, 3, 4]; the apply-path
-    # audit entry is written by NetBoxClient (nsc/http/client.py) which hardcodes
-    # record_indices=[]. The real wire signal is the list-shaped request body
-    # carrying all 5 records in a single POST.
-    body = bulk_entries[0]["request"]["body"]
-    assert isinstance(body, list), body
-    assert len(body) == 5
-    assert sorted(rec["name"] for rec in body) == [f"bulk-{i}" for i in range(5)]
+    assert len(bulk_entries) == 1, [e["record_indices"] for e in bulk_entries]
+    assert bulk_entries[0]["record_indices"] == [0, 1, 2, 3, 4]
 
 
 def test_no_bulk_loop_fallback_uses_n_requests(
@@ -89,14 +82,6 @@ def test_no_bulk_loop_fallback_uses_n_requests(
 
     entries = _audit_lines(tmp_nsc_home)
     loop_entries = [e for e in entries if e["method"] == "POST"]
-    assert len(loop_entries) == 5, [e["request"]["body"] for e in loop_entries]
-    # plan §Task 4 expected per-entry record_indices == [i]; apply-path audit is
-    # written by NetBoxClient with record_indices=[] (see bulk test note above).
-    # The real wire signal is 5 POSTs each with a single dict-shaped body, one
-    # per record.
-    names = []
-    for entry in loop_entries:
-        body = entry["request"]["body"]
-        assert isinstance(body, dict), body
-        names.append(body["name"])
-    assert sorted(names) == [f"loop-{i}" for i in range(5)]
+    assert len(loop_entries) == 5, [e["record_indices"] for e in loop_entries]
+    indices = sorted(e["record_indices"][0] for e in loop_entries)
+    assert indices == [0, 1, 2, 3, 4]
