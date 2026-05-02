@@ -235,24 +235,6 @@ def test_create_all_flag_refused(tmp_path: Path) -> None:
 
 
 @respx.mock
-def test_create_list_input_refused_with_3c_pending_message(tmp_path: Path) -> None:
-    _mock_schema(respx.mock)
-    payload = tmp_path / "many.yaml"
-    payload.write_text("- name: a\n- name: b\n", encoding="utf-8")
-    route = respx.post("https://nb.example/api/dcim/devices/").mock(
-        return_value=httpx.Response(201, json={"id": 1})
-    )
-    result = CliRunner().invoke(
-        app,
-        ["dcim", "devices", "create", "-f", str(payload), "--apply", "--output", "json"],
-    )
-    assert result.exit_code == EXIT_CODES[ErrorType.CLIENT]
-    parsed = json.loads(result.stdout)
-    assert "3c" in parsed["error"].lower()
-    assert route.call_count == 0
-
-
-@respx.mock
 def test_explain_renders_resolved_request(tmp_path: Path) -> None:
     _mock_schema(respx.mock)
     payload = _payload(tmp_path, _VALID_DEVICE)

@@ -16,7 +16,6 @@ from nsc.cli.writes.apply import resolve as resolve_request
 from nsc.cli.writes.confirmation import (
     refuse_all_on_writes,
     refuse_delete_without_id,
-    refuse_list_input_in_3b,
 )
 from nsc.cli.writes.input import InputError, RawWriteInput
 from nsc.cli.writes.input import collect as collect_input
@@ -232,7 +231,6 @@ def _handle_write(
                 fields=list(ctx.fields),
                 stdin=sys.stdin if ctx.file == "-" else None,
             )
-        refuse_list_input_in_3b(raw, operation_id=operation.operation_id)
 
         preflight = preflight_check(raw, operation)
         resolved = resolve_request(

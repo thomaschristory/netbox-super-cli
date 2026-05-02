@@ -1,16 +1,18 @@
-"""writes.confirmation — write-time refusal helpers (Phase 3b)."""
+"""writes.confirmation — write-time refusal helpers (Phase 3c)."""
 
 from __future__ import annotations
 
 import pytest
 
+from nsc.cli.writes.bulk import UnsupportedBulkError
 from nsc.cli.writes.confirmation import (
     refuse_all_on_writes,
+    refuse_bulk_and_no_bulk_together,
     refuse_delete_without_id,
-    refuse_list_input_in_3b,
     refuse_unknown_format_for_writes,
+    refuse_unknown_on_error,
+    refuse_unsupported_bulk,
 )
-from nsc.cli.writes.input import RawWriteInput
 from nsc.output.errors import ClientError, ErrorType
 
 
@@ -28,23 +30,6 @@ def test_refuse_delete_without_id_includes_op_id() -> None:
     assert exc_info.value.envelope.operation_id == "dcim_devices_destroy"
 
 
-def test_refuse_list_input_in_3b_when_explicit_list() -> None:
-    raw = RawWriteInput(
-        records=[{"a": 1}, {"a": 2}],
-        source="file",
-        is_explicit_list=True,
-    )
-    with pytest.raises(ClientError) as exc_info:
-        refuse_list_input_in_3b(raw, operation_id="dcim_devices_create")
-    assert "3c" in exc_info.value.envelope.error.lower()
-    assert "bulk" in exc_info.value.envelope.error.lower()
-
-
-def test_refuse_list_input_in_3b_passes_for_single_record() -> None:
-    raw = RawWriteInput(records=[{"a": 1}], source="file")
-    refuse_list_input_in_3b(raw, operation_id="dcim_devices_create")  # no raise
-
-
 def test_refuse_unknown_format_value() -> None:
     with pytest.raises(ClientError):
         refuse_unknown_format_for_writes("toml")
@@ -59,3 +44,45 @@ def test_refuse_unknown_format_is_case_insensitive() -> None:
     refuse_unknown_format_for_writes("YAML")
     refuse_unknown_format_for_writes("Json")
     refuse_unknown_format_for_writes("YML")
+
+
+def test_refuse_bulk_and_no_bulk_together_raises_client_error() -> None:
+    with pytest.raises(ClientError) as excinfo:
+        refuse_bulk_and_no_bulk_together(
+            bulk=True,
+            no_bulk=True,
+            operation_id="dcim_devices_create",
+        )
+    env = excinfo.value.envelope
+    assert env.type is ErrorType.CLIENT
+    assert env.operation_id == "dcim_devices_create"
+    assert env.details["flag"] == "--bulk/--no-bulk"
+
+
+def test_refuse_bulk_and_no_bulk_together_silent_when_only_one_set() -> None:
+    refuse_bulk_and_no_bulk_together(bulk=True, no_bulk=False, operation_id="x")
+    refuse_bulk_and_no_bulk_together(bulk=False, no_bulk=True, operation_id="x")
+    refuse_bulk_and_no_bulk_together(bulk=False, no_bulk=False, operation_id="x")
+
+
+def test_refuse_unsupported_bulk_wraps_routing_error() -> None:
+    err = UnsupportedBulkError("--bulk not supported here")
+    with pytest.raises(ClientError) as excinfo:
+        refuse_unsupported_bulk(err, operation_id="dcim_devices_create")
+    env = excinfo.value.envelope
+    assert env.type is ErrorType.CLIENT
+    assert env.operation_id == "dcim_devices_create"
+    assert env.details["flag"] == "--bulk"
+    assert "does not support" in env.error.lower() or "not supported" in env.error.lower()
+
+
+@pytest.mark.parametrize("value", ["abort", "skip", "STOP", ""])
+def test_refuse_unknown_on_error_rejects_anything_outside_stop_continue(value: str) -> None:
+    with pytest.raises(ClientError) as excinfo:
+        refuse_unknown_on_error(value)
+    assert excinfo.value.envelope.details["flag"] == "--on-error"
+
+
+@pytest.mark.parametrize("value", ["stop", "continue"])
+def test_refuse_unknown_on_error_silent_for_supported(value: str) -> None:
+    refuse_unknown_on_error(value)
