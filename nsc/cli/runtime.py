@@ -118,7 +118,10 @@ def _select_base_profile(
 ) -> tuple[Profile | None, str]:
     name = overrides.profile or env.get("NSC_PROFILE") or config.default_profile
     if name is None:
-        return None, "<adhoc>"
+        # Sentinel used as a cache subdirectory name when no profile is configured
+        # (env-var-only invocations). Must satisfy nsc.cache.store._PROFILE_RE
+        # (alphanumeric-led) since the cache validates this value as a path component.
+        return None, "adhoc"
     if name not in config.profiles:
         raise UnknownProfileError(f"profile {name!r} is not defined in ~/.nsc/config.yaml")
     return config.profiles[name], name

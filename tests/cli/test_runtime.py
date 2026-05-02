@@ -4,6 +4,7 @@ from typing import Any
 
 import pytest
 
+from nsc.cache.store import _PROFILE_RE
 from nsc.cli.runtime import (
     CLIOverrides,
     NoProfileError,
@@ -23,7 +24,7 @@ def test_flag_url_and_token_with_no_profile_makes_adhoc() -> None:
     overrides = CLIOverrides(url="https://nb.example", token="tok")
     rp = resolve_profile(cfg, overrides, env={})
     assert isinstance(rp, ResolvedProfile)
-    assert rp.name == "<adhoc>"
+    assert rp.name == "adhoc"
     assert str(rp.url).rstrip("/") == "https://nb.example"
     assert rp.token == "tok"
     assert rp.verify_ssl is True
@@ -35,8 +36,20 @@ def test_env_url_and_token_with_no_profile_makes_adhoc() -> None:
     rp = resolve_profile(
         cfg, CLIOverrides(), env={"NSC_URL": "https://nb.example", "NSC_TOKEN": "envtok"}
     )
-    assert rp.name == "<adhoc>"
+    assert rp.name == "adhoc"
     assert rp.token == "envtok"
+
+
+def test_adhoc_sentinel_is_a_valid_cache_profile_name() -> None:
+    # Regression: the sentinel returned by _select_base_profile() ends up as
+    # a cache subdirectory name and must satisfy nsc.cache.store._PROFILE_RE,
+    # otherwise every env-var-only invocation explodes the moment the schema
+    # cache is touched.
+    cfg = _cfg()
+    rp = resolve_profile(
+        cfg, CLIOverrides(), env={"NSC_URL": "https://nb.example", "NSC_TOKEN": "t"}
+    )
+    assert _PROFILE_RE.match(rp.name) is not None, rp.name
 
 
 def test_default_profile_is_chosen_when_no_overrides() -> None:
