@@ -4,6 +4,27 @@ All notable changes to netbox-super-cli are tracked here. Format follows [Keep a
 
 ## Unreleased
 
+## v0.4.0a — Phase 4a — Config writer foundation · 2026-05-03
+
+First sub-phase of Phase 4. Ships the on-disk config write surface (`nsc config get|set|unset|list|edit|path`) on top of `ruamel.yaml`'s round-trip mode. Comments, key order, and `!env` tags survive every read-modify-write cycle. No new onboarding verbs (those land in 4b).
+
+### Added
+
+- `nsc config get <key>`, `nsc config list`, `nsc config path` — read the on-disk config. `get` accepts a dotted path (e.g. `profiles.prod.url`) and prints scalars as plain text or subtrees as YAML; `path` prints the resolved config-file location.
+- `nsc config set <key> <value>`, `nsc config unset <key>`, `nsc config edit` — round-trip-preserving edits. Hand-authored comments, key order, and `!env` tags pass through writes intact. `set` creates intermediate maps as needed and refuses to silently restructure (e.g. overwriting a map with a scalar fails fast). `unset` prunes empty parent maps. `edit` opens `$EDITOR` (or `$VISUAL`, falling back to `vi` / `nano`) on the resolved config path.
+- `nsc/config/writer.py` — atomic writes via tempfile + fsync + `os.replace`, 0600 mode on newly created files. Best-effort `flock` on a sidecar `.lock` file (POSIX); degrades cleanly on platforms without `fcntl`.
+
+### Changed
+
+- `nsc/config/loader.py` switched from `pyyaml.SafeLoader` to `ruamel.yaml`'s `YAML(typ="rt")`. The external contract (`load_config(path) -> Config` raising `ConfigParseError`) is unchanged. Reuses a private `_round_trip_yaml()` factory shared with the writer for the parser-config baseline.
+
+### Notes
+
+- `pyyaml` remains in `pyproject.toml` while `nsc/output/yaml_.py` and `nsc/cli/writes/input.py` still import it. The drop is deferred to a 4b follow-up rather than widening 4a's scope.
+- Onboarding verbs (`nsc init`, `nsc login`, `nsc profiles`) land in 4b. Curated aliases (`nsc ls/get/rm/search`) land in 4c. NDJSON output + audit redaction lands in 4d.
+- `ruamel.yaml`'s `add_constructor` registers at the class level, which means the loader's resolving `!env` constructor leaks into any later `YAML(typ="rt")` instance unless explicitly overridden. The writer registers its own tag-preserving `!env` constructor (returning a `TaggedScalar`) on top of that to keep round-trip behavior deterministic regardless of import order.
+- Cold-start benchmark: median ~280 ms (improved from Phase 3d's ~321 ms median).
+
 ### Refactor
 
 - **Shared `SENSITIVE_HEADERS`.** Lifted the redacted-header set from `nsc/http/audit.py` and `nsc/cli/writes/apply.py` into `nsc/output/headers.py`. Output shapes preserved: audit writes `<redacted>`; apply keeps the special-case `Authorization → Token <redacted>`.
