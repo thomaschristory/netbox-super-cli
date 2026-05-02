@@ -15,8 +15,12 @@
 set -euo pipefail
 
 URL="${NSC_URL:-http://127.0.0.1:8080}"
+# TOKEN must be alphanumeric (or otherwise free of shell/Python quote-relevant
+# characters); we interpolate it directly into a quoted Python string passed
+# through `docker exec` and don't escape it. The fixture default is 40 hex
+# chars; any override must remain in that character class.
 TOKEN="${NSC_TOKEN:-0123456789abcdef0123456789abcdef01234567}"
-CONTAINER="${NSC_E2E_CONTAINER:-e2e-netbox-1}"
+COMPOSE_FILE="${NSC_E2E_COMPOSE:-tests/e2e/docker-compose.yml}"
 DEADLINE=$(( $(date +%s) + 300 ))
 
 # Phase 1: poll the unauthenticated login page until we get a 2xx.
@@ -35,7 +39,16 @@ done
 
 # Phase 2: create a deterministic v1 admin token. Idempotent: any pre-existing
 # admin tokens are deleted first, so re-running this script after a partial
-# previous run cleanly resets the auth state.
+# previous run cleanly resets the auth state. Look up the netbox container by
+# compose service rather than by guessed container name — the latter depends on
+# the compose project name, which varies with how the user invokes compose.
+CONTAINER="$(docker compose -f "${COMPOSE_FILE}" ps -q netbox)"
+if [ -z "${CONTAINER}" ]; then
+    echo "could not locate the 'netbox' service container via ${COMPOSE_FILE}" >&2
+    exit 1
+fi
+
+LOG_FILE="$(mktemp -t nsc-e2e-token-install.XXXXXX)"
 docker exec "${CONTAINER}" /opt/netbox/venv/bin/python /opt/netbox/netbox/manage.py shell -c "
 from users.models import Token, User
 admin = User.objects.get(username='admin')
@@ -43,12 +56,14 @@ admin.tokens.all().delete()
 t = Token(user=admin, version=1, token='${TOKEN}', description='nsc e2e fixture')
 t.full_clean()
 t.save()
-print('TOKEN_INSTALLED', t.plaintext)
-" >/tmp/nsc-e2e-token-install.log 2>&1 || {
+print('TOKEN_INSTALLED')
+" >"${LOG_FILE}" 2>&1 || {
     echo "failed to install e2e token; container log follows:" >&2
-    cat /tmp/nsc-e2e-token-install.log >&2
+    cat "${LOG_FILE}" >&2
+    rm -f "${LOG_FILE}"
     exit 1
 }
+rm -f "${LOG_FILE}"
 
 # Confirm the token actually authenticates (catches typos in either phase).
 if ! curl -fsS -m 5 -H "Authorization: Token ${TOKEN}" "${URL}/api/status/" >/dev/null 2>&1; then
