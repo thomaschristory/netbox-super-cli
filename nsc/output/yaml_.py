@@ -5,7 +5,19 @@ from __future__ import annotations
 import sys
 from typing import Any, TextIO
 
-import yaml
+from ruamel.yaml import YAML
+
+
+def _emitter() -> YAML:
+    """A safe-mode emitter configured for stable, block-style output.
+
+    ruamel.yaml's safe dumper preserves regular `dict` insertion order natively
+    (Python 3.7+), so no explicit `sort_keys=False` toggle is needed — and
+    `YAML.sort_keys` is not part of the public API anyway.
+    """
+    yaml = YAML(typ="safe", pure=True)
+    yaml.default_flow_style = False
+    return yaml
 
 
 def render(
@@ -13,4 +25,4 @@ def render(
     *,
     stream: TextIO = sys.stdout,
 ) -> None:
-    yaml.safe_dump(data, stream, default_flow_style=False, sort_keys=False)
+    _emitter().dump(data, stream)

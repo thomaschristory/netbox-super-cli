@@ -8,16 +8,28 @@ Spec §4.7.
 
 from __future__ import annotations
 
+import io
 import json
 from pathlib import Path
 from typing import Any, Literal, TextIO
 
-import yaml
 from pydantic import BaseModel, ConfigDict, Field
+from ruamel.yaml import YAML
+from ruamel.yaml.error import YAMLError
 
 _FILE_SIZE_CAP_BYTES = 10 * 1024 * 1024
 _SUPPORTED_EXTENSIONS = frozenset({".yaml", ".yml", ".json"})
 _BOM = "﻿"
+
+
+def _safe_load(text: str) -> Any:
+    """Parse a YAML/JSON document with ruamel's safe loader.
+
+    Returns plain Python primitives (`dict` / `list` / scalar), not the
+    round-trip CommentedMap/CommentedSeq — downstream `_normalize_top_level`
+    expects `dict` / `list`.
+    """
+    return YAML(typ="safe", pure=True).load(io.StringIO(text))
 
 
 class InputError(ValueError):
@@ -133,13 +145,13 @@ def _parse_text(text: str, *, hint: str | None) -> tuple[list[dict[str, Any]], b
             parsed = json.loads(text)
         except json.JSONDecodeError:
             try:
-                parsed = yaml.safe_load(text)
-            except yaml.YAMLError as exc:
+                parsed = _safe_load(text)
+            except YAMLError as exc:
                 raise InputError(f"could not parse stdin as JSON or YAML: {exc}") from exc
     else:
         try:
-            parsed = yaml.safe_load(text)
-        except yaml.YAMLError as exc:
+            parsed = _safe_load(text)
+        except YAMLError as exc:
             raise InputError(f"could not parse YAML input: {exc}") from exc
     return _normalize_top_level(parsed)
 

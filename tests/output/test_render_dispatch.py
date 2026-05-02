@@ -4,10 +4,14 @@ import io
 import json
 
 import pytest
-import yaml as pyyaml
+from ruamel.yaml import YAML
 
 from nsc.config.models import OutputFormat
 from nsc.output.render import render, select_format
+
+
+def _safe_load(text: str) -> object:
+    return YAML(typ="safe").load(io.StringIO(text))
 
 
 def test_render_json_dispatches() -> None:
@@ -25,7 +29,7 @@ def test_render_jsonl_dispatches() -> None:
 def test_render_yaml_dispatches() -> None:
     buf = io.StringIO()
     render({"id": 1}, format=OutputFormat.YAML, stream=buf)
-    assert pyyaml.safe_load(buf.getvalue()) == {"id": 1}
+    assert _safe_load(buf.getvalue()) == {"id": 1}
 
 
 def test_render_csv_dispatches() -> None:
