@@ -174,8 +174,8 @@ class LoopResult:
 
 
 SendOne = Callable[[Operation, "ResolvedRequest"], dict[str, Any]]
-AuditAttempt = Callable[["ResolvedRequest", dict[str, Any] | None, BaseException | None], None]
-ToEnvelope = Callable[[BaseException], ErrorEnvelope]
+AuditAttempt = Callable[["ResolvedRequest", dict[str, Any] | None, Exception | None], None]
+ToEnvelope = Callable[[Exception], ErrorEnvelope]
 
 
 def run_loop(
@@ -201,7 +201,9 @@ def run_loop(
     for request in requests:
         try:
             response = send_one(operation, request)
-        except BaseException as exc:
+        except (KeyboardInterrupt, SystemExit):
+            raise
+        except Exception as exc:
             failure = to_envelope(exc)
             audit_attempt(request, None, exc)
             attempts.append(LoopAttempt(request=request, response=None, failure=failure))

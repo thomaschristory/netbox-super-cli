@@ -190,7 +190,7 @@ class _SimulatedFailure(Exception):
         self.envelope = envelope
 
 
-def _to_envelope(exc: BaseException) -> ErrorEnvelope:
+def _to_envelope(exc: Exception) -> ErrorEnvelope:
     assert isinstance(exc, _SimulatedFailure)
     return exc.envelope
 
@@ -198,7 +198,7 @@ def _to_envelope(exc: BaseException) -> ErrorEnvelope:
 def test_run_loop_all_success_sends_every_request() -> None:
     audited: list[tuple[int, bool]] = []
 
-    def audit(req: ResolvedRequest, _resp: dict | None, err: BaseException | None) -> None:
+    def audit(req: ResolvedRequest, _resp: dict | None, err: Exception | None) -> None:
         audited.append((req.record_indices[0], err is None))
 
     requests = [_req(0), _req(1), _req(2)]
@@ -219,7 +219,7 @@ def test_run_loop_all_success_sends_every_request() -> None:
 def test_run_loop_stop_aborts_on_first_failure() -> None:
     audited: list[tuple[int, bool]] = []
 
-    def audit(req: ResolvedRequest, _resp: dict | None, err: BaseException | None) -> None:
+    def audit(req: ResolvedRequest, _resp: dict | None, err: Exception | None) -> None:
         audited.append((req.record_indices[0], err is None))
 
     result = run_loop(
@@ -242,7 +242,7 @@ def test_run_loop_stop_aborts_on_first_failure() -> None:
 def test_run_loop_continue_attempts_every_record() -> None:
     audited: list[tuple[int, bool]] = []
 
-    def audit(req: ResolvedRequest, _resp: dict | None, err: BaseException | None) -> None:
+    def audit(req: ResolvedRequest, _resp: dict | None, err: Exception | None) -> None:
         audited.append((req.record_indices[0], err is None))
 
     def mixed(_op: object, request: ResolvedRequest) -> dict[str, object]:
