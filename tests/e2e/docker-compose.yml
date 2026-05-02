@@ -1,0 +1,52 @@
+# Live-NetBox e2e stack (Phase 3d). Used by GitHub Actions and `just e2e`.
+#
+# Token: 0123456789abcdef0123456789abcdef01234567 (hard-coded; superuser API token
+# baked in by netboxcommunity/netbox via SUPERUSER_API_TOKEN).
+# Bound to 127.0.0.1:8080 — never publish to 0.0.0.0; this stack runs as
+# DEBUG=true and is intentionally insecure.
+
+services:
+  netbox:
+    image: netboxcommunity/netbox:v4.5.9
+    depends_on:
+      - postgres
+      - redis
+      - redis-cache
+    environment:
+      ALLOWED_HOSTS: '*'
+      DB_HOST: postgres
+      DB_NAME: netbox
+      DB_USER: netbox
+      DB_PASSWORD: netbox
+      REDIS_HOST: redis
+      REDIS_DATABASE: '0'
+      REDIS_PASSWORD: ''
+      REDIS_SSL: 'false'
+      REDIS_CACHE_HOST: redis-cache
+      REDIS_CACHE_DATABASE: '1'
+      REDIS_CACHE_PASSWORD: ''
+      REDIS_CACHE_SSL: 'false'
+      SECRET_KEY: '0123456789abcdef0123456789abcdef0123456789abcdef0123'
+      SUPERUSER_NAME: admin
+      SUPERUSER_EMAIL: admin@example.com
+      SUPERUSER_PASSWORD: admin
+      SUPERUSER_API_TOKEN: '0123456789abcdef0123456789abcdef01234567'
+      SKIP_STARTUP_SCRIPTS: 'true'
+      DEBUG: 'true'
+    ports:
+      - '127.0.0.1:8080:8080'
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: netbox
+      POSTGRES_USER: netbox
+      POSTGRES_PASSWORD: netbox
+
+  redis:
+    image: redis:7-alpine
+    command: ['redis-server', '--save', '""', '--appendonly', 'no']
+
+  redis-cache:
+    image: redis:7-alpine
+    command: ['redis-server', '--save', '""', '--appendonly', 'no']
