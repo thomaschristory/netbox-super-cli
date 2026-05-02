@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import pytest
+
 from nsc.cli.writes.apply import ResolvedRequest, resolve
+from nsc.cli.writes.bulk import RoutingMode
 from nsc.cli.writes.input import RawWriteInput
 from nsc.model.command_model import (
     FieldShape,
@@ -13,6 +16,34 @@ from nsc.model.command_model import (
     PrimitiveType,
     RequestBodyShape,
 )
+
+
+@pytest.fixture
+def bulk_capable_operation() -> Operation:
+    return Operation(
+        operation_id="x_create",
+        http_method=HttpMethod.POST,
+        path="/api/x/",
+        request_body=RequestBodyShape(
+            top_level="object_or_array",
+            required=["name"],
+            fields={"name": FieldShape(primitive=PrimitiveType.STRING)},
+        ),
+    )
+
+
+@pytest.fixture
+def bulk_capable_operation_with_int_field() -> Operation:
+    return Operation(
+        operation_id="x_create",
+        http_method=HttpMethod.POST,
+        path="/api/x/",
+        request_body=RequestBodyShape(
+            top_level="object_or_array",
+            required=["count"],
+            fields={"count": FieldShape(primitive=PrimitiveType.INTEGER)},
+        ),
+    )
 
 
 def _create_op() -> Operation:
@@ -149,3 +180,105 @@ def test_resolve_multi_record_one_request_per_record() -> None:
     assert len(resolved) == 2
     assert [r.body for r in resolved] == [{"name": "a"}, {"name": "b"}]
     assert [r.record_indices for r in resolved] == [[0], [1]]
+
+
+def test_resolve_bulk_emits_single_request_with_list_body(
+    bulk_capable_operation: Operation,
+) -> None:
+    raw = RawWriteInput(
+        records=[{"name": "a"}, {"name": "b"}, {"name": "c"}],
+        source="file",
+        is_explicit_list=True,
+    )
+    resolved = resolve(
+        raw,
+        bulk_capable_operation,
+        path_vars={},
+        base_url="https://nb.example",
+        headers={"Authorization": "Token sekrit"},
+        mode=RoutingMode.BULK,
+    )
+    assert len(resolved) == 1
+    request = resolved[0]
+    assert request.record_indices == [0, 1, 2]
+    assert isinstance(request.body, list)
+    assert request.body == [{"name": "a"}, {"name": "b"}, {"name": "c"}]
+    assert request.headers["Authorization"] == "Token <redacted>"
+
+
+def test_resolve_loop_emits_one_request_per_record(bulk_capable_operation: Operation) -> None:
+    raw = RawWriteInput(
+        records=[{"name": "a"}, {"name": "b"}, {"name": "c"}],
+        source="file",
+        is_explicit_list=True,
+    )
+    resolved = resolve(
+        raw,
+        bulk_capable_operation,
+        path_vars={},
+        base_url="https://nb.example",
+        headers={"Authorization": "Token sekrit"},
+        mode=RoutingMode.LOOP,
+    )
+    assert len(resolved) == 3
+    assert [r.record_indices for r in resolved] == [[0], [1], [2]]
+    assert all(isinstance(r.body, dict) for r in resolved)
+    bodies = [r.body for r in resolved]
+    assert [b["name"] for b in bodies if isinstance(b, dict)] == ["a", "b", "c"]
+
+
+def test_resolve_single_emits_one_request_with_object_body(
+    bulk_capable_operation: Operation,
+) -> None:
+    raw = RawWriteInput(
+        records=[{"name": "only"}],
+        source="file",
+        is_explicit_list=False,
+    )
+    resolved = resolve(
+        raw,
+        bulk_capable_operation,
+        path_vars={},
+        base_url="https://nb.example",
+        headers={"Authorization": "Token sekrit"},
+        mode=RoutingMode.SINGLE,
+    )
+    assert len(resolved) == 1
+    assert resolved[0].record_indices == [0]
+    assert resolved[0].body == {"name": "only"}
+
+
+def test_resolve_bulk_with_one_record_still_wraps_in_list(
+    bulk_capable_operation: Operation,
+) -> None:
+    raw = RawWriteInput(records=[{"name": "x"}], source="file", is_explicit_list=False)
+    resolved = resolve(
+        raw,
+        bulk_capable_operation,
+        path_vars={},
+        base_url="https://nb.example",
+        headers={"Authorization": "Token sekrit"},
+        mode=RoutingMode.BULK,
+    )
+    assert resolved[0].body == [{"name": "x"}]
+    assert resolved[0].record_indices == [0]
+
+
+def test_resolve_bulk_applies_per_record_casts(
+    bulk_capable_operation_with_int_field: Operation,
+) -> None:
+    raw = RawWriteInput(
+        records=[{"count": "1"}, {"count": "2"}],
+        source="file",
+        is_explicit_list=True,
+    )
+    resolved = resolve(
+        raw,
+        bulk_capable_operation_with_int_field,
+        path_vars={},
+        base_url="https://nb.example",
+        headers={"Authorization": "Token sekrit"},
+        mode=RoutingMode.BULK,
+    )
+    assert isinstance(resolved[0].body, list)
+    assert resolved[0].body == [{"count": 1}, {"count": 2}]

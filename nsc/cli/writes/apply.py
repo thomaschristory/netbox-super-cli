@@ -10,6 +10,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from nsc.cli.writes.bulk import RoutingMode
 from nsc.cli.writes.input import RawWriteInput
 from nsc.model.command_model import FieldShape, HttpMethod, Operation, PrimitiveType
 
@@ -40,12 +41,38 @@ def resolve(
     path_vars: dict[str, str],
     base_url: str,
     headers: dict[str, str] | None = None,
+    mode: RoutingMode = RoutingMode.SINGLE,
 ) -> list[ResolvedRequest]:
+    """Build wire-shape requests.
+
+    Mode drives the body shape:
+      SINGLE / LOOP -> one ResolvedRequest per record, body=dict, record_indices=[i].
+      BULK          -> one ResolvedRequest, body=list[dict], record_indices=[0..N).
+
+    SINGLE and LOOP differ only in caller intent (single record vs. multiple
+    records that the user opted out of bulk for). The wire shape is identical
+    per request.
+    """
     base = base_url.rstrip("/")
     url = base + operation.path.format(**path_vars)
     visible_headers = _redact(headers or {})
-
     records = raw.records or [{}]
+
+    if mode is RoutingMode.BULK:
+        body_list = [_shape_body(r, operation) or {} for r in records]
+        return [
+            ResolvedRequest(
+                method=operation.http_method,
+                url=url,
+                headers=visible_headers,
+                query={},
+                body=body_list,
+                path_vars=dict(path_vars),
+                operation_id=operation.operation_id,
+                record_indices=list(range(len(records))),
+            )
+        ]
+
     out: list[ResolvedRequest] = []
     for index, record in enumerate(records):
         body = _shape_body(record, operation)
