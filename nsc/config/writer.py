@@ -1,26 +1,30 @@
 """Round-trip-preserving writes for `~/.nsc/config.yaml`.
 
-This module is the write counterpart to `nsc/config/loader.py`. It will expose:
+This module is the write counterpart to `nsc/config/loader.py`. It exposes:
 
 * `load_round_trip(path)` / `dump_round_trip(doc)` — parse and serialize using
-  the same `YAML(typ="rt")` configured with the `!env` constructor.
+  `YAML(typ="rt")`. Unlike the loader, the writer's YAML does NOT register an
+  `!env` constructor, so tagged scalars round-trip through unchanged.
 * `set_path(doc, dotted, value)` / `unset_path(doc, dotted)` — dotted-path
   mutators that preserve comments and key order.
 * `atomic_write(path, text)` — tempfile + fsync + os.replace, 0600 mode.
 * `acquire_lock(path)` — best-effort `flock` context manager.
-
-This file currently implements only the atomic-write + lock primitives; the
-round-trip and mutator helpers land in a follow-up task.
 """
 
 from __future__ import annotations
 
 import contextlib
+import io
 import logging
 import os
 import tempfile
 from collections.abc import Iterator
 from pathlib import Path
+from typing import Any
+
+from ruamel.yaml import YAML
+from ruamel.yaml.comments import CommentedMap, TaggedScalar
+from ruamel.yaml.nodes import ScalarNode
 
 _log = logging.getLogger(__name__)
 _FILE_MODE = 0o600
@@ -83,3 +87,112 @@ def acquire_lock(path: Path) -> Iterator[None]:
         with contextlib.suppress(OSError):
             fcntl.flock(fd, fcntl.LOCK_UN)
         os.close(fd)
+
+
+class ConfigWriteError(Exception):
+    """Raised when a config write violates the dotted-path contract."""
+
+
+def _construct_env_tag(_loader: Any, node: ScalarNode) -> TaggedScalar:
+    return TaggedScalar(value=str(node.value), style=None, tag="!env")
+
+
+def _writer_yaml() -> YAML:
+    """Round-trip YAML for the writer.
+
+    The writer round-trips the *file* surface, so a `!env FOO` scalar must
+    come back out as `!env FOO`, not as the resolved string. We override the
+    `!env` constructor with one that returns a `TaggedScalar`, preserving the
+    tag through dump. This override is needed because ruamel.yaml's
+    `add_constructor` registers at the class level — once the loader's
+    resolving `!env` constructor runs, every later `YAML(typ="rt")` instance
+    inherits it unless explicitly overridden here.
+    """
+    yaml = YAML(typ="rt")
+    yaml.preserve_quotes = True
+    yaml.constructor.add_constructor("!env", _construct_env_tag)
+    return yaml
+
+
+def load_round_trip(path: Path) -> CommentedMap:
+    """Parse `path` into a `CommentedMap` ready for in-place mutation.
+
+    Returns an empty `CommentedMap` if the file is missing or empty so callers
+    can `set_path` into a fresh doc.
+    """
+    if not path.exists():
+        return CommentedMap()
+    text = path.read_text(encoding="utf-8")
+    if not text.strip():
+        return CommentedMap()
+    doc = _writer_yaml().load(io.StringIO(text))
+    if doc is None:
+        return CommentedMap()
+    if not isinstance(doc, CommentedMap):
+        raise ConfigWriteError(f"{path}: top-level value must be a mapping")
+    return doc
+
+
+def dump_round_trip(doc: CommentedMap) -> str:
+    """Serialize `doc` back to YAML, preserving comments, order, and tags."""
+    buf = io.StringIO()
+    _writer_yaml().dump(doc, buf)
+    return buf.getvalue()
+
+
+def _split(dotted: str) -> list[str]:
+    parts = [p for p in dotted.split(".") if p]
+    if not parts:
+        raise ConfigWriteError("path must be non-empty")
+    return parts
+
+
+def set_path(doc: CommentedMap, dotted: str, value: Any) -> None:
+    """Set `doc[a][b]...[leaf] = value`, creating intermediate maps as needed.
+
+    Refuses to descend past a scalar (would discard data) or to overwrite a
+    map with a scalar at the leaf (likewise). Both raise `ConfigWriteError`.
+    """
+    parts = _split(dotted)
+    cursor: Any = doc
+    for i, key in enumerate(parts[:-1]):
+        nxt = cursor.get(key) if isinstance(cursor, CommentedMap) else None
+        if nxt is None:
+            nxt = CommentedMap()
+            cursor[key] = nxt
+        elif not isinstance(nxt, CommentedMap):
+            joined = ".".join(parts[: i + 1])
+            raise ConfigWriteError(
+                f"cannot descend into scalar at {joined!r}; "
+                f"refusing to overwrite a value with a map"
+            )
+        cursor = nxt
+    leaf_key = parts[-1]
+    existing = cursor.get(leaf_key) if isinstance(cursor, CommentedMap) else None
+    if isinstance(existing, CommentedMap):
+        raise ConfigWriteError(f"refusing to overwrite map at {dotted!r} with a scalar value")
+    cursor[leaf_key] = value
+
+
+def unset_path(doc: CommentedMap, dotted: str) -> None:
+    """Remove `doc[a][b]...[leaf]` and prune empty parent maps.
+
+    No-op if any segment is missing. Pruning stops at non-empty parents.
+    """
+    parts = _split(dotted)
+    chain: list[tuple[CommentedMap, str]] = []
+    cursor: Any = doc
+    for key in parts[:-1]:
+        if not isinstance(cursor, CommentedMap) or key not in cursor:
+            return
+        chain.append((cursor, key))
+        cursor = cursor[key]
+    leaf_key = parts[-1]
+    if not isinstance(cursor, CommentedMap) or leaf_key not in cursor:
+        return
+    del cursor[leaf_key]
+    for parent, key in reversed(chain):
+        if isinstance(parent[key], CommentedMap) and len(parent[key]) == 0:
+            del parent[key]
+        else:
+            break

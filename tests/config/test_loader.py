@@ -125,7 +125,6 @@ def test_defaults_section_overrides(tmp_path: Path) -> None:
     assert cfg.defaults.timeout == 60.0
 
 
-@pytest.mark.skip(reason="depends on writer.py from Task 3; unskipped there")
 def test_loader_preserves_comments_through_round_trip(tmp_path: Path) -> None:
     """A read followed by a write of the same doc preserves comments.
 
