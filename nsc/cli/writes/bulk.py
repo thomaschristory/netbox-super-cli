@@ -13,6 +13,7 @@ Pure logic. No I/O, no Typer, no httpx. Three responsibilities:
 from __future__ import annotations
 
 from enum import StrEnum
+from typing import assert_never
 
 from nsc.model.command_model import Operation
 
@@ -39,6 +40,8 @@ def detect_bulk_capability(operation: Operation) -> BulkCapability:
             return BulkCapability.BULK
         case "object":
             return BulkCapability.SINGLE
+        case _:
+            assert_never(body.top_level)
 
 
 __all__ = ["BulkCapability", "detect_bulk_capability"]

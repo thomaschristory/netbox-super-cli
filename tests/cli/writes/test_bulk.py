@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 import pytest
 
 from nsc.cli.writes.bulk import BulkCapability, detect_bulk_capability
@@ -12,10 +14,9 @@ from nsc.model.command_model import (
 )
 
 
-def _op(top_level: str | None) -> Operation:
-    body: RequestBodyShape | None = (
-        None if top_level is None else RequestBodyShape(top_level=top_level)  # type: ignore[arg-type]
-    )
+def _op(top_level: Literal["object", "array", "object_or_array"] | None) -> Operation:
+    body: RequestBodyShape | None
+    body = None if top_level is None else RequestBodyShape(top_level=top_level)
     return Operation(
         operation_id="x_create",
         http_method=HttpMethod.POST,
