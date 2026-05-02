@@ -17,6 +17,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from nsc.cli.writes.coercion import BOOL_STRINGS as _BOOL_STRINGS
 from nsc.cli.writes.input import RawWriteInput
 from nsc.model.command_model import (
     FieldShape,
@@ -24,8 +25,6 @@ from nsc.model.command_model import (
     PrimitiveType,
     RequestBodyShape,
 )
-
-_BOOL_STRINGS = {"true", "false", "1", "0", "yes", "no"}
 
 
 class _Frozen(BaseModel):

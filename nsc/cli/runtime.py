@@ -49,7 +49,7 @@ class CLIOverrides(_Frozen):
     url: str | None = None
     token: str | None = None
     insecure: bool | None = None
-    schema: str | None = None  # type: ignore[assignment]
+    schema_override: str | None = None
     output: str | None = None
 
 
@@ -98,7 +98,7 @@ def resolve_profile(
     timeout = base.timeout if (base and base.timeout is not None) else config.defaults.timeout
 
     schema_url_raw = _first_set(
-        _url_only(overrides.schema),
+        _url_only(overrides.schema_override),
         _url_only(env.get("NSC_SCHEMA")),
         str(base.schema_url) if base and base.schema_url else None,
     )

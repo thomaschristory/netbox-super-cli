@@ -42,7 +42,7 @@ def _extract_global_overrides(args: list[str]) -> CLIOverrides:
         "--profile": "profile",
         "--url": "url",
         "--token": "token",
-        "--schema": "schema",
+        "--schema": "schema_override",
         "--output": "output",
         "-o": "output",
     }
@@ -207,7 +207,7 @@ def _root(
         url=url,
         token=token,
         insecure=insecure,
-        schema=schema,
+        schema_override=schema,
         output=output,
     )
     try:

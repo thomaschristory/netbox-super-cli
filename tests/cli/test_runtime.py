@@ -134,5 +134,7 @@ def test_schema_url_overrides_chain() -> None:
     rp = resolve_profile(cfg, CLIOverrides(), env={})
     assert str(rp.schema_url) == "https://prod.example/api/schema/?format=json"
 
-    rp2 = resolve_profile(cfg, CLIOverrides(schema="https://other.example/schema.json"), env={})
+    rp2 = resolve_profile(
+        cfg, CLIOverrides(schema_override="https://other.example/schema.json"), env={}
+    )
     assert str(rp2.schema_url) == "https://other.example/schema.json"

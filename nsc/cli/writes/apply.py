@@ -12,12 +12,13 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from nsc.cli.writes.bulk import RoutingMode
+from nsc.cli.writes.coercion import FALSY as _FALSY
+from nsc.cli.writes.coercion import TRUTHY as _TRUTHY
 from nsc.cli.writes.input import RawWriteInput
 from nsc.model.command_model import FieldShape, HttpMethod, Operation, PrimitiveType
+from nsc.output.headers import SENSITIVE_HEADERS
 
 _REDACTED_AUTH = "Token <redacted>"
-_TRUTHY = {"true", "1", "yes"}
-_FALSY = {"false", "0", "no"}
 
 
 class _Frozen(BaseModel):
@@ -154,12 +155,15 @@ def _cast_bool(value: Any) -> Any:
     return value
 
 
+_OTHER_SENSITIVE_HEADERS = SENSITIVE_HEADERS - {"authorization"}
+
+
 def _redact(headers: dict[str, str]) -> dict[str, str]:
     out: dict[str, str] = {}
     for k, v in headers.items():
         if k.lower() == "authorization":
             out[k] = _REDACTED_AUTH
-        elif k.lower() in {"cookie", "x-api-key", "proxy-authorization"}:
+        elif k.lower() in _OTHER_SENSITIVE_HEADERS:
             out[k] = "<redacted>"
         else:
             out[k] = v

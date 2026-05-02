@@ -20,10 +20,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field
 
 from nsc.model.command_model import HttpMethod
-
-SENSITIVE_HEADERS: frozenset[str] = frozenset(
-    {"authorization", "cookie", "x-api-key", "proxy-authorization"}
-)
+from nsc.output.headers import SENSITIVE_HEADERS
 
 DEFAULT_BODY_CAP_BYTES = 256 * 1024
 DEFAULT_ROTATE_BYTES = 10 * 1024 * 1024
