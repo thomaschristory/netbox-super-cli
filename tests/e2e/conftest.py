@@ -5,10 +5,10 @@ environment. CI sets it; the default `just test` invocation does not, so a
 developer who runs `pytest` without spinning up the docker stack will see the
 e2e tests skipped rather than failing to connect.
 
-Subprocess pattern (spec 8.3): every CLI invocation in this suite goes through
+Subprocess pattern (spec §8.3): every CLI invocation in this suite goes through
 ``run_nsc(*args, env=None, input=None, timeout=60)``. That helper spawns
 ``python -m nsc ...`` exactly the way an end user would, captures stdout / stderr
-/ exit-code, and returns them. This is the contract surface -- do not switch to
+/ exit-code, and returns them. This is the contract surface — do not switch to
 ``typer.testing.CliRunner`` under any circumstances; it bypasses the entry
 point and the whole point of e2e is to exercise the real one.
 
@@ -128,7 +128,7 @@ def netbox_client(nsc_url: str, nsc_token: str) -> Iterator[httpx.Client]:
     """Direct httpx client for fixture bootstrap / state assertions.
 
     Tests use ``run_nsc`` to exercise the CLI; this client is for the test
-    *infrastructure* -- wiping state between tests, asserting "is the record
+    *infrastructure* — wiping state between tests, asserting "is the record
     actually in NetBox now", etc. Do not blur the distinction.
     """
     headers = {
@@ -145,6 +145,7 @@ def clean_tags(netbox_client: httpx.Client) -> Iterator[None]:
     """Delete every tag in NetBox before and after the test."""
 
     def _wipe() -> None:
+        # paginate defensively in case a previous test leaked many tags
         while True:
             r = netbox_client.get("/api/extras/tags/", params={"limit": 200})
             r.raise_for_status()
@@ -153,6 +154,7 @@ def clean_tags(netbox_client: httpx.Client) -> Iterator[None]:
                 return
             ids = [{"id": tag["id"]} for tag in results]
             d = netbox_client.request("DELETE", "/api/extras/tags/", json=ids)
+            # 204 (bulk delete) or 200 (older versions) both acceptable
             assert d.status_code in (200, 204), d.text
 
     _wipe()
