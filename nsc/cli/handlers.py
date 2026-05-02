@@ -534,14 +534,34 @@ def _send_one(
     operation: Operation, request: ResolvedRequest, ctx: RuntimeContext
 ) -> dict[str, Any]:
     relative = operation.path.format(**request.path_vars)
+    indices = list(request.record_indices)
     if operation.http_method is HttpMethod.POST:
-        return ctx.client.post(relative, json=request.body, operation_id=operation.operation_id)
+        return ctx.client.post(
+            relative,
+            json=request.body,
+            operation_id=operation.operation_id,
+            record_indices=indices,
+        )
     if operation.http_method is HttpMethod.PATCH:
-        return ctx.client.patch(relative, json=request.body, operation_id=operation.operation_id)
+        return ctx.client.patch(
+            relative,
+            json=request.body,
+            operation_id=operation.operation_id,
+            record_indices=indices,
+        )
     if operation.http_method is HttpMethod.PUT:
-        return ctx.client.put(relative, json=request.body, operation_id=operation.operation_id)
+        return ctx.client.put(
+            relative,
+            json=request.body,
+            operation_id=operation.operation_id,
+            record_indices=indices,
+        )
     if operation.http_method is HttpMethod.DELETE:
-        return ctx.client.delete(relative, operation_id=operation.operation_id)
+        return ctx.client.delete(
+            relative,
+            operation_id=operation.operation_id,
+            record_indices=indices,
+        )
     raise RuntimeError(f"unsupported write method: {operation.http_method}")
 
 
