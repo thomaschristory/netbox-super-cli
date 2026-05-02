@@ -48,13 +48,27 @@ _DEFAULT_TOKEN = "0123456789abcdef0123456789abcdef01234567"
 _DEFAULT_URL = "http://127.0.0.1:8080"
 
 
+_E2E_ROOT = Path(__file__).parent.resolve()
+
+
 def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
-    """Skip the entire e2e suite unless NSC_E2E=1 is explicitly set."""
+    """Skip e2e tests (only) unless NSC_E2E=1 is explicitly set.
+
+    pytest invokes this hook with every collected item across all conftests, so
+    the filter must scope itself to ``tests/e2e/`` — otherwise the unit suite
+    above us would get skipped too whenever someone runs ``just test`` without
+    the env var.
+    """
     if os.environ.get("NSC_E2E") == "1":
         return
     skip = pytest.mark.skip(reason="set NSC_E2E=1 (and start tests/e2e/docker-compose.yml) to run")
     for item in items:
-        item.add_marker(skip)
+        try:
+            item_path = Path(item.path).resolve()
+        except (AttributeError, OSError):
+            continue
+        if _E2E_ROOT in item_path.parents:
+            item.add_marker(skip)
 
 
 @pytest.fixture(scope="session")
