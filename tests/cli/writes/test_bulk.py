@@ -138,7 +138,7 @@ def test_routing_ambiguous_capability_with_bulk_flag_attempts_bulk() -> None:
 def test_routing_zero_records_raises() -> None:
     # Empty input is rejected at the input layer (spec §4.7); guard here too
     # so callers never construct a meaningless decision.
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match=r"record_count must be >= 1"):
         route_to_bulk_or_loop(
             record_count=0,
             capability=BulkCapability.BULK,

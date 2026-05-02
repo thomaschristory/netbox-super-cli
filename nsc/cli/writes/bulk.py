@@ -111,7 +111,7 @@ def route_to_bulk_or_loop(
             capability=capability,
             reasoning=(
                 f"explicit --bulk: sending {record_count} records as a single "
-                "array body (capability=" + capability.value + ")"
+                f"array body (capability={capability.value})"
             ),
         )
     if bulk_flag is False:
