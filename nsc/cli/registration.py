@@ -72,8 +72,8 @@ def _register_resource_commands(
             app, "delete", resource.delete_op, tag_name, resource_name, get_ctx, handle_delete
         )
     for action in resource.custom_actions:
-        verb = _custom_action_verb(action.operation_id, resource_name)
         if action.http_method is HttpMethod.GET:
+            verb = _custom_action_verb(action.operation_id, resource_name, is_write=False)
             _register_read(
                 app, verb, action, tag_name, resource_name, get_ctx, handle_custom_action
             )
@@ -83,6 +83,7 @@ def _register_resource_commands(
             HttpMethod.PUT,
             HttpMethod.DELETE,
         }:
+            verb = _custom_action_verb(action.operation_id, resource_name, is_write=True)
             _register_write(
                 app, verb, action, tag_name, resource_name, get_ctx, handle_custom_action_write
             )
@@ -401,12 +402,22 @@ def _python_type(p: Parameter) -> Any:
             return str
 
 
-def _custom_action_verb(operation_id: str, resource_name: str) -> str:
+def _custom_action_verb(operation_id: str, resource_name: str, *, is_write: bool) -> str:
+    """Derive a CLI verb from a custom-action operationId.
+
+    Reads strip `_list`/`_retrieve` so list/retrieve custom-actions read
+    naturally (e.g. `available-asns list` → `available-asns`). Writes keep
+    their action suffix so PUT/PATCH/DELETE on the same base don't collide
+    in the command tree.
+    """
     name = operation_id
-    for suffix in ("_list", "_retrieve", "_create", "_update", "_partial_update", "_destroy"):
-        if name.endswith(suffix):
-            name = name[: -len(suffix)]
-            break
-    if resource_name and resource_name in name:
-        name = name.split(resource_name, 1)[-1].lstrip("_")
+    read_suffixes = ("_list", "_retrieve")
+    if not is_write:
+        for suffix in read_suffixes:
+            if name.endswith(suffix):
+                name = name[: -len(suffix)]
+                break
+    res_underscored = resource_name.replace("-", "_") if resource_name else ""
+    if res_underscored and res_underscored in name:
+        name = name.split(res_underscored, 1)[-1].lstrip("_")
     return name.replace("_", "-") or operation_id

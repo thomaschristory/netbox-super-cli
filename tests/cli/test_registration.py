@@ -8,7 +8,7 @@ import typer
 from typer.testing import CliRunner
 
 from nsc.builder.build import build_command_model
-from nsc.cli.registration import register_dynamic_commands
+from nsc.cli.registration import _custom_action_verb, register_dynamic_commands
 from nsc.cli.runtime import ResolvedProfile, RuntimeContext
 from nsc.config.models import Config, OutputFormat
 from nsc.model.command_model import (
@@ -275,4 +275,37 @@ def test_custom_action_post_registered_as_write_command() -> None:
     app = typer.Typer()
     register_dynamic_commands(app, model, lambda: _stub_ctx(model))
     closures = _collect_closures(app)
-    assert any("available-asns" in name for name in closures.get(("ipam", "asn-ranges"), []))
+    cmds = closures.get(("ipam", "asn-ranges"), [])
+    # Exact-name membership; the verb extraction must produce a hyphenated
+    # version of the operation_id stripped of the tag/resource prefix.
+    assert "available-asns-create" in cmds
+
+
+def test_custom_action_verb_read_strips_list_and_retrieve_and_resource_with_hyphens() -> None:
+    assert (
+        _custom_action_verb("ipam_asn_ranges_available_asns_list", "asn-ranges", is_write=False)
+        == "available-asns"
+    )
+    assert (
+        _custom_action_verb("ipam_asn_ranges_some_action_retrieve", "asn-ranges", is_write=False)
+        == "some-action"
+    )
+
+
+def test_custom_action_verb_write_keeps_action_suffix_to_avoid_collision() -> None:
+    put_verb = _custom_action_verb("ipam_asn_ranges_bulk_update", "asn-ranges", is_write=True)
+    delete_verb = _custom_action_verb("ipam_asn_ranges_bulk_destroy", "asn-ranges", is_write=True)
+    patch_verb = _custom_action_verb(
+        "ipam_asn_ranges_bulk_partial_update", "asn-ranges", is_write=True
+    )
+    assert put_verb == "bulk-update"
+    assert delete_verb == "bulk-destroy"
+    assert patch_verb == "bulk-partial-update"
+    assert len({put_verb, delete_verb, patch_verb}) == 3
+
+
+def test_custom_action_verb_write_with_create_keeps_create_suffix() -> None:
+    assert (
+        _custom_action_verb("ipam_asn_ranges_available_asns_create", "asn-ranges", is_write=True)
+        == "available-asns-create"
+    )
