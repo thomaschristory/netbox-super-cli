@@ -2,14 +2,14 @@
 
 A Python CLI for [NetBox](https://netbox.dev/) that builds its command tree dynamically from your install's live OpenAPI schema. The same binary works against any NetBox version and exposes plugin-provided endpoints automatically — the schema, not hand-written code, defines the surface.
 
-> **Status:** Phase 2 complete. Dynamic read CLI is fully operational: live schema fetch, disk cache, configurable profiles, paginated list/get/filter commands, and JSON/YAML/CSV/table output. Not yet on PyPI. See `docs/superpowers/specs/2026-04-30-netbox-super-cli-design.md` for the design and `docs/superpowers/plans/` for per-phase plans.
+> **Status:** Phase 3 complete (`v0.3.0-phase3`). The full read + safe-write surface is shipped: dynamic command tree, dry-run-by-default writes with `--apply` to commit, `--explain` for resolved-request introspection, bulk-endpoint detection with loop fallback, stable error envelopes with locked exit codes, append-only audit log, and a live-NetBox e2e suite running in CI against `netboxcommunity/netbox:v4.5.9`. Not yet on PyPI.
 
 ## Why
 
 - **Plugins just work.** If your install has plugins, their endpoints appear as commands automatically.
-- **Multi-instance.** Named profiles per NetBox instance.
-- **Safe by default.** Writes and deletes preview as dry-runs unless you pass `--apply`.
-- **AI-agent friendly.** Deterministic command shape, machine-readable output, self-describing CLI.
+- **Multi-instance.** Named profiles per NetBox instance, plus env-var overrides.
+- **Safe by default.** POST/PATCH/PUT/DELETE preview as dry-runs unless you pass `--apply`.
+- **Agent-friendly.** Deterministic command shape, machine-readable JSON output, stable error envelope with documented exit codes.
 
 ## Install (preview)
 
@@ -25,7 +25,7 @@ uv sync
 uv run nsc --version
 ```
 
-## Phase 2 — Dynamic CLI for reads (current)
+## Reading
 
 ```sh
 export NSC_URL=https://netbox.example.com
@@ -38,13 +38,42 @@ uv run nsc circuits providers list --output csv
 uv run nsc ipam prefixes list --filter created__gte=2026-01-01 --output yaml
 ```
 
-## Try it (schema introspection)
+## Writing
 
+```sh
+# Dry-run by default — shows the resolved request without sending it.
+uv run nsc dcim devices create -f device.yaml --explain
+
+# Commit with --apply.
+uv run nsc dcim devices create -f device.yaml --apply
+
+# Bulk create: one HTTP call when the schema supports it, sequential loop otherwise.
+uv run nsc dcim devices create -f devices.yaml --apply
+uv run nsc dcim devices create -f devices.yaml --no-bulk --on-error continue --apply
+
+# Per-field overrides (CLI wins over file on overlap).
+uv run nsc dcim devices update 42 --field status=active --apply
+
+# Delete; default is exit-0 if already gone, --strict turns missing-id into exit 9.
+uv run nsc dcim devices delete 42 --apply
+uv run nsc dcim devices delete 42 --apply --strict
 ```
-# Dump every endpoint in the bundled NetBox schema as JSON
+
+Every write attempt — dry-run included — appends one line to `~/.nsc/logs/audit.jsonl`; the most recent exchange is also mirrored to `~/.nsc/logs/last-request.json`.
+
+## Output and errors
+
+- `--output {table,json,yaml,csv,jsonl}`. Table is the default on a TTY; JSON is the default when stdout is piped.
+- On `--output json`, the records array is emitted directly (no NetBox-style `count`/`results` wrapper); single-record writes emit the resulting record dict.
+- Failures emit a stable `ErrorEnvelope` (JSON to stdout on `--output json`, Rich panel to stderr otherwise) with `type ∈ {auth, not_found, validation, conflict, rate_limited, server, transport, schema, config, client, internal}` and a documented exit code per type. See `CHANGELOG.md` and the spec for the full table.
+
+## Schema introspection
+
+```sh
+# Dump every endpoint in the bundled NetBox schema as JSON.
 uv run nsc commands --schema nsc/schemas/bundled/netbox-4.6.0-beta2.json.gz --output json | head
 
-# Or against a live install
+# Or against a live install.
 uv run nsc commands --schema https://netbox.example.com/api/schema/?format=json --output json
 ```
 
