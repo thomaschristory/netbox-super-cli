@@ -296,6 +296,7 @@ def _handle_write(
                 op_resource=op_resource,
                 stream=out,
                 total_records=len(raw.records),
+                is_delete=is_delete,
             )
             return
 
@@ -404,6 +405,7 @@ def _execute_loop(
     op_resource: str,
     stream: TextIO,
     total_records: int,
+    is_delete: bool,
 ) -> None:
     """Run the sequential loop and emit summary envelope on any failure."""
 
@@ -411,10 +413,14 @@ def _execute_loop(
         return _send_one(op, request, ctx)
 
     def _audit_one(
-        request: ResolvedRequest,
-        response: dict[str, Any] | None,
-        err: Exception | None,
+        _request: ResolvedRequest,
+        _response: dict[str, Any] | None,
+        _err: Exception | None,
     ) -> None:
+        # NetBoxClient.{post,patch,put,delete} already writes one audit entry
+        # per HTTP request. Writing here would double-count. The callback
+        # exists so unit tests can verify per-attempt ordering; production
+        # wiring leaves it as a no-op.
         return
 
     def _to_envelope(exc: Exception) -> ErrorEnvelope:
@@ -451,7 +457,7 @@ def _execute_loop(
             op_tag=op_tag,
             op_resource=op_resource,
             stream=stream,
-            is_delete=operation.http_method is HttpMethod.DELETE,
+            is_delete=is_delete,
         )
         return
 
