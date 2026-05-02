@@ -24,6 +24,7 @@ from typing import Any
 
 from ruamel.yaml import YAML
 from ruamel.yaml.comments import CommentedMap, TaggedScalar
+from ruamel.yaml.constructor import BaseConstructor
 from ruamel.yaml.nodes import ScalarNode
 
 _log = logging.getLogger(__name__)
@@ -77,15 +78,18 @@ def acquire_lock(path: Path) -> Iterator[None]:
         return
 
     fd = os.open(str(lock_path), os.O_CREAT | os.O_RDWR, 0o600)
+    locked = False
     try:
         try:
             fcntl.flock(fd, fcntl.LOCK_EX)
+            locked = True
         except OSError as exc:
             _log.debug("flock failed on %s (%s); proceeding without it", lock_path, exc)
         yield
     finally:
-        with contextlib.suppress(OSError):
-            fcntl.flock(fd, fcntl.LOCK_UN)
+        if locked:
+            with contextlib.suppress(OSError):
+                fcntl.flock(fd, fcntl.LOCK_UN)
         os.close(fd)
 
 
@@ -93,7 +97,7 @@ class ConfigWriteError(Exception):
     """Raised when a config write violates the dotted-path contract."""
 
 
-def _construct_env_tag(_loader: Any, node: ScalarNode) -> TaggedScalar:
+def _construct_env_tag(_loader: BaseConstructor, node: ScalarNode) -> TaggedScalar:
     return TaggedScalar(value=str(node.value), style=None, tag="!env")
 
 
@@ -103,10 +107,15 @@ def _writer_yaml() -> YAML:
     The writer round-trips the *file* surface, so a `!env FOO` scalar must
     come back out as `!env FOO`, not as the resolved string. We override the
     `!env` constructor with one that returns a `TaggedScalar`, preserving the
-    tag through dump. This override is needed because ruamel.yaml's
-    `add_constructor` registers at the class level — once the loader's
-    resolving `!env` constructor runs, every later `YAML(typ="rt")` instance
-    inherits it unless explicitly overridden here.
+    tag through dump.
+
+    ruamel.yaml's `add_constructor` registers at the class level on
+    `RoundTripConstructor`, so the most recent registration wins for every
+    later `YAML(typ="rt")` instance in the same process. Both this factory and
+    `nsc.config.loader._round_trip_yaml` register fresh on every call to
+    ensure the local intent wins, but tests that interleave loader and writer
+    parsers can still observe the cross-instance side effect — keep that in
+    mind when adding tests that depend on `!env` resolution semantics.
     """
     yaml = YAML(typ="rt")
     yaml.preserve_quotes = True
