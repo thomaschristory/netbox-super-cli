@@ -13,9 +13,21 @@ import typer
 from nsc.cli.runtime import RuntimeContext, apply_limit, emit_envelope, map_error
 from nsc.cli.writes.apply import ResolvedRequest
 from nsc.cli.writes.apply import resolve as resolve_request
+from nsc.cli.writes.bulk import (
+    BulkCapability,
+    RoutingDecision,
+    RoutingMode,
+    UnsupportedBulkError,
+    detect_bulk_capability,
+    route_to_bulk_or_loop,
+    run_loop,
+)
 from nsc.cli.writes.confirmation import (
     refuse_all_on_writes,
+    refuse_bulk_and_no_bulk_together,
     refuse_delete_without_id,
+    refuse_unknown_on_error,
+    refuse_unsupported_bulk,
 )
 from nsc.cli.writes.input import InputError, RawWriteInput
 from nsc.cli.writes.input import collect as collect_input
@@ -26,7 +38,13 @@ from nsc.config.settings import default_paths
 from nsc.http.audit import AuditEntry, append_audit_jsonl
 from nsc.http.errors import NetBoxAPIError, NetBoxClientError
 from nsc.model.command_model import HttpMethod, Operation, ParameterLocation
-from nsc.output.errors import ClientError, ErrorEnvelope, ErrorType, client_envelope
+from nsc.output.errors import (
+    ClientError,
+    ErrorEnvelope,
+    ErrorType,
+    client_envelope,
+    summary_envelope,
+)
 from nsc.output.explain import (
     ExplainTrace,
 )
@@ -222,6 +240,13 @@ def _handle_write(
         if require_id and "id" in path_param_names and not path_vars.get("id"):
             refuse_delete_without_id(operation_id=operation.operation_id)
 
+        refuse_bulk_and_no_bulk_together(
+            bulk=ctx.bulk is True,
+            no_bulk=ctx.no_bulk is True,
+            operation_id=operation.operation_id,
+        )
+        refuse_unknown_on_error(ctx.on_error)
+
         is_delete = operation.http_method is HttpMethod.DELETE
         if is_delete:
             raw = RawWriteInput(records=[{}], source="fields_only")
@@ -231,6 +256,8 @@ def _handle_write(
                 fields=list(ctx.fields),
                 stdin=sys.stdin if ctx.file == "-" else None,
             )
+
+        decision = _decide_routing(operation, ctx, raw)
 
         preflight = preflight_check(raw, operation)
         resolved = resolve_request(
@@ -242,29 +269,35 @@ def _handle_write(
                 "Authorization": f"Token {ctx.resolved_profile.token}",
                 "Accept": "application/json",
             },
+            mode=decision.mode,
         )
         field_overrides = {f.split("=", 1)[0].split(".")[0] for f in ctx.fields if "=" in f}
         trace = ExplainTrace.build_for(
-            operation, raw, preflight, resolved, field_overrides=field_overrides
+            operation,
+            raw,
+            preflight,
+            resolved,
+            field_overrides=field_overrides,
+            routing_decision=decision,
         )
 
-        if not ctx.apply:
-            _emit_dry_run_audit(operation, resolved, preflight, ctx)
-            _render_explain_or_dry_run(trace, ctx, stream=out)
-            if not preflight.ok:
-                env = _preflight_envelope(operation, preflight, applied=False)
-                code = emit_envelope(env, output_format=ctx.output_format)
-                raise typer.Exit(code)
+        if _handle_dry_run_or_preflight(operation, ctx, resolved, preflight, trace, out=out):
             return
-
-        if not preflight.ok:
-            _emit_dry_run_audit(operation, resolved, preflight, ctx, preflight_blocked=True)
-            env = _preflight_envelope(operation, preflight, applied=False)
-            code = emit_envelope(env, output_format=ctx.output_format)
-            raise typer.Exit(code)
 
         if ctx.explain:
             _render_explain_or_dry_run(trace, ctx, stream=out)
+
+        if decision.mode is RoutingMode.LOOP:
+            _execute_loop(
+                operation,
+                resolved,
+                ctx,
+                op_tag=op_tag,
+                op_resource=op_resource,
+                stream=out,
+                total_records=len(raw.records),
+            )
+            return
 
         response = _send_one(operation, resolved[0], ctx)
         _render_response(
@@ -295,6 +328,142 @@ def _handle_write(
         env = map_error(exc, operation_id=operation.operation_id)
         code = emit_envelope(env, output_format=ctx.output_format)
         raise typer.Exit(code) from exc
+
+
+def _handle_dry_run_or_preflight(
+    operation: Operation,
+    ctx: RuntimeContext,
+    resolved: list[ResolvedRequest],
+    preflight: PreflightResult,
+    trace: ExplainTrace,
+    *,
+    out: TextIO,
+) -> bool:
+    """Handle dry-run rendering and preflight-blocked envelope emission.
+
+    Returns True if the caller should return immediately (dry-run path);
+    False to continue to the apply path. Raises `typer.Exit` if preflight
+    failed (in either dry-run or apply mode).
+    """
+    if not ctx.apply:
+        _emit_dry_run_audit(operation, resolved, preflight, ctx)
+        _render_explain_or_dry_run(trace, ctx, stream=out)
+        if not preflight.ok:
+            env = _preflight_envelope(operation, preflight, applied=False)
+            code = emit_envelope(env, output_format=ctx.output_format)
+            raise typer.Exit(code)
+        return True
+    if not preflight.ok:
+        _emit_dry_run_audit(operation, resolved, preflight, ctx, preflight_blocked=True)
+        env = _preflight_envelope(operation, preflight, applied=False)
+        code = emit_envelope(env, output_format=ctx.output_format)
+        raise typer.Exit(code)
+    return False
+
+
+def _decide_routing(
+    operation: Operation,
+    ctx: RuntimeContext,
+    raw: RawWriteInput,
+) -> RoutingDecision:
+    """Compute the routing decision and emit the AMBIGUOUS warning.
+
+    Wraps `UnsupportedBulkError` into a ClientError via `refuse_unsupported_bulk`.
+    """
+    capability = detect_bulk_capability(operation)
+    if ctx.bulk is True:
+        bulk_flag: bool | None = True
+    elif ctx.no_bulk is True:
+        bulk_flag = False
+    else:
+        bulk_flag = None
+    try:
+        decision = route_to_bulk_or_loop(
+            record_count=len(raw.records),
+            capability=capability,
+            bulk_flag=bulk_flag,
+        )
+    except UnsupportedBulkError as exc:
+        refuse_unsupported_bulk(exc, operation_id=operation.operation_id)
+        raise  # unreachable; refuse_unsupported_bulk always raises
+    if capability is BulkCapability.AMBIGUOUS:
+        print(
+            f"warning: bulk capability for {operation.operation_id} is ambiguous; "
+            f"treating as {decision.mode.value} (use --bulk or --no-bulk to be explicit)",
+            file=sys.stderr,
+        )
+    return decision
+
+
+def _execute_loop(
+    operation: Operation,
+    requests: list[ResolvedRequest],
+    ctx: RuntimeContext,
+    *,
+    op_tag: str,
+    op_resource: str,
+    stream: TextIO,
+    total_records: int,
+) -> None:
+    """Run the sequential loop and emit summary envelope on any failure."""
+
+    def _send_one_loop(op: Operation, request: ResolvedRequest) -> dict[str, Any]:
+        return _send_one(op, request, ctx)
+
+    def _audit_one(
+        request: ResolvedRequest,
+        response: dict[str, Any] | None,
+        err: Exception | None,
+    ) -> None:
+        return
+
+    def _to_envelope(exc: Exception) -> ErrorEnvelope:
+        if isinstance(exc, NetBoxAPIError | NetBoxClientError):
+            return map_error(exc, operation_id=operation.operation_id)
+        return ErrorEnvelope(
+            error=str(exc),
+            type=ErrorType.INTERNAL,
+            operation_id=operation.operation_id,
+        )
+
+    result = run_loop(
+        requests,
+        operation=operation,
+        on_error=ctx.on_error,
+        send_one=_send_one_loop,
+        audit_attempt=_audit_one,
+        to_envelope=_to_envelope,
+    )
+
+    failures: list[ErrorEnvelope] = []
+    for attempt in result.attempts:
+        if attempt.failure is None:
+            continue
+        idx = attempt.request.record_indices[0]
+        failures.append(attempt.failure.model_copy(update={"record_index": idx}))
+
+    if not failures:
+        last_response = result.attempts[-1].response or {}
+        _render_response(
+            operation,
+            last_response,
+            ctx,
+            op_tag=op_tag,
+            op_resource=op_resource,
+            stream=stream,
+            is_delete=operation.http_method is HttpMethod.DELETE,
+        )
+        return
+
+    env = summary_envelope(
+        attempted=result.attempted,
+        failures=failures,
+        on_error=ctx.on_error,
+        operation_id=operation.operation_id,
+        total_records=total_records,
+    )
+    code = emit_envelope(env, output_format=ctx.output_format)
+    raise typer.Exit(code)
 
 
 def _extract_path_vars(operation: Operation, kwargs: dict[str, Any]) -> dict[str, str]:

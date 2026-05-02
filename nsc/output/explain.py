@@ -15,6 +15,7 @@ from rich.console import Console
 from rich.panel import Panel
 
 from nsc.cli.writes.apply import ResolvedRequest
+from nsc.cli.writes.bulk import RoutingDecision
 from nsc.cli.writes.input import RawWriteInput
 from nsc.cli.writes.preflight import PreflightResult
 from nsc.model.command_model import Operation
@@ -55,6 +56,7 @@ class ExplainTrace(_Frozen):
         requests: list[ResolvedRequest],
         *,
         field_overrides: set[str],
+        routing_decision: RoutingDecision | None = None,
     ) -> ExplainTrace:
         decisions, truncated = _build_decisions(raw, requests, field_overrides)
         return cls(
@@ -62,7 +64,7 @@ class ExplainTrace(_Frozen):
             operation_summary=operation.summary,
             method_reasoning=_method_reasoning(operation),
             url_reasoning=_url_reasoning(operation, requests),
-            bulk_reasoning=None,
+            bulk_reasoning=routing_decision.reasoning if routing_decision else None,
             decisions=decisions,
             decisions_truncated=truncated,
             requests=list(requests),
