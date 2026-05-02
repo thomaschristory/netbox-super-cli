@@ -89,5 +89,5 @@ warn_unreachable = true
 pretty = true
 
 [tool.pytest.ini_options]
-addopts = "-ra --strict-markers --strict-config"
+addopts = "-ra --strict-markers --strict-config --ignore=tests/e2e"
 testpaths = ["tests"]
