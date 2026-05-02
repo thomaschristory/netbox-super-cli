@@ -197,6 +197,17 @@ def test_summary_envelope_stop_shape() -> None:
     assert env.details["on_error"] == "stop"
 
 
+def test_summary_envelope_raises_on_empty_failures() -> None:
+    with pytest.raises(ValueError, match=r"summary_envelope requires at least one failure"):
+        summary_envelope(
+            attempted=0,
+            failures=[],
+            on_error="stop",
+            operation_id="x",
+            total_records=5,
+        )
+
+
 def test_summary_envelope_continue_shape() -> None:
     f1 = ErrorEnvelope(
         error="server returned 400",

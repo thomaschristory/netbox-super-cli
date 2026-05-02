@@ -7,7 +7,7 @@ This module is the agent contract. Field names, values of `ErrorType`, and the
 from __future__ import annotations
 
 from enum import Enum, StrEnum
-from typing import Any, TextIO
+from typing import Any, Literal, TextIO
 
 from pydantic import BaseModel, ConfigDict, Field
 from rich.console import Console
@@ -161,18 +161,14 @@ final exit code. Spec §4.5.
 def worst_error_type(types: list[ErrorType]) -> ErrorType:
     if not types:
         raise ValueError("worst_error_type called with empty list")
-    seen = set(types)
-    for candidate in ERROR_TYPE_PRECEDENCE:
-        if candidate in seen:
-            return candidate
-    raise AssertionError(f"unreachable: {types!r} contains no known ErrorType")
+    return next(t for t in ERROR_TYPE_PRECEDENCE if t in types)
 
 
 def summary_envelope(
     *,
     attempted: int,
     failures: list[ErrorEnvelope],
-    on_error: str,
+    on_error: Literal["stop", "continue"],
     operation_id: str | None,
     total_records: int,
 ) -> ErrorEnvelope:
