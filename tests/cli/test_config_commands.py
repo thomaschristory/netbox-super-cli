@@ -71,3 +71,70 @@ def test_config_list_prints_full_doc(home: Path) -> None:
     result = runner.invoke(app, ["config", "list"])
     assert result.exit_code == 0
     assert "default_profile: prod" in result.stdout
+
+
+def test_config_set_creates_file_when_missing(home: Path) -> None:
+    runner = CliRunner()
+    result = runner.invoke(app, ["config", "set", "default_profile", "prod"])
+    assert result.exit_code == 0
+    body = (home / "config.yaml").read_text(encoding="utf-8")
+    assert "default_profile: prod" in body
+
+
+def test_config_set_round_trips_existing_comments(home: Path) -> None:
+    _seed(
+        home,
+        "# top comment\ndefault_profile: prod  # inline\n",
+    )
+    runner = CliRunner()
+    result = runner.invoke(app, ["config", "set", "defaults.page_size", "100"])
+    assert result.exit_code == 0
+    body = (home / "config.yaml").read_text(encoding="utf-8")
+    assert "# top comment" in body
+    assert "# inline" in body
+    assert "page_size: '100'" in body or "page_size: 100" in body
+
+
+def test_config_set_creates_intermediate_maps(home: Path) -> None:
+    runner = CliRunner()
+    result = runner.invoke(app, ["config", "set", "profiles.prod.url", "https://nb/"])
+    assert result.exit_code == 0
+    body = (home / "config.yaml").read_text(encoding="utf-8")
+    assert "profiles:" in body
+    assert "prod:" in body
+    assert "url: https://nb/" in body
+
+
+def test_config_unset_removes_leaf_and_prunes(home: Path) -> None:
+    _seed(home, "defaults:\n  page_size: 50\n")
+    runner = CliRunner()
+    result = runner.invoke(app, ["config", "unset", "defaults.page_size"])
+    assert result.exit_code == 0
+    body = (home / "config.yaml").read_text(encoding="utf-8")
+    assert "page_size" not in body
+    assert "defaults" not in body
+
+
+def test_config_set_refuses_map_to_scalar(home: Path) -> None:
+    _seed(home, "profiles:\n  prod:\n    url: https://x/\n")
+    runner = CliRunner()
+    result = runner.invoke(app, ["config", "set", "profiles", "scalar"])
+    assert result.exit_code != 0
+    assert "map" in result.stdout + result.stderr
+
+
+def test_config_edit_invokes_editor_via_env(home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """`nsc config edit` invokes $EDITOR with the config path."""
+    captured: list[list[str]] = []
+
+    def fake_run(cmd: list[str], check: bool) -> None:
+        captured.append(cmd)
+
+    monkeypatch.setenv("EDITOR", "/usr/bin/true")
+    monkeypatch.setattr("nsc.cli.config_commands.subprocess.run", fake_run)
+    runner = CliRunner()
+    result = runner.invoke(app, ["config", "edit"])
+    assert result.exit_code == 0, result.stdout
+    assert captured, "subprocess.run was not called"
+    assert captured[0][0] == "/usr/bin/true"
+    assert captured[0][1] == str(home / "config.yaml")
