@@ -96,7 +96,10 @@ def _parse_file(path: Path) -> tuple[list[dict[str, Any]], bool]:
         )
     if path.stat().st_size > _FILE_SIZE_CAP_BYTES:
         raise InputError(f"input file exceeds 10 MB cap: {path}")
-    raw = path.read_bytes()
+    try:
+        raw = path.read_bytes()
+    except OSError as exc:
+        raise InputError(f"could not read input file {path}: {exc}") from exc
     text = _decode_utf8(raw, path)
     return _parse_text(text, hint=path.suffix.lower())
 

@@ -160,6 +160,15 @@ def test_file_plus_fields_applies_to_every_record(tmp_path: Path) -> None:
     assert result.is_explicit_list is True
 
 
+def test_file_path_pointing_to_directory_rejected(tmp_path: Path) -> None:
+    d = tmp_path / "looks-like-a-file.yaml"
+    d.mkdir()
+    with pytest.raises(InputError) as exc_info:
+        collect(file=d, fields=[], stdin=None)
+    msg = str(exc_info.value).lower()
+    assert "could not read" in msg or "directory" in msg
+
+
 def test_stdin_yaml_flow_style_falls_back_from_json_to_yaml() -> None:
     # YAML flow-style mapping starts with `{` so the sniff routes to JSON,
     # but JSON requires quoted keys. We must fall back to YAML rather than
