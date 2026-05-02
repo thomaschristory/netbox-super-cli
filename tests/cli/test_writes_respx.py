@@ -35,10 +35,23 @@ def _mock_schema(respx_mock: Any) -> None:
     )
 
 
-def _payload(tmp_path: Path, body: dict[str, Any]) -> Path:
+def _payload(tmp_path: Path, body: dict[str, Any] | list[dict[str, Any]]) -> Path:
     p = tmp_path / "body.json"
     p.write_text(json.dumps(body), encoding="utf-8")
     return p
+
+
+def _audit_home(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fixture_profile_yaml: Path
+) -> Path:
+    """Create a fresh NSC_HOME under tmp_path with the standard test profile."""
+    home = tmp_path / "audit_home"
+    home.mkdir()
+    (home / "config.yaml").write_text(
+        (fixture_profile_yaml / "config.yaml").read_text(encoding="utf-8"), encoding="utf-8"
+    )
+    monkeypatch.setenv("NSC_HOME", str(home))
+    return home
 
 
 # The bundled NetBox `dcim_devices_create` schema requires `device_type`, `role`,
@@ -306,3 +319,279 @@ def test_dry_run_does_not_overwrite_last_request_json(
     assert len(audit) == 1
     assert json.loads(audit[0])["dry_run"] is True
     assert not (home / "logs" / "last-request.json").exists()
+
+
+# ---------------------------------------------------------------------------
+# Phase 3c: bulk routing, sequential loop, on-error semantics (spec §7.3)
+# ---------------------------------------------------------------------------
+
+
+def _bulk_records(n: int) -> list[dict[str, Any]]:
+    """N valid device payloads (each carries the required fields).
+
+    The bundled `dcim_devices_create` schema requires `device_type`, `role`,
+    and `site`; these tests need preflight to pass so the request reaches
+    respx.
+    """
+    return [{"name": f"r-{i}", "device_type": 1, "role": 1, "site": 1} for i in range(n)]
+
+
+@respx.mock
+def test_bulk_create_5_records_sends_one_post_with_array_body(tmp_path: Path) -> None:
+    _mock_schema(respx.mock)
+    route = respx.post("https://nb.example/api/dcim/devices/").mock(
+        return_value=httpx.Response(201, json=[{"id": i} for i in range(5)])
+    )
+    payload = _payload(tmp_path, _bulk_records(5))
+    result = CliRunner().invoke(
+        app,
+        ["dcim", "devices", "create", "-f", str(payload), "--apply", "--output", "json"],
+    )
+    assert result.exit_code == 0, (result.stdout, result.stderr)
+    assert route.call_count == 1
+    sent = json.loads(route.calls.last.request.content)
+    assert isinstance(sent, list)
+    assert [item["name"] for item in sent] == [f"r-{i}" for i in range(5)]
+
+
+@respx.mock
+def test_no_bulk_5_records_sends_5_sequential_posts(tmp_path: Path) -> None:
+    _mock_schema(respx.mock)
+    route = respx.post("https://nb.example/api/dcim/devices/").mock(
+        return_value=httpx.Response(201, json={"id": 1})
+    )
+    payload = _payload(tmp_path, _bulk_records(5))
+    result = CliRunner().invoke(
+        app,
+        [
+            "dcim",
+            "devices",
+            "create",
+            "-f",
+            str(payload),
+            "--apply",
+            "--no-bulk",
+            "--output",
+            "json",
+        ],
+    )
+    assert result.exit_code == 0, (result.stdout, result.stderr)
+    assert route.call_count == 5
+
+
+@respx.mock
+def test_loop_stop_on_third_record_400_returns_partial_progress(tmp_path: Path) -> None:
+    _mock_schema(respx.mock)
+    call_count = {"n": 0}
+
+    def responder(request: httpx.Request) -> httpx.Response:
+        call_count["n"] += 1
+        if call_count["n"] == 3:
+            return httpx.Response(400, json={"name": ["bad"]})
+        return httpx.Response(201, json={"id": call_count["n"]})
+
+    respx.post("https://nb.example/api/dcim/devices/").mock(side_effect=responder)
+    payload = _payload(tmp_path, _bulk_records(5))
+    result = CliRunner().invoke(
+        app,
+        [
+            "dcim",
+            "devices",
+            "create",
+            "-f",
+            str(payload),
+            "--apply",
+            "--no-bulk",
+            "--output",
+            "json",
+        ],
+    )
+    assert result.exit_code == EXIT_CODES[ErrorType.VALIDATION]
+    parsed = json.loads(result.stdout)
+    assert parsed["type"] == "validation"
+    assert parsed["record_index"] == 2
+    assert parsed["details"]["partial_progress"] == {
+        "success": 2,
+        "failed": 1,
+        "remaining": 2,
+    }
+    assert parsed["details"]["on_error"] == "stop"
+
+
+@respx.mock
+def test_loop_continue_with_two_failures_returns_summary_envelope(tmp_path: Path) -> None:
+    _mock_schema(respx.mock)
+    call_count = {"n": 0}
+
+    def responder(request: httpx.Request) -> httpx.Response:
+        call_count["n"] += 1
+        if call_count["n"] == 1:
+            return httpx.Response(400, json={"name": ["bad first"]})
+        if call_count["n"] == 3:
+            return httpx.Response(401, json={"detail": "no auth"})
+        return httpx.Response(201, json={"id": call_count["n"]})
+
+    respx.post("https://nb.example/api/dcim/devices/").mock(side_effect=responder)
+    payload = _payload(tmp_path, _bulk_records(5))
+    result = CliRunner().invoke(
+        app,
+        [
+            "dcim",
+            "devices",
+            "create",
+            "-f",
+            str(payload),
+            "--apply",
+            "--no-bulk",
+            "--on-error",
+            "continue",
+            "--output",
+            "json",
+        ],
+    )
+    # validation > auth (per ERROR_TYPE_PRECEDENCE) → exit 4
+    assert result.exit_code == EXIT_CODES[ErrorType.VALIDATION]
+    parsed = json.loads(result.stdout)
+    assert parsed["type"] == "validation"
+    assert parsed["details"]["on_error"] == "continue"
+    assert parsed["details"]["partial_progress"] == {
+        "success": 3,
+        "failed": 2,
+        "remaining": 0,
+    }
+    failures = parsed["details"]["failures"]
+    indices = sorted(f["record_index"] for f in failures)
+    assert indices == [0, 2]
+    types = {f["type"] for f in failures}
+    assert types == {"validation", "auth"}
+
+
+@respx.mock
+def test_loop_audit_log_has_one_entry_per_attempt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fixture_profile_yaml: Path,
+) -> None:
+    home = _audit_home(tmp_path, monkeypatch, fixture_profile_yaml)
+    _mock_schema(respx.mock)
+    call_count = {"n": 0}
+
+    def responder(request: httpx.Request) -> httpx.Response:
+        call_count["n"] += 1
+        if call_count["n"] == 2:
+            return httpx.Response(400, json={"name": ["bad"]})
+        return httpx.Response(201, json={"id": call_count["n"]})
+
+    respx.post("https://nb.example/api/dcim/devices/").mock(side_effect=responder)
+    payload = _payload(tmp_path, _bulk_records(3))
+    CliRunner().invoke(
+        app,
+        [
+            "dcim",
+            "devices",
+            "create",
+            "-f",
+            str(payload),
+            "--apply",
+            "--no-bulk",
+            "--on-error",
+            "continue",
+            "--output",
+            "json",
+        ],
+    )
+    audit_path = home / "logs" / "audit.jsonl"
+    lines = audit_path.read_text(encoding="utf-8").splitlines()
+    assert len(lines) == 3  # one per attempted record
+    statuses = [json.loads(line)["error_kind"] for line in lines]
+    # NetBoxClient stamps "4xx" for any non-2xx 4xx response on the audit entry.
+    assert statuses == [None, "4xx", None]
+
+
+@respx.mock
+def test_bulk_on_non_bulk_endpoint_returns_client_error(tmp_path: Path) -> None:
+    """Pick an endpoint whose request_body.top_level is "object" (no array branch).
+
+    The bundled `dcim_devices_partial_update` PATCH endpoint takes a single
+    object body. Using PATCH against a single id with --bulk should be refused.
+    """
+    _mock_schema(respx.mock)
+    payload = _payload(tmp_path, [{"status": "active"}])
+    result = CliRunner().invoke(
+        app,
+        [
+            "dcim",
+            "devices",
+            "update",
+            "42",
+            "-f",
+            str(payload),
+            "--apply",
+            "--bulk",
+            "--output",
+            "json",
+        ],
+    )
+    assert result.exit_code == EXIT_CODES[ErrorType.CLIENT]
+    parsed = json.loads(result.stdout)
+    assert parsed["type"] == "client"
+    assert parsed["details"]["flag"] == "--bulk"
+
+
+@respx.mock
+def test_bulk_and_no_bulk_together_returns_client_error(tmp_path: Path) -> None:
+    _mock_schema(respx.mock)
+    payload = _payload(tmp_path, [{"name": "x", "device_type": 1, "role": 1, "site": 1}])
+    result = CliRunner().invoke(
+        app,
+        [
+            "dcim",
+            "devices",
+            "create",
+            "-f",
+            str(payload),
+            "--apply",
+            "--bulk",
+            "--no-bulk",
+            "--output",
+            "json",
+        ],
+    )
+    assert result.exit_code == EXIT_CODES[ErrorType.CLIENT]
+    parsed = json.loads(result.stdout)
+    assert parsed["details"]["flag"] == "--bulk/--no-bulk"
+
+
+@respx.mock
+def test_explain_includes_bulk_reasoning(tmp_path: Path) -> None:
+    _mock_schema(respx.mock)
+    payload = _payload(tmp_path, _bulk_records(3))
+    result = CliRunner().invoke(
+        app,
+        ["dcim", "devices", "create", "-f", str(payload), "--explain", "--output", "json"],
+    )
+    # --explain without --apply renders the trace as JSON to stdout.
+    parsed = json.loads(result.stdout)
+    assert parsed["bulk_reasoning"]
+    assert "3" in parsed["bulk_reasoning"]
+
+
+@respx.mock
+def test_dry_run_bulk_writes_one_audit_entry(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fixture_profile_yaml: Path,
+) -> None:
+    home = _audit_home(tmp_path, monkeypatch, fixture_profile_yaml)
+    _mock_schema(respx.mock)
+    payload = _payload(tmp_path, _bulk_records(3))
+    CliRunner().invoke(
+        app,
+        ["dcim", "devices", "create", "-f", str(payload), "--output", "json"],
+    )
+    audit_path = home / "logs" / "audit.jsonl"
+    lines = audit_path.read_text(encoding="utf-8").splitlines()
+    assert len(lines) == 1
+    entry = json.loads(lines[0])
+    assert entry["dry_run"] is True
+    assert entry["record_indices"] == [0, 1, 2]
