@@ -15,6 +15,7 @@ from typing import Any
 
 from pydantic import ValidationError
 from ruamel.yaml import YAML
+from ruamel.yaml.constructor import BaseConstructor
 from ruamel.yaml.error import YAMLError
 from ruamel.yaml.nodes import ScalarNode
 
@@ -25,7 +26,7 @@ class ConfigParseError(Exception):
     """Raised when ~/.nsc/config.yaml cannot be parsed or is structurally invalid."""
 
 
-def _construct_env(loader: Any, node: ScalarNode) -> str | None:
+def _construct_env(_loader: BaseConstructor, node: ScalarNode) -> str | None:
     raw = str(node.value)
     parts = raw.strip().split(maxsplit=1)
     var = parts[0]
@@ -35,7 +36,7 @@ def _construct_env(loader: Any, node: ScalarNode) -> str | None:
 
 
 def _round_trip_yaml() -> YAML:
-    """Build the singleton-shaped YAML parser used by both loader and writer."""
+    """Build a fresh round-trip YAML parser shared in shape between loader and writer."""
     yaml = YAML(typ="rt")
     yaml.preserve_quotes = True
     yaml.constructor.add_constructor("!env", _construct_env)
