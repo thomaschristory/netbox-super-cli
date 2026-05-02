@@ -10,6 +10,28 @@ All notable changes to netbox-super-cli are tracked here. Format follows [Keep a
 - **Shared `TRUTHY` / `FALSY` / `BOOL_STRINGS`.** Lifted from `nsc/cli/writes/{preflight,apply}.py` into `nsc/cli/writes/coercion.py` so preflight and apply can no longer drift on boolean-string acceptance.
 - **`CLIOverrides.schema` renamed to `schema_override`.** Eliminates Pydantic's parent-method-shadowing `UserWarning` (`BaseModel.schema()` was the v1 name). The `--schema` CLI flag is unchanged.
 
+## v0.3.0-phase3 — Phase 3 — live-NetBox e2e CI · 2026-05-02
+
+Final sub-phase of Phase 3. Proves the entire 3a → 3c safety story end-to-end against a real NetBox 4.5.9 container in CI. Two latent CLI bugs surfaced and were fixed along the way (env-var-only profile sentinel; apply-path audit `record_indices`).
+
+### Added
+
+- `tests/e2e/` — out-of-process e2e suite invoking `python -m nsc ...` via `subprocess.run`. Six tests cover the full lifecycle (list/create/delete + dry-run + `--strict`), bulk vs loop fan-out (with audit-log `record_indices` correlation), preflight short-circuit, server-side validation, and auth failure.
+- `tests/e2e/docker-compose.yml` — `netboxcommunity/netbox:v4.5.9` + Postgres 16 + Redis 7, bound to `127.0.0.1:8080`.
+- `tests/e2e/wait_for_netbox.sh` — two-phase readiness probe: poll `/login/` until Django is up, then install a deterministic v1 admin API token via `docker exec ... manage.py shell`. NetBox 4.5+'s default v2-token bootstrap can't be pinned to a known plaintext, so the v1 install is the workaround; `tests/e2e/README.md` documents the rationale and the conditions that would justify revisiting (deterministic v2 bootstrap upstream, or `nsc` learning Bearer auth).
+- `.github/workflows/e2e.yml` — runs on `main` pushes and on PRs that touch the write path (path-filtered per spec §8.4).
+- `just e2e` — local recipe that brings the stack up, runs the suite, and tears it down even on failure.
+- `tests/e2e/README.md` — local-run instructions, iteration tips, fixture token rationale.
+
+### Changed
+
+- `pyproject.toml`: `tests/e2e/` excluded from default pytest collection (`addopts += --ignore=tests/e2e`); the suite is opt-in via `NSC_E2E=1` (set automatically by `just e2e` and the `e2e` workflow).
+
+### Fixed
+
+- **`nsc/cli/runtime.py`: `<adhoc>` profile sentinel renamed to `adhoc`.** The angle-bracketed value was rejected by `nsc.cache.store._PROFILE_RE` (the cache directory-name validator), so every env-var-only invocation crashed the moment the schema cache was touched. None of the unit/respx tests caught it because they all configure a named profile via `Config`. Added a focused regression test asserting the sentinel passes the cache regex.
+- **`nsc/http/client.py`, `nsc/cli/handlers.py`: apply-path audit log carries `record_indices`.** `NetBoxClient._record_attempt` was hard-coding `record_indices=[]` regardless of the routing decision, violating Phase 3a §4.3 and rendering the bulk vs loop distinction invisible in `audit.jsonl`. Added a `record_indices` kwarg threaded through `post`/`patch`/`put`/`delete` and `_send_with_retry`, populated from `ResolvedRequest.record_indices` in `_send_one`.
+
 ## v0.3.0c — Phase 3c — bulk and loop · 2026-05-02
 
 Bulk-endpoint detection, `--bulk` / `--no-bulk` override, sequential loop fallback, and `--on-error stop|continue` with partial-progress summary envelopes.
