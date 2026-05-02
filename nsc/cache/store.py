@@ -54,6 +54,32 @@ class CacheStore:
         if target.exists():
             shutil.rmtree(target)
 
+    def move(self, old: str, new: str) -> None:
+        """Rename a profile's cache directory from `old` to `new`.
+
+        No-op when `old` does not exist (the profile was never warmed). Raises
+        `FileExistsError` when `new` already exists — the caller must purge
+        the target first if that's the intent. Both names are validated to
+        prevent path-component injection (matches `_PROFILE_RE`).
+        """
+        self._validate_profile(old)
+        self._validate_profile(new)
+        src = self.root / old
+        dst = self.root / new
+        if not src.exists():
+            return
+        if dst.exists():
+            raise FileExistsError(f"cache directory for profile {new!r} already exists at {dst}")
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        src.rename(dst)
+
+    def purge(self, profile: str) -> None:
+        """Remove a profile's cache directory entirely. No-op if missing."""
+        self._validate_profile(profile)
+        target = self.root / profile
+        if target.exists():
+            shutil.rmtree(target)
+
     def _path_for(self, profile: str, schema_hash: str) -> Path:
         return self.root / profile / f"{schema_hash}.json"
 
