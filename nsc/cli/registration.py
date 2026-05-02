@@ -198,6 +198,9 @@ def _build_write_closure(
         file: str | None = kwargs.pop("file", None)
         fields_raw: list[str] = list(kwargs.pop("field", None) or [])
         format_: str | None = kwargs.pop("format_", None)
+        bulk: bool | None = kwargs.pop("bulk", None)
+        no_bulk: bool | None = kwargs.pop("no_bulk", None)
+        on_error: str = kwargs.pop("on_error", "stop")
         ctx = get_ctx()
         update: dict[str, Any] = {
             "compact": compact,
@@ -208,6 +211,9 @@ def _build_write_closure(
             "file": file,
             "fields": fields_raw,
             "file_format": format_,
+            "bulk": bulk,
+            "no_bulk": no_bulk,
+            "on_error": on_error,
         }
         if output:
             update["output_format"] = OutputFormat(output)
@@ -385,6 +391,42 @@ def _write_flag_params() -> list[inspect.Parameter]:
                 None,
                 "--format",
                 help="Override file-format detection (yaml|yml|json).",
+            ),
+        ),
+        inspect.Parameter(
+            name="bulk",
+            kind=inspect.Parameter.KEYWORD_ONLY,
+            annotation=bool | None,
+            default=typer.Option(
+                None,
+                "--bulk",
+                help=(
+                    "Force a bulk POST/PATCH (single HTTP call with array body). "
+                    "Errors if the endpoint is not bulk-capable."
+                ),
+            ),
+        ),
+        inspect.Parameter(
+            name="no_bulk",
+            kind=inspect.Parameter.KEYWORD_ONLY,
+            annotation=bool | None,
+            default=typer.Option(
+                None,
+                "--no-bulk",
+                help="Force per-record looping (N sequential HTTP calls).",
+            ),
+        ),
+        inspect.Parameter(
+            name="on_error",
+            kind=inspect.Parameter.KEYWORD_ONLY,
+            annotation=str,
+            default=typer.Option(
+                "stop",
+                "--on-error",
+                help=(
+                    "stop|continue. stop: abort on first failure (default). "
+                    "continue: attempt every record; final exit code = worst error type."
+                ),
             ),
         ),
     ]

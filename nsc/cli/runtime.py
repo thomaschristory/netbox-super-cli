@@ -11,7 +11,7 @@ from __future__ import annotations
 import sys
 import uuid
 from collections.abc import Iterable, Iterator, Mapping
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, HttpUrl, SkipValidation
 
@@ -177,6 +177,9 @@ class RuntimeContext(BaseModel):
     file: str | None = None
     fields: list[str] = []
     file_format: str | None = None
+    bulk: bool | None = None
+    no_bulk: bool | None = None
+    on_error: Literal["stop", "continue"] = "stop"
 
     def resolve_columns(self, tag: str, resource: str, operation: Operation) -> list[str] | None:
         if self.columns_override is not None:

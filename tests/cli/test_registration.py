@@ -309,3 +309,30 @@ def test_custom_action_verb_write_with_create_keeps_create_suffix() -> None:
         _custom_action_verb("ipam_asn_ranges_available_asns_create", "asn-ranges", is_write=True)
         == "available-asns-create"
     )
+
+
+def test_write_command_registers_bulk_no_bulk_and_on_error_flags() -> None:
+    from nsc.cli.registration import _write_flag_params  # noqa: PLC0415
+
+    params = _write_flag_params()
+    names = {p.name for p in params}
+    assert "bulk" in names
+    assert "no_bulk" in names
+    assert "on_error" in names
+
+    bulk = next(p for p in params if p.name == "bulk")
+    no_bulk = next(p for p in params if p.name == "no_bulk")
+    assert bulk.annotation == (bool | None)
+    assert no_bulk.annotation == (bool | None)
+
+    on_error = next(p for p in params if p.name == "on_error")
+    assert on_error.default.default == "stop"
+
+
+def test_runtime_context_carries_bulk_and_on_error_defaults() -> None:
+    from nsc.cli.runtime import RuntimeContext  # noqa: PLC0415
+
+    ctx = RuntimeContext.model_construct()
+    assert ctx.bulk is None
+    assert ctx.no_bulk is None
+    assert ctx.on_error == "stop"
