@@ -1,4 +1,4 @@
-"""writes.apply.resolve — single-record ResolvedRequest construction (Phase 3b)."""
+"""ResolvedRequest construction tests — Phase 3b single-record + 3c bulk/loop modes."""
 
 from __future__ import annotations
 
@@ -222,9 +222,11 @@ def test_resolve_loop_emits_one_request_per_record(bulk_capable_operation: Opera
     )
     assert len(resolved) == 3
     assert [r.record_indices for r in resolved] == [[0], [1], [2]]
-    assert all(isinstance(r.body, dict) for r in resolved)
-    bodies = [r.body for r in resolved]
-    assert [b["name"] for b in bodies if isinstance(b, dict)] == ["a", "b", "c"]
+    names: list[str] = []
+    for r in resolved:
+        assert isinstance(r.body, dict)
+        names.append(r.body["name"])
+    assert names == ["a", "b", "c"]
 
 
 def test_resolve_single_emits_one_request_with_object_body(

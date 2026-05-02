@@ -1,7 +1,8 @@
 """Stage 3 of the write pipeline: build the wire-shape ResolvedRequest.
 
-3b emits one ResolvedRequest per input record. 3c will add a bulk variant
-that produces a single request with a list-shaped body.
+3b emits one ResolvedRequest per input record (single-record loop shape).
+3c adds a bulk variant gated by ``mode=RoutingMode.BULK`` that produces a
+single request with a list-shaped body and ``record_indices=[0..N)``.
 """
 
 from __future__ import annotations
@@ -59,7 +60,11 @@ def resolve(
     records = raw.records or [{}]
 
     if mode is RoutingMode.BULK:
-        body_list = [_shape_body(r, operation) or {} for r in records]
+        body_list: list[dict[str, Any]] = []
+        for record in records:
+            shaped = _shape_body(record, operation)
+            assert shaped is not None, "bulk path requires non-None body shape"
+            body_list.append(shaped)
         return [
             ResolvedRequest(
                 method=operation.http_method,
