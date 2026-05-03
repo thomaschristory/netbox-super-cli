@@ -2,6 +2,8 @@
 
 A Python CLI for [NetBox](https://netbox.dev/) that builds its command tree dynamically from your install's live OpenAPI schema. The same binary works against any NetBox version and exposes plugin-provided endpoints automatically — the schema, not hand-written code, defines the surface.
 
+> **Docs:** [thomaschristory.github.io/netbox-super-cli](https://thomaschristory.github.io/netbox-super-cli/) — the full guide, including install, first-run, guides, and the auto-generated CLI/config/exit-code reference.
+
 > **Status:** Phase 3 complete (`v0.3.0-phase3`). The full read + safe-write surface is shipped: dynamic command tree, dry-run-by-default writes with `--apply` to commit, `--explain` for resolved-request introspection, bulk-endpoint detection with loop fallback, stable error envelopes with locked exit codes, append-only audit log, and a live-NetBox e2e suite running in CI against `netboxcommunity/netbox:v4.5.9`. Not yet on PyPI.
 
 ## Why
