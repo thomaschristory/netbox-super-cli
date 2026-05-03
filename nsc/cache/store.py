@@ -5,9 +5,12 @@ from __future__ import annotations
 import logging
 import re
 import shutil
+import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
+from nsc.config.models import Config, Profile
 from nsc.model.command_model import CommandModel
 
 _LOG = logging.getLogger(__name__)
@@ -20,6 +23,27 @@ class CacheEntry:
     profile: str
     schema_hash: str
     path: Path
+
+
+@dataclass(frozen=True, slots=True)
+class PrunePlan:
+    orphan_profile_dirs: list[Path]
+    stale_hash_files: list[Path]
+    aged_files: list[Path]
+
+    def total_count(self) -> int:
+        return len(self.orphan_profile_dirs) + len(self.stale_hash_files) + len(self.aged_files)
+
+    def total_bytes(self) -> int:
+        total = 0
+        for d in self.orphan_profile_dirs:
+            for f in d.rglob("*"):
+                if f.is_file():
+                    total += f.stat().st_size
+        for f in (*self.stale_hash_files, *self.aged_files):
+            if f.exists():
+                total += f.stat().st_size
+        return total
 
 
 @dataclass(frozen=True, slots=True)
@@ -121,3 +145,109 @@ class CacheStore:
     def _validate_profile(profile: str) -> None:
         if not _PROFILE_RE.match(profile):
             raise ValueError(f"invalid profile name {profile!r}: must match {_PROFILE_RE.pattern}")
+
+
+_ADHOC_PROFILE = "adhoc"  # runtime.py sentinel for env-var-only invocations; never prune.
+
+
+def _find_orphan_dirs(entries: list[CacheEntry], profile_names: set[str]) -> list[Path]:
+    """Type A: return one Path per profile directory not in config (adhoc excluded)."""
+    orphan_dirs: list[Path] = []
+    seen_dirs: set[Path] = set()
+    for entry in entries:
+        if entry.profile == _ADHOC_PROFILE or entry.profile in profile_names:
+            continue
+        d = entry.path.parent
+        if d not in seen_dirs:
+            seen_dirs.add(d)
+            orphan_dirs.append(d)
+    return orphan_dirs
+
+
+def _find_stale_files(
+    entries: list[CacheEntry],
+    profile_names: set[str],
+    config: Config,
+    fetch_live_hash: Callable[[Profile], str],
+) -> list[Path]:
+    """Type B: return files whose hash doesn't match the live hash; skip on fetcher error."""
+    stale_files: list[Path] = []
+    for name in profile_names:
+        try:
+            live_hash = fetch_live_hash(config.profiles[name])
+        except Exception:  # tolerated per-profile; caller skips unreachable instances
+            continue
+        for entry in entries:
+            if entry.profile == name and entry.schema_hash != live_hash:
+                stale_files.append(entry.path)
+    return stale_files
+
+
+def _find_aged_files(
+    entries: list[CacheEntry],
+    orphan_dirs: list[Path],
+    cutoff: float,
+) -> list[Path]:
+    """Type C: return files older than `cutoff`, excluding those inside orphan dirs."""
+    orphan_paths = set(orphan_dirs)
+    aged: list[Path] = []
+    for entry in entries:
+        if entry.path.parent in orphan_paths:
+            continue
+        try:
+            mtime = entry.path.stat().st_mtime
+        except FileNotFoundError:
+            continue
+        if mtime < cutoff:
+            aged.append(entry.path)
+    return aged
+
+
+def compute_prune_plan(
+    *,
+    config: Config,
+    store: CacheStore,
+    fetch_live_hash: Callable[[Profile], str] | None = None,
+    max_age_days: int | None = None,
+    now: float | None = None,
+) -> PrunePlan:
+    """Classify cache entries into the three prune categories.
+
+    Type A (orphan_profile_dirs): a profile directory whose name is not in
+    `config.profiles` (and is not the `adhoc` sentinel).
+
+    Type B (stale_hash_files): for an *active* profile, files whose
+    `<schema_hash>` does not match the live schema's current hash.
+    Requires `fetch_live_hash`. If the fetcher raises for a given profile,
+    type B is silently skipped for that profile only.
+
+    Type C (aged_files): files whose mtime is older than `max_age_days`.
+    Independent of A and B but deduplicated against A: a file inside an
+    orphan profile dir is reported under A only (the rmtree handles it).
+    """
+    entries = store.enumerate_caches()
+    profile_names = set(config.profiles.keys())
+
+    orphan_dirs = _find_orphan_dirs(entries, profile_names)
+
+    stale_files = (
+        _find_stale_files(entries, profile_names, config, fetch_live_hash)
+        if fetch_live_hash is not None
+        else []
+    )
+
+    aged = (
+        _find_aged_files(
+            entries,
+            orphan_dirs,
+            (now if now is not None else time.time()) - max_age_days * 86400,
+        )
+        if max_age_days is not None
+        else []
+    )
+
+    return PrunePlan(
+        orphan_profile_dirs=orphan_dirs,
+        stale_hash_files=stale_files,
+        aged_files=aged,
+    )
