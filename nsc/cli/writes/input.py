@@ -21,6 +21,7 @@ _FILE_SIZE_CAP_BYTES = 10 * 1024 * 1024
 _SUPPORTED_EXTENSIONS = frozenset({".yaml", ".yml", ".json", ".ndjson", ".jsonl"})
 _NDJSON_BAD_LINE_CAP = 20
 _BOM = "﻿"
+_STDIN_SNIFF_BYTES = 512
 
 
 def _safe_load(text: str) -> Any:
@@ -177,7 +178,66 @@ def _parse_ndjson(text: str) -> list[dict[str, Any]]:
 
 def _parse_stdin(stream: TextIO) -> tuple[list[dict[str, Any]], bool]:
     text = stream.read()
-    return _parse_text(text, hint=None)
+    if not text.strip():
+        raise InputError("stdin is empty; nothing to apply")
+    return _parse_text(text, hint=_sniff_stdin_format(text))
+
+
+def _sniff_stdin_format(text: str) -> str | None:
+    """Inspect the first ~512 chars and return a parser hint.
+
+    Returns:
+      - "ndjson"        → all-or-nothing NDJSON parser
+      - "json_or_yaml"  → strict JSON first, YAML fallback (preserves flow-YAML)
+      - None            → YAML (which also accepts JSON)
+    """
+    prefix = text[:_STDIN_SNIFF_BYTES]
+    stripped = prefix.lstrip()
+    if not stripped:
+        return None
+    first = stripped[0]
+    if first == "[":
+        return "json_or_yaml"
+    if first != "{":
+        return None
+    return _classify_brace_start(stripped)
+
+
+def _classify_brace_start(stripped: str) -> str:
+    """Walk the first JSON object in `stripped` to decide single vs NDJSON.
+
+    If the first complete object is followed by any non-whitespace content,
+    we treat the input as NDJSON (even if the next "line" is not valid JSON —
+    the NDJSON parser will collect those as bad_lines and raise NDJSONParseError).
+    """
+    depth = 0
+    in_string = False
+    escape = False
+    for i, ch in enumerate(stripped):
+        if escape:
+            escape = False
+            continue
+        if ch == "\\" and in_string:
+            escape = True
+            continue
+        if ch == '"':
+            in_string = not in_string
+            continue
+        if in_string:
+            continue
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                rest = stripped[i + 1 :]
+                if rest.strip():
+                    # Any non-whitespace after the first object → NDJSON.
+                    return "ndjson"
+                # Nothing follows → single object.
+                return "json_or_yaml"
+    # Buffer ended mid-object; default to JSON-or-YAML.
+    return "json_or_yaml"
 
 
 def _decode_utf8(raw: bytes, path: Path) -> str:
@@ -191,15 +251,16 @@ def _decode_utf8(raw: bytes, path: Path) -> str:
 
 
 def _parse_text(text: str, *, hint: str | None) -> tuple[list[dict[str, Any]], bool]:
-    stripped = text.lstrip()
+    if hint == "ndjson":
+        return _parse_ndjson(text), True
     if hint == ".json":
+        # File-extension was .json; require strict JSON, no YAML fallback.
         try:
             parsed = json.loads(text)
         except json.JSONDecodeError as exc:
             raise InputError(f"could not parse JSON input: {exc}") from exc
-    elif hint is None and stripped.startswith(("{", "[")):
-        # Sniffed JSON-shape on stdin; try strict JSON first, fall back to YAML
-        # so flow-style YAML (e.g. `{name: foo}`) still parses.
+    elif hint == "json_or_yaml" or (hint is None and text.lstrip().startswith(("{", "["))):
+        # Stdin sniffer hint OR legacy fallback: try JSON first, then YAML.
         try:
             parsed = json.loads(text)
         except json.JSONDecodeError:

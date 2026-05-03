@@ -29,7 +29,7 @@ from nsc.cli.writes.confirmation import (
     refuse_unknown_on_error,
     refuse_unsupported_bulk,
 )
-from nsc.cli.writes.input import InputError, RawWriteInput
+from nsc.cli.writes.input import InputError, NDJSONParseError, RawWriteInput
 from nsc.cli.writes.input import collect as collect_input
 from nsc.cli.writes.preflight import PreflightResult
 from nsc.cli.writes.preflight import check as preflight_check
@@ -43,6 +43,7 @@ from nsc.output.errors import (
     ErrorEnvelope,
     ErrorType,
     client_envelope,
+    input_error_envelope,
     summary_envelope,
 )
 from nsc.output.explain import (
@@ -312,6 +313,14 @@ def _handle_write(
         )
     except ClientError as exc:
         code = emit_envelope(exc.envelope, output_format=ctx.output_format)
+        raise typer.Exit(code) from exc
+    except NDJSONParseError as exc:
+        env = input_error_envelope(
+            message=str(exc),
+            bad_lines=exc.bad_lines,
+            operation_id=operation.operation_id,
+        )
+        code = emit_envelope(env, output_format=ctx.output_format)
         raise typer.Exit(code) from exc
     except InputError as exc:
         env = client_envelope(str(exc), operation_id=operation.operation_id)
