@@ -147,7 +147,9 @@ class CacheStore:
             raise ValueError(f"invalid profile name {profile!r}: must match {_PROFILE_RE.pattern}")
 
 
-_ADHOC_PROFILE = "adhoc"  # runtime.py sentinel for env-var-only invocations; never prune.
+ADHOC_PROFILE = "adhoc"
+"""Cache subdirectory name used by `nsc/cli/runtime.py` for env-var-only
+invocations (no profile in config). The prune logic must never delete it."""
 
 
 def _find_orphan_dirs(entries: list[CacheEntry], profile_names: set[str]) -> list[Path]:
@@ -155,7 +157,7 @@ def _find_orphan_dirs(entries: list[CacheEntry], profile_names: set[str]) -> lis
     orphan_dirs: list[Path] = []
     seen_dirs: set[Path] = set()
     for entry in entries:
-        if entry.profile == _ADHOC_PROFILE or entry.profile in profile_names:
+        if entry.profile == ADHOC_PROFILE or entry.profile in profile_names:
             continue
         d = entry.path.parent
         if d not in seen_dirs:
@@ -166,13 +168,12 @@ def _find_orphan_dirs(entries: list[CacheEntry], profile_names: set[str]) -> lis
 
 def _find_stale_files(
     entries: list[CacheEntry],
-    profile_names: set[str],
     config: Config,
     fetch_live_hash: Callable[[Profile], str],
 ) -> list[Path]:
     """Type B: return files whose hash doesn't match the live hash; skip on fetcher error."""
     stale_files: list[Path] = []
-    for name in profile_names:
+    for name in config.profiles:
         try:
             live_hash = fetch_live_hash(config.profiles[name])
         except Exception:  # tolerated per-profile; caller skips unreachable instances
@@ -226,14 +227,11 @@ def compute_prune_plan(
     orphan profile dir is reported under A only (the rmtree handles it).
     """
     entries = store.enumerate_caches()
-    profile_names = set(config.profiles.keys())
 
-    orphan_dirs = _find_orphan_dirs(entries, profile_names)
+    orphan_dirs = _find_orphan_dirs(entries, set(config.profiles.keys()))
 
     stale_files = (
-        _find_stale_files(entries, profile_names, config, fetch_live_hash)
-        if fetch_live_hash is not None
-        else []
+        _find_stale_files(entries, config, fetch_live_hash) if fetch_live_hash is not None else []
     )
 
     aged = (

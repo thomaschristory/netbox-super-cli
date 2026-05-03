@@ -6,7 +6,7 @@ import os
 import time
 from pathlib import Path
 
-from nsc.cache.store import CacheEntry, CacheStore, compute_prune_plan
+from nsc.cache.store import CacheEntry, CacheStore, PrunePlan, compute_prune_plan
 from nsc.config.models import Config, Profile
 
 
@@ -151,6 +151,24 @@ def test_compute_prune_plan_type_c_age_based(tmp_path: Path) -> None:
 
     assert plan.aged_files == [old_path]
     assert new_path not in plan.aged_files
+
+
+def test_prune_plan_total_count_and_total_bytes(tmp_path: Path) -> None:
+    """PrunePlan tallies match the sum across the three categories."""
+    orphan_file = _seed(tmp_path, "removed", "a" * 64)
+    orphan_file.write_text("x" * 100)
+    stale_file = _seed(tmp_path, "prod", "b" * 64)
+    stale_file.write_text("y" * 50)
+
+    plan = PrunePlan(
+        orphan_profile_dirs=[tmp_path / "removed"],
+        stale_hash_files=[stale_file],
+        aged_files=[],
+    )
+
+    assert plan.total_count() == 2
+    # 100 bytes inside the orphan dir + 50 bytes for the stale file.
+    assert plan.total_bytes() == 150
 
 
 def test_compute_prune_plan_dedupes_overlap(tmp_path: Path) -> None:

@@ -15,6 +15,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, HttpUrl, SkipValidation
 
+from nsc.cache.store import ADHOC_PROFILE
 from nsc.config.models import Config, OutputFormat, Profile
 from nsc.config.settings import default_paths
 from nsc.http.client import NetBoxClient
@@ -118,10 +119,7 @@ def _select_base_profile(
 ) -> tuple[Profile | None, str]:
     name = overrides.profile or env.get("NSC_PROFILE") or config.default_profile
     if name is None:
-        # Sentinel used as a cache subdirectory name when no profile is configured
-        # (env-var-only invocations). Must satisfy nsc.cache.store._PROFILE_RE
-        # (alphanumeric-led) since the cache validates this value as a path component.
-        return None, "adhoc"
+        return None, ADHOC_PROFILE
     if name not in config.profiles:
         raise UnknownProfileError(f"profile {name!r} is not defined in ~/.nsc/config.yaml")
     return config.profiles[name], name
