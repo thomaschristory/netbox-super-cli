@@ -19,12 +19,29 @@ def test_verify_happy_path_returns_username_and_version() -> None:
     respx.get("https://nb.example/api/status/").mock(
         return_value=Response(200, json={"netbox-version": "4.5.9"})
     )
-    respx.get("https://nb.example/api/users/users/me/").mock(
-        return_value=Response(200, json={"username": "alice", "id": 1})
+    respx.get("https://nb.example/api/users/tokens/").mock(
+        return_value=Response(
+            200,
+            json={"results": [{"user": {"username": "alice", "id": 1}}]},
+        )
     )
     result = verify(_profile())
     assert isinstance(result, VerifyResult)
     assert result.username == "alice"
+    assert result.netbox_version == "4.5.9"
+
+
+@respx.mock
+def test_verify_returns_unknown_username_when_token_list_is_empty() -> None:
+    """An admin viewing an unusual state may have no tokens visible — don't fail."""
+    respx.get("https://nb.example/api/status/").mock(
+        return_value=Response(200, json={"netbox-version": "4.5.9"})
+    )
+    respx.get("https://nb.example/api/users/tokens/").mock(
+        return_value=Response(200, json={"results": []})
+    )
+    result = verify(_profile())
+    assert result.username == "(unknown)"
     assert result.netbox_version == "4.5.9"
 
 
@@ -35,15 +52,15 @@ def test_verify_raises_on_status_endpoint_4xx() -> None:
         verify(_profile())
     err = excinfo.value
     assert err.status_code == 401
-    assert err.user_check_status is None  # /users/me/ never reached
+    assert err.user_check_status is None  # auth probe never reached
 
 
 @respx.mock
-def test_verify_raises_on_users_me_4xx_after_status_ok() -> None:
+def test_verify_raises_on_token_probe_4xx_after_status_ok() -> None:
     respx.get("https://nb.example/api/status/").mock(
         return_value=Response(200, json={"netbox-version": "4.5.9"})
     )
-    respx.get("https://nb.example/api/users/users/me/").mock(
+    respx.get("https://nb.example/api/users/tokens/").mock(
         return_value=Response(403, json={"detail": "forbidden"})
     )
     with pytest.raises(VerifyError) as excinfo:

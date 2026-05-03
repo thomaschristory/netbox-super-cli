@@ -3,7 +3,11 @@
 `verify(profile)` issues two probes against the candidate NetBox:
 
 * `GET /api/status/` — confirms the URL is a NetBox and reports the version.
-* `GET /api/users/users/me/` — confirms the token is accepted and reports the user.
+* `GET /api/users/tokens/?limit=1` — confirms the token is accepted (the
+  endpoint requires authentication) and the response carries the calling
+  user's identity in `results[0].user.username`. NetBox does not expose a
+  top-level "current user" endpoint, so the token list is the closest signal
+  to "authenticated as <user>".
 
 Both must succeed. Either failure raises `VerifyError`; the caller maps the
 exception to an `auth_error` envelope (`ErrorType.AUTH`, exit 8). Login is not
@@ -35,8 +39,8 @@ class VerifyError(Exception):
     `status_code` is the HTTP status of the failing probe, or `None` when the
     failure was a transport error (connection refused, TLS, DNS, etc.).
     `user_check_status` is set to the same status as `status_code` when the
-    `/api/users/users/me/` probe was the one that failed (i.e. `/api/status/` returned
-    2xx but the token was rejected by the user-info endpoint). This distinguishes
+    auth probe (`/api/users/tokens/`) was the one that failed (i.e. `/api/status/`
+    returned 2xx but the token was rejected). This distinguishes
     "wrong URL / NetBox down" from "URL fine, token rejected".
     """
 
@@ -95,28 +99,41 @@ def _probe_status(client: httpx.Client) -> str:
 
 
 def _probe_users_me(client: httpx.Client) -> str:
+    """Verify the token via `GET /api/users/tokens/?limit=1`.
+
+    NetBox does not expose a top-level "current user" endpoint (`/api/users/me/`
+    and `/api/users/users/me/` both return 404 on 4.5+). The token-list endpoint
+    is authenticated and its response carries a nested `user.username` for each
+    token, which is the closest signal to "authenticated as <user>". A non-admin
+    user only sees their own tokens, so `results[0].user.username` is the
+    calling user's identity in the common case. If the user has no visible
+    tokens (an unusual admin state), we surface "(unknown)" rather than failing.
+    """
     try:
-        response = client.get("/api/users/users/me/")
+        response = client.get("/api/users/tokens/", params={"limit": 1})
     except (httpx.RequestError, OSError) as exc:
-        raise VerifyError(message=f"users/me probe failed: {exc}") from exc
+        raise VerifyError(message=f"token probe failed: {exc}") from exc
     if not response.is_success:
         raise VerifyError(
             message=(
                 f"NetBox accepted the URL but rejected the token "
-                f"(/api/users/users/me/ returned {response.status_code})"
+                f"(/api/users/tokens/ returned {response.status_code})"
             ),
             status_code=response.status_code,
             user_check_status=response.status_code,
         )
     body = _safe_json(response)
-    username = body.get("username") if isinstance(body, dict) else None
-    if not username:
-        raise VerifyError(
-            message="users/me returned no username field",
-            status_code=response.status_code,
-            user_check_status=response.status_code,
-        )
-    return str(username)
+    if not isinstance(body, dict):
+        return "(unknown)"
+    results = body.get("results") or []
+    if not results:
+        return "(unknown)"
+    user = results[0].get("user") if isinstance(results[0], dict) else None
+    if isinstance(user, dict):
+        username = user.get("username")
+        if username:
+            return str(username)
+    return "(unknown)"
 
 
 def _safe_json(response: httpx.Response) -> object:

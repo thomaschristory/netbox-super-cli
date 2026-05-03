@@ -16,8 +16,10 @@ import pytest
 
 
 def _seed_minimal_config(home: Path, name: str, url: str, token: str) -> None:
+    # Quote the token: a numeric-looking string ("0000…") would otherwise be
+    # parsed as an int by YAML and fail Pydantic's `token: str` validation.
     (home / "config.yaml").write_text(
-        f"default_profile: {name}\nprofiles:\n  {name}:\n    url: {url}\n    token: {token}\n",
+        f'default_profile: {name}\nprofiles:\n  {name}:\n    url: {url}\n    token: "{token}"\n',
         encoding="utf-8",
     )
 
@@ -66,9 +68,15 @@ def test_login_rotate_replaces_token_against_live_netbox(
     tmp_nsc_home: Path,
 ) -> None:
     _seed_minimal_config(tmp_nsc_home, "e2e", nsc_url, nsc_token)
-    me = netbox_client.get("/api/users/users/me/")
-    me.raise_for_status()
-    user_id = me.json()["id"]
+    # Identify the calling user via /api/users/tokens/ (no /me/ endpoint exists
+    # on NetBox 4.x). The token list is filtered by the calling user's
+    # visibility, so the first result is reliably the e2e token's owner.
+    tokens = netbox_client.get("/api/users/tokens/", params={"limit": 1})
+    tokens.raise_for_status()
+    token_results = tokens.json().get("results", [])
+    if not token_results:
+        pytest.skip("calling user has no visible tokens; cannot mint a rotation token")
+    user_id = token_results[0]["user"]["id"]
     minted = netbox_client.post(
         "/api/users/tokens/",
         json={"user": user_id, "description": "nsc e2e rotate"},
@@ -89,7 +97,9 @@ def test_login_rotate_replaces_token_against_live_netbox(
         )
         assert result.returncode == 0, result.stdout + result.stderr  # type: ignore[attr-defined]
         body = (tmp_nsc_home / "config.yaml").read_text(encoding="utf-8")
-        assert f"token: {new_token}" in body
+        # Quote style may differ between seeded and rewritten form; check the
+        # raw token string survives in the file and the old one is gone.
+        assert new_token in body
         assert nsc_token not in body
     finally:
         minted_id = minted_payload["id"]
