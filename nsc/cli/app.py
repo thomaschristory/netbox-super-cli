@@ -11,6 +11,7 @@ from typer.main import get_group_from_info
 
 from nsc._version import __version__
 from nsc.cli import (
+    aliases_commands,
     commands_dump,
     config_commands,
     init_commands,
@@ -241,6 +242,7 @@ config_commands.register(app)
 init_commands.register(app)
 login_commands.register(app)
 profiles_commands.register(app)
+aliases_commands.register(app)
 
 
 def main() -> None:
