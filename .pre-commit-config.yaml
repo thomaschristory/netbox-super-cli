@@ -20,7 +20,8 @@ repos:
     rev: v1.20.2
     hooks:
       - id: mypy
-        # Keep this list in sync with [project.dependencies] in pyproject.toml.
+        # Keep this list in sync with [project.dependencies] in pyproject.toml,
+        # plus type stubs for any third-party packages used in scripts/.
         additional_dependencies:
           - pydantic>=2.7
           - typer>=0.12
@@ -29,5 +30,6 @@ repos:
           - "ruamel.yaml>=0.18"
           - structlog>=24.1
           - platformdirs>=4.2
+          - types-PyYAML>=6.0
         args: [--strict]
-        files: ^nsc/
+        files: ^(nsc|scripts)/

@@ -7,14 +7,14 @@ sync:
 
 # Run linters
 lint:
-    uv run ruff check nsc tests
-    uv run ruff format --check nsc tests
-    uv run mypy --strict nsc
+    uv run ruff check nsc tests scripts
+    uv run ruff format --check nsc tests scripts
+    uv run mypy --strict nsc scripts
 
 # Auto-fix lint issues
 fix:
-    uv run ruff check --fix nsc tests
-    uv run ruff format nsc tests
+    uv run ruff check --fix nsc tests scripts
+    uv run ruff format nsc tests scripts
 
 # Run all tests
 test *args:

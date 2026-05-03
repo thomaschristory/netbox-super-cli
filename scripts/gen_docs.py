@@ -47,7 +47,7 @@ _SLOT_VERBS: tuple[tuple[str, str], ...] = (
 def _latest_bundled_schema_path() -> Path:
     manifest = yaml.safe_load(BUNDLED_MANIFEST.read_text())
     entry = manifest["schemas"][-1]
-    return BUNDLED_DIR / entry["file"]
+    return BUNDLED_DIR / str(entry["file"])
 
 
 def _verb_from_operation_id(operation_id: str) -> str:
