@@ -1,4 +1,4 @@
-"""Integration tests for `nsc ls`, `nsc rm`, and `nsc get` aliases."""
+"""Integration tests for `nsc ls`, `nsc rm`, `nsc get`, and `nsc search` aliases."""
 
 from __future__ import annotations
 
@@ -206,3 +206,71 @@ def test_get_by_name_zero_matches_emits_unknown_alias() -> None:
     assert result.exit_code == 14, (result.exit_code, result.stdout)
     payload = json.loads(result.stdout)
     assert payload["details"]["reason"] == "name_not_found"
+
+
+# ---------------------------------------------------------------------------
+# nsc search tests
+# ---------------------------------------------------------------------------
+
+
+def _mock_schema_with_search(respx_mock: Any) -> None:
+    """Same as _mock_schema but injects a /api/search/ GET op into the bundled schema."""
+    bundled = next(Path("nsc/schemas/bundled").glob("*.json*"))
+    raw = (
+        gzip.decompress(bundled.read_bytes())
+        if bundled.name.endswith(".gz")
+        else bundled.read_bytes()
+    )
+    doc = json.loads(raw)
+    doc.setdefault("paths", {})["/api/search/"] = {
+        "get": {
+            "operationId": "core_search",
+            "tags": ["core"],
+            "parameters": [
+                {"name": "q", "in": "query", "required": True, "schema": {"type": "string"}}
+            ],
+            "responses": {"200": {"description": "ok"}},
+        },
+    }
+    body = json.dumps(doc).encode("utf-8")
+    respx_mock.get("https://nb.example/api/schema/?format=json").mock(
+        return_value=httpx.Response(200, content=body, headers={"content-type": "application/json"})
+    )
+
+
+@respx.mock
+def test_search_unavailable_in_schema_emits_unknown_alias() -> None:
+    """When /api/search/ is missing, exit 14 with the search-specific reason."""
+    _mock_schema(respx.mock)
+    result = CliRunner().invoke(app, ["search", "anything", "--output", "json"])
+    assert result.exit_code == 14, (result.exit_code, result.stdout)
+    payload = json.loads(result.stdout)
+    assert payload["type"] == "unknown_alias"
+    assert payload["details"]["reason"] == "search_endpoint_unavailable"
+
+
+@pytest.mark.skip(
+    reason=(
+        "The builder requires >=3 non-empty path segments (api/<tag>/<resource>) "
+        "but /api/search/ has only 2.  The builder must be extended to handle "
+        "2-segment API paths before this test can pass.  Happy path is covered "
+        "by the e2e suite (Task 9)."
+    )
+)
+@respx.mock
+def test_search_with_query_calls_endpoint() -> None:
+    _mock_schema_with_search(respx.mock)
+    route = respx.get("https://nb.example/api/search/", params={"q": "switch01"}).mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "count": 1,
+                "next": None,
+                "previous": None,
+                "results": [{"object_type": "device"}],
+            },
+        )
+    )
+    result = CliRunner().invoke(app, ["search", "switch01", "--output", "json"])
+    assert result.exit_code == 0, (result.stdout, result.stderr)
+    assert route.called

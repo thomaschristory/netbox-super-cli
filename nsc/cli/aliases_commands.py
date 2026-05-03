@@ -230,3 +230,35 @@ def register(app: typer.Typer) -> None:  # noqa: PLR0915
             ctx=runtime,
             id=str(resolved_id),
         )
+
+    @app.command("search", help="Search NetBox via /api/search/?q=<query>.")
+    def search_cmd(
+        ctx: typer.Context,
+        query: Annotated[str, typer.Argument(help="Search query string.")],
+        output: Annotated[str | None, typer.Option("--output", "-o")] = None,
+        compact: Annotated[bool, typer.Option("--compact")] = False,
+        limit: Annotated[int | None, typer.Option("--limit")] = None,
+        all_: Annotated[bool, typer.Option("--all")] = False,
+    ) -> None:
+        runtime = _runtime_from_ctx(ctx)
+        update: dict[str, object] = {
+            "compact": compact,
+            "limit": limit,
+            "fetch_all": all_,
+            "filters": [("q", query)],
+        }
+        if output:
+            update["output_format"] = OutputFormat(output)
+        runtime = runtime.model_copy(update=update)
+
+        result = resolve(AliasVerb.SEARCH, query, runtime.command_model)
+        if isinstance(result, UnknownAlias):
+            env = unknown_alias_envelope(verb="search", term=query, reason=result.reason)
+            raise typer.Exit(_emit_alias_envelope(env, runtime))
+        assert isinstance(result, ResolvedAlias)
+        handle_list(
+            result.operation,
+            op_tag=result.tag,
+            op_resource=result.resource_name,
+            ctx=runtime,
+        )
