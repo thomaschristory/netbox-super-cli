@@ -1,4 +1,4 @@
-"""Integration tests for `nsc ls` and `nsc rm` aliases."""
+"""Integration tests for `nsc ls`, `nsc rm`, and `nsc get` aliases."""
 
 from __future__ import annotations
 
@@ -153,3 +153,56 @@ def test_rm_by_name_multiple_matches_emits_ambiguous_alias() -> None:
     assert payload["type"] == "ambiguous_alias"
     assert payload["details"]["reason"] == "name_matched_multiple"
     assert payload["details"]["matched_ids"] == [1, 2]
+
+
+# ---------------------------------------------------------------------------
+# nsc get tests
+# ---------------------------------------------------------------------------
+
+
+@respx.mock
+def test_get_by_id_numeric_calls_retrieve() -> None:
+    _mock_schema(respx.mock)
+    respx.get("https://nb.example/api/dcim/devices/42/").mock(
+        return_value=httpx.Response(200, json={"id": 42, "name": "alpha"})
+    )
+    result = CliRunner().invoke(app, ["get", "devices", "42", "--output", "json"])
+    assert result.exit_code == 0, (result.stdout, result.stderr)
+    assert json.loads(result.stdout) == {"id": 42, "name": "alpha"}
+
+
+@respx.mock
+def test_get_by_name_dereferences_then_retrieves() -> None:
+    _mock_schema(respx.mock)
+    respx.get("https://nb.example/api/dcim/devices/", params={"name": "alpha"}).mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "count": 1,
+                "next": None,
+                "previous": None,
+                "results": [{"id": 7, "name": "alpha"}],
+            },
+        )
+    )
+    retrieve_route = respx.get("https://nb.example/api/dcim/devices/7/").mock(
+        return_value=httpx.Response(200, json={"id": 7, "name": "alpha"})
+    )
+    result = CliRunner().invoke(app, ["get", "devices", "alpha", "--output", "json"])
+    assert result.exit_code == 0, (result.stdout, result.stderr)
+    assert retrieve_route.called
+    assert json.loads(result.stdout) == {"id": 7, "name": "alpha"}
+
+
+@respx.mock
+def test_get_by_name_zero_matches_emits_unknown_alias() -> None:
+    _mock_schema(respx.mock)
+    respx.get("https://nb.example/api/dcim/devices/", params={"name": "ghost"}).mock(
+        return_value=httpx.Response(
+            200, json={"count": 0, "next": None, "previous": None, "results": []}
+        )
+    )
+    result = CliRunner().invoke(app, ["get", "devices", "ghost", "--output", "json"])
+    assert result.exit_code == 14, (result.exit_code, result.stdout)
+    payload = json.loads(result.stdout)
+    assert payload["details"]["reason"] == "name_not_found"

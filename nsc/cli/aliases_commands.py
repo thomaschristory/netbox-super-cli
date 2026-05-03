@@ -20,7 +20,7 @@ from nsc.aliases import (
     UnknownAlias,
     resolve,
 )
-from nsc.cli.handlers import handle_delete, handle_list
+from nsc.cli.handlers import handle_delete, handle_get, handle_list
 from nsc.cli.runtime import RuntimeContext, emit_envelope
 from nsc.config.models import OutputFormat
 from nsc.http.errors import NetBoxAPIError, NetBoxClientError
@@ -86,7 +86,7 @@ def _dereference_by_name(
     return int(rows[0]["id"])
 
 
-def register(app: typer.Typer) -> None:
+def register(app: typer.Typer) -> None:  # noqa: PLR0915
     @app.command("ls", help="List records on a resource (alias for `<tag> <resource> list`).")
     def ls_cmd(
         ctx: typer.Context,
@@ -174,6 +174,56 @@ def register(app: typer.Typer) -> None:
             resolved_id = outcome
 
         handle_delete(
+            result.operation,
+            op_tag=result.tag,
+            op_resource=result.resource_name,
+            ctx=runtime,
+            id=str(resolved_id),
+        )
+
+    @app.command("get", help="Get one record (alias for `<tag> <resource> get`).")
+    def get_cmd(
+        ctx: typer.Context,
+        term: Annotated[str, typer.Argument(help="Resource name (plural).")],
+        id_or_name: Annotated[str, typer.Argument(help="Numeric id or unique name.")],
+        output: Annotated[str | None, typer.Option("--output", "-o")] = None,
+        compact: Annotated[bool, typer.Option("--compact")] = False,
+        columns: Annotated[str | None, typer.Option("--columns")] = None,
+    ) -> None:
+        runtime = _runtime_from_ctx(ctx)
+        update: dict[str, object] = {
+            "compact": compact,
+            "columns_override": columns.split(",") if columns else None,
+        }
+        if output:
+            update["output_format"] = OutputFormat(output)
+        runtime = runtime.model_copy(update=update)
+
+        result = resolve(AliasVerb.GET, term, runtime.command_model)
+        if isinstance(result, AmbiguousAlias):
+            env = ambiguous_alias_envelope(verb="get", term=term, candidates=result.candidates)
+            raise typer.Exit(_emit_alias_envelope(env, runtime))
+        if isinstance(result, UnknownAlias):
+            env = unknown_alias_envelope(verb="get", term=term, reason=result.reason)
+            raise typer.Exit(_emit_alias_envelope(env, runtime))
+        assert isinstance(result, ResolvedAlias)
+
+        if id_or_name.isdigit():
+            resolved_id = int(id_or_name)
+        else:
+            list_op = runtime.command_model.tags[result.tag].resources[result.resource_name].list_op
+            if list_op is None:
+                env = unknown_alias_envelope(
+                    verb="get", term=term, reason="no_list_op_for_dereference"
+                )
+                raise typer.Exit(_emit_alias_envelope(env, runtime))
+            outcome = _dereference_by_name(runtime, list_op=list_op, name=id_or_name)
+            if isinstance(outcome, ErrorEnvelope):
+                outcome = outcome.model_copy(update={"details": {**outcome.details, "verb": "get"}})
+                raise typer.Exit(_emit_alias_envelope(outcome, runtime))
+            resolved_id = outcome
+
+        handle_get(
             result.operation,
             op_tag=result.tag,
             op_resource=result.resource_name,
