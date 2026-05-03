@@ -12,6 +12,7 @@ from typer.main import get_group, get_group_from_info
 from nsc._version import __version__
 from nsc.cli import (
     aliases_commands,
+    cache_commands,
     commands_dump,
     config_commands,
     init_commands,
@@ -39,7 +40,9 @@ from nsc.schema.source import SchemaSourceError
 _invocation: dict[str, object] = {"runtime": None, "error": None}
 
 # Static subcommands that do not need a profile.
-_META_COMMANDS: frozenset[str] = frozenset({"commands", "config", "init", "login", "profiles"})
+_META_COMMANDS: frozenset[str] = frozenset(
+    {"cache", "commands", "config", "init", "login", "profiles"}
+)
 
 # Populated at module-load time (after all static `register()` calls) so that
 # make_context can tear down dynamically-added commands before each invocation.
@@ -236,7 +239,7 @@ def _root(
     try:
         config = load_config(default_paths().config_file)
     except ConfigParseError as exc:
-        if ctx.invoked_subcommand in ("init", "login", "profiles"):
+        if ctx.invoked_subcommand in ("cache", "init", "login", "profiles"):
             config = Config()
         else:
             typer.echo(f"Error: {exc}", err=True)
@@ -253,6 +256,7 @@ def _root(
         ctx.obj = (state, runtime)
 
 
+cache_commands.register(app)
 commands_dump.register(app)
 config_commands.register(app)
 init_commands.register(app)
