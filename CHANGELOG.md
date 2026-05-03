@@ -4,6 +4,16 @@ All notable changes to netbox-super-cli are tracked here. Format follows [Keep a
 
 ## Unreleased
 
+### Added
+
+- `nsc cache prune` — local cache cleanup tool. Dry-run by default (lists planned deletions and would-free byte total); `--apply` actually deletes. Three classes of orphans: (a) profile directories not in `~/.nsc/config.yaml`, (b) `<schema_hash>.json` files inside an active profile whose hash no longer matches the live schema (skipped per-profile when the profile is offline so a network blip never removes the offline fallback), (c) age-based via `--max-age <days>` (excludes files already covered by rule a). The `adhoc` cache (env-var-only invocations) is never pruned. `--output json` emits a structured envelope; the per-profile fetch timeout is hardcoded at 5s (`_PRUNE_FETCH_TIMEOUT_SECONDS`) so an unreachable profile can't stall cleanup.
+- Smoke test confirming Typer's `--install-completion` and `--show-completion` continue to produce non-empty completion scripts for bash/zsh/fish/pwsh. The static completion contract (`Typer(name="nsc", add_completion=True)` in `nsc/cli/app.py`) is now lint-locked. Dynamic-value completion remains a post-1.0 backlog item.
+
+### Changed
+
+- `_META_COMMANDS` includes `cache`, so `nsc cache prune` runs without a parseable `~/.nsc/config.yaml` (cleanup must work even when the config is broken — that's the whole point).
+- `ADHOC_PROFILE = "adhoc"` is now a public constant on `nsc/cache/store.py`; `nsc/cli/runtime.py` imports it instead of duplicating the literal. The two sites had to agree forever; now they do by construction.
+
 ## v0.4.0-phase4 — Phase 4d — NDJSON input + audit redaction · 2026-05-03
 
 Final sub-phase of Phase 4. Closes the bulk-input story with NDJSON file/stdin parsing and gives `audit.jsonl` body-aware redaction so the on-disk artifact downgrades from `.env`-grade to "confidential."

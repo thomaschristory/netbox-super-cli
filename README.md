@@ -103,6 +103,36 @@ uv run nsc commands --schema nsc/schemas/bundled/netbox-4.6.0-beta2.json.gz --ou
 uv run nsc commands --schema https://netbox.example.com/api/schema/?format=json --output json
 ```
 
+## Cache management
+
+The on-disk command-model cache lives at `~/.nsc/cache/<profile>/<schema-hash>.json` and is regenerated automatically when the live NetBox schema changes. Over time, removed profiles or upgraded NetBox versions can leave orphan entries behind.
+
+```sh
+nsc cache prune                          # show what would be deleted (dry-run)
+nsc cache prune --apply                  # actually delete
+nsc cache prune --max-age 30 --apply     # also delete cache files older than 30 days
+nsc cache prune --output json            # structured envelope for scripts
+```
+
+What gets pruned:
+
+1. Cache directories for profiles that are no longer in your config.
+2. Cache files whose schema-hash differs from the live NetBox schema (skipped per-profile when offline).
+3. With `--max-age <days>`: cache files older than the threshold (excludes files already covered by rule 1).
+
+The `adhoc` cache directory (used by env-var-only invocations like `NSC_URL=… nsc dcim devices list`) is never pruned automatically.
+
+## Shell completion
+
+`nsc` ships static completion stubs that complete subcommands and option names.
+
+```sh
+nsc --install-completion         # auto-detects $SHELL
+nsc --show-completion            # prints the script instead of installing
+```
+
+Typer supports `bash`, `zsh`, `fish`, and `pwsh`. Completion of dynamic values (resource names, profile names, filter keys) is on the post-1.0 roadmap.
+
 ## License
 
 Apache 2.0.
