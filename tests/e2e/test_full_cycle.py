@@ -37,6 +37,22 @@ def _audit_line_count(home: Path) -> int:
     return sum(1 for line in audit.read_text(encoding="utf-8").splitlines() if line.strip())
 
 
+def _last_audit_line(home: Path) -> dict[str, object]:
+    audit = home / "logs" / "audit.jsonl"
+    lines = [ln for ln in audit.read_text(encoding="utf-8").splitlines() if ln.strip()]
+    return json.loads(lines[-1])
+
+
+_E2E_VOLATILE_FIELDS = {"timestamp", "duration_ms", "attempt_n", "response"}
+
+
+def _write_tag_yaml_with_name(tmp_path: Path, *, name: str, slug: str) -> Path:
+    body = f"name: {name}\nslug: {slug}\n"
+    target = tmp_path / f"{slug}.yaml"
+    target.write_text(body, encoding="utf-8")
+    return target
+
+
 def test_full_lifecycle_list_create_delete(
     run_nsc,
     netbox_client: httpx.Client,
@@ -82,15 +98,58 @@ def test_full_lifecycle_list_create_delete(
     assert len(listing) == 1
     assert listing[0]["id"] == tag_id
 
+    # Step 4b: ls alias produces the same wire shape as the dynamic-tree list.
+    # The alias takes the resource name only (a plural terminal segment).
+    r_alias = run_nsc("ls", "tags", "--output", "json")
+    assert r_alias.returncode == 0, r_alias.stderr
+    listing_alias = json.loads(r_alias.stdout)
+    assert len(listing_alias) == 1
+    assert listing_alias[0]["id"] == tag_id
+
     # Step 5: delete dry-run — must not actually delete
     r = run_nsc("extras", "tags", "delete", str(tag_id), "--output", "json")
     assert r.returncode == 0, r.stderr
     assert netbox_client.get(f"/api/extras/tags/{tag_id}/").status_code == 200
 
-    # Step 6: delete --apply
-    r = run_nsc("extras", "tags", "delete", str(tag_id), "--apply", "--output", "json")
+    # Step 6 (was: full-path delete --apply): use the alias form. Same exit code,
+    # same wire shape, same audit shape as the dynamic-tree delete.
+    r = run_nsc("rm", "tags", str(tag_id), "--apply", "--output", "json")
     assert r.returncode == 0, r.stderr
     assert netbox_client.get(f"/api/extras/tags/{tag_id}/").status_code == 404
+
+    # Step 6b: audit-identity check against a freshly-created second tag deleted
+    # via the dynamic-tree path. Both audit entries should match modulo
+    # timestamp / duration / response.
+    second_payload = _write_tag_yaml_with_name(tmp_path, name="phase-4c-tag2", slug="phase-4c-tag2")
+    r = run_nsc(
+        "extras", "tags", "create", "-f", str(second_payload), "--apply", "--output", "json"
+    )
+    assert r.returncode == 0, r.stderr
+    second_id = json.loads(r.stdout)["id"]
+    r = run_nsc("extras", "tags", "delete", str(second_id), "--apply", "--output", "json")
+    assert r.returncode == 0, r.stderr
+    full_path_audit = _last_audit_line(tmp_nsc_home)
+
+    # Find the alias-rm line: applied=true and url containing the first tag_id.
+    audit_lines = (tmp_nsc_home / "logs" / "audit.jsonl").read_text(encoding="utf-8").splitlines()
+    audit_lines = [ln for ln in audit_lines if ln.strip()]
+    alias_audit = next(
+        json.loads(ln)
+        for ln in audit_lines
+        if json.loads(ln).get("applied") is True
+        and str(tag_id) in str(json.loads(ln).get("url", ""))
+    )
+
+    def _strip(entry: dict[str, object]) -> dict[str, object]:
+        # url + record_indices differ (different ids); request body too. The
+        # remaining shape — operation_id, method, applied, dry_run,
+        # preflight_blocked, redacted headers — must match.
+        drop = _E2E_VOLATILE_FIELDS | {"url", "record_indices", "request"}
+        return {k: v for k, v in entry.items() if k not in drop}
+
+    assert _strip(alias_audit) == _strip(full_path_audit), (alias_audit, full_path_audit)
+    assert alias_audit["operation_id"] == full_path_audit["operation_id"]
+    assert alias_audit["method"] == full_path_audit["method"]
 
     # Step 7: delete --apply again — default = exit 0 with already_absent
     r = run_nsc("extras", "tags", "delete", str(tag_id), "--apply", "--output", "json")

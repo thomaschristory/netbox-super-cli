@@ -77,6 +77,7 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = [
     "PLR2004",           # magic values in tests are fine (status codes, expected values)
+    "PLR0915",           # e2e lifecycle tests legitimately need many statements
     "S101",              # asserts are how pytest works
 ]
 
