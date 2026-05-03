@@ -29,6 +29,8 @@ class ErrorType(StrEnum):
     CONFIG = "config"
     CLIENT = "client"
     INTERNAL = "internal"
+    AMBIGUOUS_ALIAS = "ambiguous_alias"
+    UNKNOWN_ALIAS = "unknown_alias"
 
 
 EXIT_CODES: dict[ErrorType, int] = {
@@ -43,6 +45,8 @@ EXIT_CODES: dict[ErrorType, int] = {
     ErrorType.CONFLICT: 10,
     ErrorType.RATE_LIMITED: 11,
     ErrorType.CONFIG: 12,
+    ErrorType.AMBIGUOUS_ALIAS: 13,
+    ErrorType.UNKNOWN_ALIAS: 14,
 }
 
 
@@ -138,6 +142,68 @@ def client_envelope(
     )
 
 
+_VERB_TO_FULL_PATH_VERB: dict[str, str] = {
+    "ls": "list",
+    "get": "get",
+    "rm": "delete",
+    "search": "search",  # unused — search has no full-path equivalent
+}
+
+
+def ambiguous_alias_envelope(
+    *,
+    verb: str,
+    term: str,
+    candidates: list[tuple[str, str]],
+) -> ErrorEnvelope:
+    """Build the envelope for an alias term that resolves to ≥2 resources.
+
+    `candidates` is a list of `(tag, resource)` pairs; the envelope renders
+    them as a list of `{"tag": ..., "resource": ...}` objects so JSON
+    consumers don't have to parse positional pairs.
+    """
+    rendered = [{"tag": t, "resource": r} for t, r in candidates]
+    pretty = ", ".join(f"`{t} {r}`" for t, r in candidates)
+    return ErrorEnvelope(
+        error=(
+            f"`nsc {verb} {term}` is ambiguous — matches: {pretty}. "
+            f"Use the full path: `nsc <tag> <resource> {_VERB_TO_FULL_PATH_VERB[verb]}`."
+        ),
+        type=ErrorType.AMBIGUOUS_ALIAS,
+        details={"verb": verb, "term": term, "candidates": rendered},
+    )
+
+
+def unknown_alias_envelope(
+    *,
+    verb: str,
+    term: str,
+    reason: str = "no_such_resource",
+) -> ErrorEnvelope:
+    """Build the envelope for an alias term that resolves to zero resources.
+
+    `reason="no_such_resource"` is the standard ls/get/rm case; the message
+    suggests `nsc commands` for resource discovery. `reason="search_endpoint_unavailable"`
+    is the search-specific case (schema does not expose `/api/search/`); the
+    message must not suggest `nsc commands` since that wouldn't help.
+    """
+    if reason == "search_endpoint_unavailable":
+        message = (
+            "this NetBox schema does not expose `/api/search/`; "
+            "`nsc search` is unavailable for this server"
+        )
+    else:
+        message = (
+            f"unknown resource `{term}` for `nsc {verb}`; "
+            f"run `nsc commands` to list known resources"
+        )
+    return ErrorEnvelope(
+        error=message,
+        type=ErrorType.UNKNOWN_ALIAS,
+        details={"verb": verb, "term": term, "reason": reason},
+    )
+
+
 ERROR_TYPE_PRECEDENCE: list[ErrorType] = [
     ErrorType.INTERNAL,
     ErrorType.TRANSPORT,
@@ -150,6 +216,8 @@ ERROR_TYPE_PRECEDENCE: list[ErrorType] = [
     ErrorType.CLIENT,
     ErrorType.SCHEMA,
     ErrorType.CONFIG,
+    ErrorType.AMBIGUOUS_ALIAS,
+    ErrorType.UNKNOWN_ALIAS,
 ]
 """Strict ordering for picking a single exit code from a mixed-failure run.
 
@@ -240,10 +308,12 @@ __all__ = [
     "ErrorEnvelope",
     "ErrorType",
     "RenderTarget",
+    "ambiguous_alias_envelope",
     "client_envelope",
     "render_to_json",
     "render_to_rich_stderr",
     "select_render_target",
     "summary_envelope",
+    "unknown_alias_envelope",
     "worst_error_type",
 ]

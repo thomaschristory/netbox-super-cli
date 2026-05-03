@@ -37,6 +37,8 @@ def test_error_type_values_are_lowercase_strings() -> None:
         "config",
         "client",
         "internal",
+        "ambiguous_alias",
+        "unknown_alias",
     }
     assert {e.value for e in ErrorType} == expected
 
@@ -54,6 +56,8 @@ def test_exit_codes_match_spec_table() -> None:
         ErrorType.RATE_LIMITED: 11,
         ErrorType.CONFIG: 12,
         ErrorType.INTERNAL: 1,
+        ErrorType.AMBIGUOUS_ALIAS: 13,
+        ErrorType.UNKNOWN_ALIAS: 14,
     }
 
 
@@ -156,6 +160,8 @@ def test_error_type_precedence_is_complete_and_ordered() -> None:
         ErrorType.CLIENT,
         ErrorType.SCHEMA,
         ErrorType.CONFIG,
+        ErrorType.AMBIGUOUS_ALIAS,
+        ErrorType.UNKNOWN_ALIAS,
     ]
     assert expected == ERROR_TYPE_PRECEDENCE
 
