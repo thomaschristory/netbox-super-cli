@@ -91,7 +91,15 @@ def test_login_rotate_replaces_token_against_live_netbox(
         )
     minted.raise_for_status()
     minted_payload = minted.json()
-    new_token = minted_payload["key"]
+    # NetBox's Token response exposes the plaintext in `token`; `key` is the
+    # v2 identification key (readOnly hash digest, nullable for v1). For v1
+    # tokens the `token` field is what authenticates.
+    new_token = minted_payload.get("token") or minted_payload.get("key")
+    if not new_token:
+        pytest.skip(
+            f"this NetBox build did not return a usable token in the mint "
+            f"response (keys={list(minted_payload.keys())})"
+        )
 
     try:
         result = run_nsc(
