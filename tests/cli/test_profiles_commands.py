@@ -31,7 +31,7 @@ def _good_status() -> None:
     respx.get("https://nb.example/api/status/").mock(
         return_value=Response(200, json={"netbox-version": "4.5.9"})
     )
-    respx.get("https://nb.example/api/users/me/").mock(
+    respx.get("https://nb.example/api/users/users/me/").mock(
         return_value=Response(200, json={"username": "alice"})
     )
 

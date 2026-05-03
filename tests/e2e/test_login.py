@@ -66,7 +66,7 @@ def test_login_rotate_replaces_token_against_live_netbox(
     tmp_nsc_home: Path,
 ) -> None:
     _seed_minimal_config(tmp_nsc_home, "e2e", nsc_url, nsc_token)
-    me = netbox_client.get("/api/users/me/")
+    me = netbox_client.get("/api/users/users/me/")
     me.raise_for_status()
     user_id = me.json()["id"]
     minted = netbox_client.post(
@@ -102,7 +102,7 @@ def test_login_with_bad_token_returns_auth_envelope(
     tmp_nsc_home: Path,
 ) -> None:
     _seed_minimal_config(tmp_nsc_home, "e2e", nsc_url, "0" * 40)
-    result = run_nsc("login", "--profile", "e2e", "--output", "json")
+    result = run_nsc("login", "--profile", "e2e")
     assert result.returncode == 8, result.stdout + result.stderr  # type: ignore[attr-defined]
     payload_text = result.stdout.strip() or result.stderr.strip()  # type: ignore[attr-defined]
     payload = json.loads(payload_text.splitlines()[-1])

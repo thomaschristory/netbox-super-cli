@@ -3,7 +3,7 @@
 `verify(profile)` issues two probes against the candidate NetBox:
 
 * `GET /api/status/` — confirms the URL is a NetBox and reports the version.
-* `GET /api/users/me/` — confirms the token is accepted and reports the user.
+* `GET /api/users/users/me/` — confirms the token is accepted and reports the user.
 
 Both must succeed. Either failure raises `VerifyError`; the caller maps the
 exception to an `auth_error` envelope (`ErrorType.AUTH`, exit 8). Login is not
@@ -35,7 +35,7 @@ class VerifyError(Exception):
     `status_code` is the HTTP status of the failing probe, or `None` when the
     failure was a transport error (connection refused, TLS, DNS, etc.).
     `user_check_status` is set to the same status as `status_code` when the
-    `/api/users/me/` probe was the one that failed (i.e. `/api/status/` returned
+    `/api/users/users/me/` probe was the one that failed (i.e. `/api/status/` returned
     2xx but the token was rejected by the user-info endpoint). This distinguishes
     "wrong URL / NetBox down" from "URL fine, token rejected".
     """
@@ -96,14 +96,14 @@ def _probe_status(client: httpx.Client) -> str:
 
 def _probe_users_me(client: httpx.Client) -> str:
     try:
-        response = client.get("/api/users/me/")
+        response = client.get("/api/users/users/me/")
     except (httpx.RequestError, OSError) as exc:
         raise VerifyError(message=f"users/me probe failed: {exc}") from exc
     if not response.is_success:
         raise VerifyError(
             message=(
                 f"NetBox accepted the URL but rejected the token "
-                f"(/api/users/me/ returned {response.status_code})"
+                f"(/api/users/users/me/ returned {response.status_code})"
             ),
             status_code=response.status_code,
             user_check_status=response.status_code,

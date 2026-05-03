@@ -19,7 +19,7 @@ def test_verify_happy_path_returns_username_and_version() -> None:
     respx.get("https://nb.example/api/status/").mock(
         return_value=Response(200, json={"netbox-version": "4.5.9"})
     )
-    respx.get("https://nb.example/api/users/me/").mock(
+    respx.get("https://nb.example/api/users/users/me/").mock(
         return_value=Response(200, json={"username": "alice", "id": 1})
     )
     result = verify(_profile())
@@ -43,7 +43,7 @@ def test_verify_raises_on_users_me_4xx_after_status_ok() -> None:
     respx.get("https://nb.example/api/status/").mock(
         return_value=Response(200, json={"netbox-version": "4.5.9"})
     )
-    respx.get("https://nb.example/api/users/me/").mock(
+    respx.get("https://nb.example/api/users/users/me/").mock(
         return_value=Response(403, json={"detail": "forbidden"})
     )
     with pytest.raises(VerifyError) as excinfo:
