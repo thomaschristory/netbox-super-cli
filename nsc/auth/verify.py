@@ -13,8 +13,6 @@ out of `audit.jsonl`. There is no retry loop: a single failed probe fails fast.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-
 import httpx
 from pydantic import BaseModel, ConfigDict
 
@@ -31,7 +29,6 @@ class VerifyResult(BaseModel):
     netbox_version: str
 
 
-@dataclass(frozen=True, slots=True)
 class VerifyError(Exception):
     """Pre-flight verification failed.
 
@@ -43,9 +40,17 @@ class VerifyError(Exception):
     "wrong URL / NetBox down" from "URL fine, token rejected".
     """
 
-    message: str
-    status_code: int | None = None
-    user_check_status: int | None = None
+    def __init__(
+        self,
+        message: str,
+        *,
+        status_code: int | None = None,
+        user_check_status: int | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.message = message
+        self.status_code = status_code
+        self.user_check_status = user_check_status
 
     def __str__(self) -> str:
         return self.message
