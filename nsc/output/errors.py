@@ -146,7 +146,6 @@ _VERB_TO_FULL_PATH_VERB: dict[str, str] = {
     "ls": "list",
     "get": "get",
     "rm": "delete",
-    "search": "search",  # unused — search has no full-path equivalent
 }
 
 
@@ -162,6 +161,11 @@ def ambiguous_alias_envelope(
     them as a list of `{"tag": ..., "resource": ...}` objects so JSON
     consumers don't have to parse positional pairs.
     """
+    if verb not in _VERB_TO_FULL_PATH_VERB:
+        raise ValueError(
+            f"ambiguous_alias_envelope does not support verb={verb!r} "
+            f"(supported: {sorted(_VERB_TO_FULL_PATH_VERB)})"
+        )
     rendered = [{"tag": t, "resource": r} for t, r in candidates]
     pretty = ", ".join(f"`{t} {r}`" for t, r in candidates)
     return ErrorEnvelope(

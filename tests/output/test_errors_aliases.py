@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from nsc.output.errors import (
     EXIT_CODES,
     ErrorEnvelope,
@@ -89,3 +91,13 @@ def test_envelope_renders_through_existing_render_to_json() -> None:
     env = ErrorEnvelope(error="x", type=ErrorType.UNKNOWN_ALIAS)
     payload = json.loads(render_to_json(env))
     assert payload["type"] == "unknown_alias"
+
+
+def test_ambiguous_alias_envelope_rejects_search_verb() -> None:
+    """search is never ambiguous (resolver returns UnknownAlias instead).
+
+    Calling ambiguous_alias_envelope with verb="search" is a programming
+    error, not a runtime path — assert it raises loudly.
+    """
+    with pytest.raises(ValueError, match="search"):
+        ambiguous_alias_envelope(verb="search", term="anything", candidates=[("a", "b")])
