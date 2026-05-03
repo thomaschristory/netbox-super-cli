@@ -4,6 +4,33 @@ All notable changes to netbox-super-cli are tracked here. Format follows [Keep a
 
 ## Unreleased
 
+## v0.4.0-phase4 — Phase 4d — NDJSON input + audit redaction · 2026-05-03
+
+Final sub-phase of Phase 4. Closes the bulk-input story with NDJSON file/stdin parsing and gives `audit.jsonl` body-aware redaction so the on-disk artifact downgrades from `.env`-grade to "confidential."
+
+### Added
+
+- `nsc <tag> <resource> create -f file.ndjson --apply` (and `.jsonl`) — NDJSON file input. One record per line; blank lines skipped. Parse failures collect up to 20 `bad_lines` and abort the entire batch before any wire request fires; the resulting envelope has `type: "input_error"` (new — exit 4, shares with `validation`) and `details.bad_lines = [{"line": int, "reason": str}, ...]`.
+- Stdin sniff: the first 512 bytes' first non-whitespace byte plus a one-object lookahead disambiguates JSON-array (`[`), NDJSON (`{...}` with trailing non-empty content), single JSON object (`{...}EOF`), and YAML (anything else, including `{name: alpha, slug: a}` flow-style YAML which still routes to YAML via the JSON-then-YAML fallback).
+- `ErrorType.INPUT_ERROR` (new) plus `input_error_envelope()` helper in `nsc/output/errors.py`; precedence rank inserted between `AUTH` and `CLIENT`. `NDJSONParseError(InputError)` carrying `bad_lines` and `total_lines` lives in `nsc/cli/writes/input.py`. The handler at `_handle_write` catches `NDJSONParseError` BEFORE `InputError` so the structured envelope wins.
+- Audit-log body redaction. Build-time: `nsc/builder/build.py` walks each operation's request-body schema (resolving `$ref`, recursing into `oneOf`/`anyOf` and arrays of objects, breaking cycles via a `seen` set) and stores dotted JSON paths to sensitive fields on `RequestBodyShape.sensitive_paths: tuple[str, ...]`. A field is sensitive if `format: password` OR the field name (case-insensitive) is in `{password, secret, token, api_key, apikey, private_key, passphrase, client_secret}`. Emit-time: `nsc/http/audit.py` exposes `redact_body(body, sensitive_paths)` (deep-copy, missing keys are no-ops, non-mapping intermediates abort safely, lists redact per element); `_to_dict` applies it to `entry.request_body` before `truncate_body`. The wire body sent to NetBox is unchanged.
+- `AuditEntry.sensitive_paths: tuple[str, ...] = ()` field. `nsc/http/client.py`'s public write methods (`.post`/`.patch`/`.put`/`.delete`) accept the kwarg and thread it through `_send_with_retry` → `_record_attempt` → `AuditEntry`. Both retry branches (success/HTTP-error AND `httpx.RequestError`) propagate the kwarg, so a failed write does NOT unredact the persisted body. `_send_one` and `_emit_dry_run_audit` in `nsc/cli/handlers.py` read `operation.request_body.sensitive_paths` and pass it down.
+- E2E coverage: `tests/e2e/test_ndjson.py` (bulk-create from a real NDJSON file against the live container; parse-failure aborts before any wire request) and `tests/e2e/test_audit_redaction.py` (write a password to a NetBox endpoint, verify the wire body succeeded AND `audit.jsonl` shows `<redacted>` AND the plaintext appears nowhere in the audit text).
+
+### Changed
+
+- `audit.jsonl` sensitivity contract is documented as **confidential**, down from the prior `.env`-grade language. The README's audit section now lists every redaction rule: header-name set, request-body field rules, nested/array recursion, irreversibility on failure, and the wire-body-untouched guarantee.
+- `_SUPPORTED_EXTENSIONS` in `nsc/cli/writes/input.py` extended from `{.yaml, .yml, .json}` to `{.yaml, .yml, .json, .ndjson, .jsonl}`. Existing extension rejection messages now list the expanded set.
+- `_parse_text` learns two new hint values: `"ndjson"` (dispatches to `_parse_ndjson`) and `"json_or_yaml"` (stdin sniff result; tries strict JSON first, falls back to YAML — preserves flow-YAML on stdin). The `.json` file-extension hint remains strict-JSON-only without YAML fallback.
+
+### Notes
+
+- Cache-shape change: `RequestBodyShape` gained one frozen-Pydantic field with a default. The cache is keyed by `schema_hash`, so existing serialized models invalidate naturally on first run after the upgrade. No explicit cache bust needed; if you see a stale-cache symptom delete `~/.nsc/cache/` once.
+- `INPUT_ERROR = "input_error"` shares exit code 4 with `VALIDATION`. `EXIT_CODES` permits multiple keys mapping to the same int; the discriminant is the envelope `type` field, not the exit code.
+- Test counts: ~520 unit tests (up from 475 at v0.4.0c: +4 envelope, +12 NDJSON file, +9 stdin sniffer, +1 handler integration, +9 builder marking, +10 redactor, +1 client threading); 9 e2e tests total (6 from Phase 3 + `test_login.py` from 4b + the two new from 4d).
+- Cold-start benchmark: median 264 ms (vs 260 ms at 4c). The build-time walker is amortized through the cache; per-invocation cost is negligible.
+- Phase 4 is now complete: 4a (config writer foundation, `v0.4.0a`), 4b (onboarding verbs, `v0.4.0b`), 4c (curated aliases, `v0.4.0c`), 4d (NDJSON + audit redaction, `v0.4.0-phase4`). Phase 5 picks up keyring backend, shell completion polish, MkDocs site, PyPI publish, and stricter audit-redaction modes if a real consumer asks.
+
 ## v0.4.0c — Phase 4c — Curated aliases · 2026-05-03
 
 Third sub-phase of Phase 4. Ships the four curated alias verbs (`nsc ls`, `nsc get`, `nsc rm`, `nsc search`) on top of the dynamic command tree, with byte-identical audit lines so downstream consumers cannot tell aliases apart from their full-path equivalents.
