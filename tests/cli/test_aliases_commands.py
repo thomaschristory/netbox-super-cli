@@ -1,4 +1,4 @@
-"""Integration tests for `nsc ls` alias."""
+"""Integration tests for `nsc ls` and `nsc rm` aliases."""
 
 from __future__ import annotations
 
@@ -67,3 +67,89 @@ def test_ls_passes_filters() -> None:
     assert route.called
     last = route.calls.last.request
     assert "site=us-east-1" in str(last.url)
+
+
+# ---------------------------------------------------------------------------
+# nsc rm tests
+# ---------------------------------------------------------------------------
+
+
+@respx.mock
+def test_rm_by_id_numeric_dry_run_does_not_call_delete() -> None:
+    _mock_schema(respx.mock)
+    delete_route = respx.delete("https://nb.example/api/dcim/devices/42/").mock(
+        return_value=httpx.Response(204)
+    )
+    result = CliRunner().invoke(app, ["rm", "devices", "42", "--output", "json"])
+    assert result.exit_code == 0, (result.stdout, result.stderr)
+    assert delete_route.call_count == 0  # dry-run; no wire delete
+
+
+@respx.mock
+def test_rm_by_id_numeric_apply_calls_delete() -> None:
+    _mock_schema(respx.mock)
+    delete_route = respx.delete("https://nb.example/api/dcim/devices/42/").mock(
+        return_value=httpx.Response(204)
+    )
+    result = CliRunner().invoke(app, ["rm", "devices", "42", "--apply", "--output", "json"])
+    assert result.exit_code == 0, (result.stdout, result.stderr)
+    assert delete_route.call_count == 1
+
+
+@respx.mock
+def test_rm_by_name_dereferences_via_list_filter() -> None:
+    _mock_schema(respx.mock)
+    list_route = respx.get("https://nb.example/api/dcim/devices/", params={"name": "alpha"}).mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "count": 1,
+                "next": None,
+                "previous": None,
+                "results": [{"id": 99, "name": "alpha"}],
+            },
+        )
+    )
+    delete_route = respx.delete("https://nb.example/api/dcim/devices/99/").mock(
+        return_value=httpx.Response(204)
+    )
+    result = CliRunner().invoke(app, ["rm", "devices", "alpha", "--apply", "--output", "json"])
+    assert result.exit_code == 0, (result.stdout, result.stderr)
+    assert list_route.called
+    assert delete_route.call_count == 1
+
+
+@respx.mock
+def test_rm_by_name_zero_matches_emits_unknown_alias() -> None:
+    _mock_schema(respx.mock)
+    respx.get("https://nb.example/api/dcim/devices/", params={"name": "ghost"}).mock(
+        return_value=httpx.Response(
+            200, json={"count": 0, "next": None, "previous": None, "results": []}
+        )
+    )
+    result = CliRunner().invoke(app, ["rm", "devices", "ghost", "--apply", "--output", "json"])
+    assert result.exit_code == 14, (result.exit_code, result.stdout)
+    payload = json.loads(result.stdout)
+    assert payload["details"]["reason"] == "name_not_found"
+
+
+@respx.mock
+def test_rm_by_name_multiple_matches_emits_ambiguous_alias() -> None:
+    _mock_schema(respx.mock)
+    respx.get("https://nb.example/api/dcim/devices/", params={"name": "dup"}).mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "count": 2,
+                "next": None,
+                "previous": None,
+                "results": [{"id": 1, "name": "dup"}, {"id": 2, "name": "dup"}],
+            },
+        )
+    )
+    result = CliRunner().invoke(app, ["rm", "devices", "dup", "--apply", "--output", "json"])
+    assert result.exit_code == 13, (result.exit_code, result.stdout)
+    payload = json.loads(result.stdout)
+    assert payload["type"] == "ambiguous_alias"
+    assert payload["details"]["reason"] == "name_matched_multiple"
+    assert payload["details"]["matched_ids"] == [1, 2]

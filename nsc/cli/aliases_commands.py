@@ -20,12 +20,16 @@ from nsc.aliases import (
     UnknownAlias,
     resolve,
 )
-from nsc.cli.handlers import handle_list
+from nsc.cli.handlers import handle_delete, handle_list
 from nsc.cli.runtime import RuntimeContext, emit_envelope
 from nsc.config.models import OutputFormat
+from nsc.http.errors import NetBoxAPIError, NetBoxClientError
+from nsc.model.command_model import Operation
 from nsc.output.errors import (
     ErrorEnvelope,
+    ErrorType,
     ambiguous_alias_envelope,
+    client_envelope,
     unknown_alias_envelope,
 )
 
@@ -42,6 +46,44 @@ def _runtime_from_ctx(ctx: typer.Context) -> RuntimeContext:
 
 def _emit_alias_envelope(env: ErrorEnvelope, ctx: RuntimeContext) -> int:
     return emit_envelope(env, output_format=ctx.output_format)
+
+
+def _dereference_by_name(
+    runtime: RuntimeContext,
+    *,
+    list_op: Operation,
+    name: str,
+) -> int | ErrorEnvelope:
+    """List the resource filtered by `name=<name>` and return the single id.
+
+    Returns an `ErrorEnvelope` (already-shaped ambiguous_alias / unknown_alias)
+    if zero or >=2 records match. Caller emits and exits.
+    """
+    try:
+        rows = list(runtime.client.paginate(list_op.path, {"name": name}))
+    except (NetBoxAPIError, NetBoxClientError) as exc:
+        return client_envelope(
+            f"failed to dereference name {name!r}: {exc}",
+            operation_id=list_op.operation_id,
+        )
+    if len(rows) == 0:
+        return ErrorEnvelope(
+            error=f"no record matched name={name!r}",
+            type=ErrorType.UNKNOWN_ALIAS,
+            details={"verb": "rm", "term": name, "reason": "name_not_found"},
+        )
+    if len(rows) >= 2:  # noqa: PLR2004
+        return ErrorEnvelope(
+            error=f"{len(rows)} records matched name={name!r}; refuse to delete",
+            type=ErrorType.AMBIGUOUS_ALIAS,
+            details={
+                "verb": "rm",
+                "term": name,
+                "reason": "name_matched_multiple",
+                "matched_ids": [row["id"] for row in rows],
+            },
+        )
+    return int(rows[0]["id"])
 
 
 def register(app: typer.Typer) -> None:
@@ -85,4 +127,56 @@ def register(app: typer.Typer) -> None:
             op_tag=result.tag,
             op_resource=result.resource_name,
             ctx=runtime,
+        )
+
+    @app.command("rm", help="Delete one record (alias for `<tag> <resource> delete`).")
+    def rm_cmd(
+        ctx: typer.Context,
+        term: Annotated[str, typer.Argument(help="Resource name (plural).")],
+        id_or_name: Annotated[str, typer.Argument(help="Numeric id or unique name.")],
+        apply: Annotated[bool, typer.Option("--apply", "-a")] = False,
+        explain: Annotated[bool, typer.Option("--explain")] = False,
+        strict: Annotated[bool, typer.Option("--strict")] = False,
+        output: Annotated[str | None, typer.Option("--output", "-o")] = None,
+    ) -> None:
+        runtime = _runtime_from_ctx(ctx)
+        update: dict[str, object] = {
+            "apply": apply,
+            "explain": explain,
+            "strict": strict,
+        }
+        if output:
+            update["output_format"] = OutputFormat(output)
+        runtime = runtime.model_copy(update=update)
+
+        result = resolve(AliasVerb.RM, term, runtime.command_model)
+        if isinstance(result, AmbiguousAlias):
+            env = ambiguous_alias_envelope(verb="rm", term=term, candidates=result.candidates)
+            raise typer.Exit(_emit_alias_envelope(env, runtime))
+        if isinstance(result, UnknownAlias):
+            env = unknown_alias_envelope(verb="rm", term=term, reason=result.reason)
+            raise typer.Exit(_emit_alias_envelope(env, runtime))
+        assert isinstance(result, ResolvedAlias)
+
+        if id_or_name.isdigit():
+            resolved_id = int(id_or_name)
+        else:
+            resource = runtime.command_model.tags[result.tag].resources[result.resource_name]
+            list_op = resource.list_op
+            if list_op is None:
+                env = unknown_alias_envelope(
+                    verb="rm", term=term, reason="no_list_op_for_dereference"
+                )
+                raise typer.Exit(_emit_alias_envelope(env, runtime))
+            outcome = _dereference_by_name(runtime, list_op=list_op, name=id_or_name)
+            if isinstance(outcome, ErrorEnvelope):
+                raise typer.Exit(_emit_alias_envelope(outcome, runtime))
+            resolved_id = outcome
+
+        handle_delete(
+            result.operation,
+            op_tag=result.tag,
+            op_resource=result.resource_name,
+            ctx=runtime,
+            id=str(resolved_id),
         )
