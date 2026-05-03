@@ -156,4 +156,4 @@ def test_resolve_returns_frozen_models() -> None:
     result = resolve(AliasVerb.LS, "devices", model)
     assert isinstance(result, ResolvedAlias)
     with pytest.raises(ValidationError):
-        result.tag = "other"  # type: ignore[misc]
+        result.tag = "other"

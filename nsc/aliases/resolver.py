@@ -22,7 +22,7 @@ class AliasVerb(StrEnum):
 
 
 class _Frozen(BaseModel):
-    model_config = ConfigDict(frozen=True, extra="forbid", arbitrary_types_allowed=True)
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
 
 class ResolvedAlias(_Frozen):
@@ -53,7 +53,6 @@ def resolve(
     verb: AliasVerb, term: str, model: CommandModel
 ) -> ResolvedAlias | AmbiguousAlias | UnknownAlias:
     if verb is AliasVerb.SEARCH:
-        # Implemented in Task 3.
         return _resolve_search(term, model)
     return _resolve_term(verb, term, model)
 
