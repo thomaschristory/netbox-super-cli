@@ -4,6 +4,32 @@ All notable changes to netbox-super-cli are tracked here. Format follows [Keep a
 
 ## Unreleased
 
+## v0.4.0b — Phase 4b — Onboarding verbs · 2026-05-03
+
+Second sub-phase of Phase 4. Ships the onboarding surface (`nsc init`, `nsc login`, `nsc profiles`) on top of the 4a writer, finishes the migration off `pyyaml`, and adds the first e2e coverage for `login` against live NetBox.
+
+### Added
+
+- `nsc init` — first-run wizard. Prompts for profile name, NetBox URL, and token storage mode (plaintext or `!env VARNAME`), then writes a minimal `~/.nsc/config.yaml` via the 4a round-trip writer. Refuses to clobber an existing non-empty config (and a malformed-but-present config is treated as non-empty — refuse, don't overwrite). Offline-safe: `init` does not call `verify()`.
+- `nsc login` — verify / `--new` / `--rotate` (mutually exclusive). Bare `nsc login` (or `--profile <name>`) verifies the named profile against `GET /api/status/` and `GET /api/users/me/`. `--new --profile <name> --url <url>` creates and verifies a new profile (refuses if it exists). `--rotate --profile <name>` prompts for a new token, verifies it, then replaces the stored token. Storage modes: `--store plaintext` (default) writes the raw token; `--store env --env-var NAME` writes `!env NAME`. On success prints `✓ authenticated as <user>, NetBox <ver>`. The cache is never touched by login.
+- `nsc profiles list|add|remove|rename|set-default` — manage profiles non-interactively. `list` prints a table by default with `*` on the default; `--output json` (validated against a strict enum) emits `{"default": ..., "profiles": [{"name": ..., "url": ...}]}` for scripts. `add` is the non-interactive analogue of `login --new`. `remove` refuses to drop the default unless `--force` and purges the profile's cache directory on success. `rename` rebuilds the YAML mapping in place (preserving key order), updates `default_profile` if it pointed at `<old>`, and moves the cache directory. `set-default` rejects unknown names.
+- `nsc/auth/verify.py` — pre-flight `verify(profile)` that issues two probes against the candidate NetBox using a fresh `httpx.Client`. Bypasses `NetBoxClient` deliberately so login attempts stay out of `audit.jsonl` and never retry. `VerifyError` carries `status_code` and `user_check_status` so callers can distinguish "wrong URL / NetBox down" from "URL fine, token rejected"; the latter shows up in the auth envelope as `details.user_check_status`.
+- `CacheStore.move(old, new)` and `CacheStore.purge(profile)` — primitives for the `profiles rename`/`remove` cache hooks. Both validate profile names against `_PROFILE_RE`; `move` raises `FileExistsError` if the target is already populated.
+- E2E: `tests/e2e/test_login.py` covers bare login, `--new`, `--rotate` (mints a fresh token via `POST /api/users/tokens/`, skips if the build doesn't expose token minting), and a bad-token auth-envelope scenario. Gated by `NSC_E2E=1` with the rest of the e2e suite.
+
+### Changed
+
+- `pyyaml` removed from `pyproject.toml` runtime and dev dependencies; `ruamel.yaml` is now the sole YAML implementation across `nsc/config/`, `nsc/output/yaml_.py`, and `nsc/cli/writes/input.py`. The output formatter and input parser use `YAML(typ="safe", pure=True)` (plain mode produces `dict`/`list`, not `CommentedMap`); the config layer continues to use round-trip mode from 4a. `types-pyyaml` dropped from dev deps and from the pre-commit mypy hook's `additional_dependencies`.
+- The root callback's `ConfigParseError` fallback was extended from killing every invocation with exit 2 to letting `init`/`login`/`profiles` proceed with an empty `Config()`. Subcommands then surface their own `config_error` envelopes (or refuse-to-clobber refusals) instead of a generic parse-error message.
+- Auth and config-error paths in `nsc login` (and `nsc profiles`) now route through `emit_envelope` so they honor `--output` and TTY-routing rules — matching every other command's envelope contract. The previous direct `print(render_to_json(...), file=sys.stderr)` was inconsistent with how scripted callers expect failures to render.
+
+### Notes
+
+- The `auth_error` envelope shape is unchanged structurally — `details` is already `dict[str, Any]`, so `details.user_check_status` is documented but not type-versioned.
+- Curated aliases (`nsc ls/get/rm/search`) land in 4c. NDJSON input + body-aware audit redaction land in 4d.
+- Cold-start benchmark: median ~255 ms (well under the 300 ms target; the bench script's stricter 250 ms internal threshold is a soft signal, not a regression).
+- Test counts: 436 unit tests passing (up from 391 at v0.4.0a); 4 new e2e tests gated by `NSC_E2E`.
+
 ## v0.4.0a — Phase 4a — Config writer foundation · 2026-05-03
 
 First sub-phase of Phase 4. Ships the on-disk config write surface (`nsc config get|set|unset|list|edit|path`) on top of `ruamel.yaml`'s round-trip mode. Comments, key order, and `!env` tags survive every read-modify-write cycle. No new onboarding verbs (those land in 4b).
