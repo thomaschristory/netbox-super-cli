@@ -16,6 +16,13 @@ _HASH_RE = re.compile(r"^[0-9a-f]{64}$")
 
 
 @dataclass(frozen=True, slots=True)
+class CacheEntry:
+    profile: str
+    schema_hash: str
+    path: Path
+
+
+@dataclass(frozen=True, slots=True)
 class CacheStore:
     root: Path
 
@@ -80,9 +87,6 @@ class CacheStore:
         if target.exists():
             shutil.rmtree(target)
 
-    def _path_for(self, profile: str, schema_hash: str) -> Path:
-        return self.root / profile / f"{schema_hash}.json"
-
     def enumerate_caches(self) -> list[CacheEntry]:
         """Walk the cache root and return one CacheEntry per valid <profile>/<hash>.json file.
 
@@ -110,14 +114,10 @@ class CacheStore:
                 )
         return entries
 
+    def _path_for(self, profile: str, schema_hash: str) -> Path:
+        return self.root / profile / f"{schema_hash}.json"
+
     @staticmethod
     def _validate_profile(profile: str) -> None:
         if not _PROFILE_RE.match(profile):
             raise ValueError(f"invalid profile name {profile!r}: must match {_PROFILE_RE.pattern}")
-
-
-@dataclass(frozen=True, slots=True)
-class CacheEntry:
-    profile: str
-    schema_hash: str
-    path: Path
