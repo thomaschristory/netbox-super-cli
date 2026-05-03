@@ -39,6 +39,7 @@ def test_error_type_values_are_lowercase_strings() -> None:
         "internal",
         "ambiguous_alias",
         "unknown_alias",
+        "input_error",
     }
     assert {e.value for e in ErrorType} == expected
 
@@ -47,6 +48,7 @@ def test_exit_codes_match_spec_table() -> None:
     assert EXIT_CODES == {
         ErrorType.SCHEMA: 3,
         ErrorType.VALIDATION: 4,
+        ErrorType.INPUT_ERROR: 4,
         ErrorType.SERVER: 5,
         ErrorType.CLIENT: 6,
         ErrorType.TRANSPORT: 7,
@@ -157,6 +159,7 @@ def test_error_type_precedence_is_complete_and_ordered() -> None:
         ErrorType.RATE_LIMITED,
         ErrorType.NOT_FOUND,
         ErrorType.AUTH,
+        ErrorType.INPUT_ERROR,
         ErrorType.CLIENT,
         ErrorType.SCHEMA,
         ErrorType.CONFIG,

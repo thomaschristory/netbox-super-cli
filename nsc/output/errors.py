@@ -31,12 +31,14 @@ class ErrorType(StrEnum):
     INTERNAL = "internal"
     AMBIGUOUS_ALIAS = "ambiguous_alias"
     UNKNOWN_ALIAS = "unknown_alias"
+    INPUT_ERROR = "input_error"
 
 
 EXIT_CODES: dict[ErrorType, int] = {
     ErrorType.INTERNAL: 1,
     ErrorType.SCHEMA: 3,
     ErrorType.VALIDATION: 4,
+    ErrorType.INPUT_ERROR: 4,
     ErrorType.SERVER: 5,
     ErrorType.CLIENT: 6,
     ErrorType.TRANSPORT: 7,
@@ -142,6 +144,25 @@ def client_envelope(
     )
 
 
+def input_error_envelope(
+    *,
+    message: str,
+    bad_lines: list[dict[str, Any]],
+    operation_id: str | None = None,
+) -> ErrorEnvelope:
+    """Build the structured envelope for NDJSON parse failures.
+
+    `bad_lines` is a list of `{"line": int, "reason": str}` dicts. The caller
+    is responsible for capping the list at 20 entries (spec §4.4).
+    """
+    return ErrorEnvelope(
+        error=message,
+        type=ErrorType.INPUT_ERROR,
+        operation_id=operation_id,
+        details={"bad_lines": bad_lines},
+    )
+
+
 _VERB_TO_FULL_PATH_VERB: dict[str, str] = {
     "ls": "list",
     "get": "get",
@@ -217,6 +238,7 @@ ERROR_TYPE_PRECEDENCE: list[ErrorType] = [
     ErrorType.RATE_LIMITED,
     ErrorType.NOT_FOUND,
     ErrorType.AUTH,
+    ErrorType.INPUT_ERROR,
     ErrorType.CLIENT,
     ErrorType.SCHEMA,
     ErrorType.CONFIG,
@@ -314,6 +336,7 @@ __all__ = [
     "RenderTarget",
     "ambiguous_alias_envelope",
     "client_envelope",
+    "input_error_envelope",
     "render_to_json",
     "render_to_rich_stderr",
     "select_render_target",
