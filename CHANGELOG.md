@@ -4,6 +4,10 @@ All notable changes to netbox-super-cli are tracked here. Format follows [Keep a
 
 ## Unreleased
 
+## v0.5.0a — Phase 5a — Cache prune + shell completion · 2026-05-03
+
+First sub-phase of Phase 5 (the v1.0.0 release line). Adds the local cache-cleanup tool the deferred-from-Phase-4 list called for, and locks in static shell completion as a CI contract. Test count: 545 (520 from Phase 4 + 25 new).
+
 ### Added
 
 - `nsc cache prune` — local cache cleanup tool. Dry-run by default (lists planned deletions and would-free byte total); `--apply` actually deletes. Three classes of orphans: (a) profile directories not in `~/.nsc/config.yaml`, (b) `<schema_hash>.json` files inside an active profile whose hash no longer matches the live schema (skipped per-profile when the profile is offline so a network blip never removes the offline fallback), (c) age-based via `--max-age <days>` (excludes files already covered by rule a). The `adhoc` cache (env-var-only invocations) is never pruned. `--output json` emits a structured envelope; the per-profile fetch timeout is hardcoded at 5s (`_PRUNE_FETCH_TIMEOUT_SECONDS`) so an unreachable profile can't stall cleanup.
