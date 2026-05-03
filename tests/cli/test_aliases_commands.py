@@ -213,6 +213,19 @@ def test_get_by_name_zero_matches_emits_unknown_alias() -> None:
 # ---------------------------------------------------------------------------
 
 
+def _read_last_audit_line(home: Path) -> dict[str, object]:
+    audit = home / "logs" / "audit.jsonl"
+    lines = [ln for ln in audit.read_text(encoding="utf-8").splitlines() if ln.strip()]
+    return json.loads(lines[-1])
+
+
+_NORMALIZED_FIELDS = {"timestamp", "duration_ms", "attempt_n"}
+
+
+def _strip_volatile(entry: dict[str, object]) -> dict[str, object]:
+    return {k: v for k, v in entry.items() if k not in _NORMALIZED_FIELDS}
+
+
 def _mock_schema_with_search(respx_mock: Any) -> None:
     """Same as _mock_schema but injects a /api/search/ GET op into the bundled schema."""
     bundled = next(Path("nsc/schemas/bundled").glob("*.json*"))
@@ -266,3 +279,44 @@ def test_search_with_query_calls_endpoint() -> None:
     result = CliRunner().invoke(app, ["search", "switch01", "--output", "json"])
     assert result.exit_code == 0, (result.stdout, result.stderr)
     assert route.called
+
+
+# ---------------------------------------------------------------------------
+# Audit-identity contract (Task 8)
+# ---------------------------------------------------------------------------
+
+
+@respx.mock
+def test_alias_rm_audit_line_byte_equivalent_to_full_path_delete(
+    fixture_profile_yaml: Path,
+) -> None:
+    """The 4c load-bearing contract: alias and full-path produce byte-identical audit lines."""
+    _mock_schema(respx.mock)
+    respx.delete("https://nb.example/api/dcim/devices/42/").mock(return_value=httpx.Response(204))
+
+    home = fixture_profile_yaml  # NSC_HOME from the autouse _profile fixture
+
+    # Full-path invocation.
+    result_full = CliRunner().invoke(
+        app, ["dcim", "devices", "delete", "42", "--apply", "--output", "json"]
+    )
+    assert result_full.exit_code == 0, (result_full.stdout, result_full.stderr)
+    full_path_entry = _read_last_audit_line(home)
+
+    # Truncate audit.jsonl so the next entry is the only one.
+    (home / "logs" / "audit.jsonl").write_text("", encoding="utf-8")
+
+    # Alias invocation.
+    result_alias = CliRunner().invoke(app, ["rm", "devices", "42", "--apply", "--output", "json"])
+    assert result_alias.exit_code == 0, (result_alias.stdout, result_alias.stderr)
+    alias_entry = _read_last_audit_line(home)
+
+    # The contract.
+    assert _strip_volatile(alias_entry) == _strip_volatile(full_path_entry), (
+        alias_entry,
+        full_path_entry,
+    )
+    assert alias_entry["operation_id"] == full_path_entry["operation_id"]
+    assert alias_entry["url"] == full_path_entry["url"]
+    assert alias_entry["method"] == "DELETE"
+    assert alias_entry["applied"] is True
