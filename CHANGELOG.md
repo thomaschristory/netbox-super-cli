@@ -4,6 +4,32 @@ All notable changes to netbox-super-cli are tracked here. Format follows [Keep a
 
 ## Unreleased
 
+## v0.4.0c — Phase 4c — Curated aliases · 2026-05-03
+
+Third sub-phase of Phase 4. Ships the four curated alias verbs (`nsc ls`, `nsc get`, `nsc rm`, `nsc search`) on top of the dynamic command tree, with byte-identical audit lines so downstream consumers cannot tell aliases apart from their full-path equivalents.
+
+### Added
+
+- `nsc ls <resource>` — list a resource by plural name. Term resolved via `nsc/aliases/resolve()` against the in-memory `CommandModel`; case-insensitive equality; plural-only (singular forms emit `unknown_alias`). Delegates to the same `handle_list` the dynamic tree uses.
+- `nsc get <resource> <id|name>` — get one record. Numeric → path-param `id`; non-numeric → list-filter on `name`, error on 0 or ≥2 matches, otherwise call `handle_get` with the resolved id. The dereference list call is a GET and writes no audit entry (consistent with the Phase 3 contract that audit logs only POST/PATCH/PUT/DELETE).
+- `nsc rm <resource> <id|name> --apply` — delete one record. Same id/name dispatch as `get`, plus the `--apply` gating from `handle_delete` (dry-run by default). Wire shape and audit shape are byte-identical to `nsc <tag> <resource> delete <id> --apply` (modulo `timestamp`, `duration_ms`, `attempt_n`).
+- `nsc search <query>` — query `/api/search/?q=<query>` if the schema exposes it. NetBox 4.5+ does; older builds fall through to `unknown_alias` with `details.reason="search_endpoint_unavailable"`.
+- `nsc/aliases/` — new framework-free top-level package. Imports nothing from `nsc/cli`, `nsc/http`, Typer, Rich. Public surface: `AliasVerb`, `ResolvedAlias`, `AmbiguousAlias`, `UnknownAlias`, `resolve()`. Verb-required-op gating (e.g., `rm` ignores resources that lack `delete_op`) happens before ambiguity classification.
+- `ErrorType.AMBIGUOUS_ALIAS` (exit 13) and `ErrorType.UNKNOWN_ALIAS` (exit 14) plus `ambiguous_alias_envelope()` and `unknown_alias_envelope()` helpers in `nsc/output/errors.py`. Existing exit codes 1, 3–12 are unchanged.
+
+### Changed
+
+- `nsc/builder/build.py` — `_resource_from_path` now accepts 2-segment API paths (`/api/search/`, `/api/status/`, `/api/schema/`, `/api/authentication-check/`). Each becomes `model.tags[<name>].resources[<name>]` with a single `list_op`. Previously these were silently dropped, which made `/api/search/` unreachable from the resolver.
+- `nsc/cli/app.py` — `_BootstrappingGroup.make_context` now resets `app.registered_groups` and the Click group's `commands` dict back to the static-commands baseline at the start of every invocation. Without this, dynamic-tree groups accumulated across CliRunner calls in the same process, leaking command state between tests (and, in principle, between invocations of any long-running CLI host).
+
+### Notes
+
+- The audit-identity contract is verified at two levels: a unit test (`tests/cli/test_aliases_commands.py::test_alias_rm_audit_line_byte_equivalent_to_full_path_delete`) using respx, and an e2e step (`tests/e2e/test_full_cycle.py`) creating a parallel tag deleted via the dynamic-tree path and asserting the alias-delete and full-path-delete audit lines match modulo `{timestamp, duration_ms, attempt_n, response, url, record_indices, request}`. The first set is unconditionally volatile; the latter three differ because the parallel tag has a different id.
+- v1 plural-only stance preserved: `nsc ls device` (singular) emits `unknown_alias`, NOT a guess at `devices`. Singular forms may be added in a future phase.
+- NDJSON input + body-aware audit redaction land in 4d (final).
+- Test counts: 475 unit tests passing (up from 436 at v0.4.0b: 9 new error-type tests, 12 new resolver tests, 14 new alias-command tests, 2 new builder tests, plus 2 unit-test adjustments); 1 e2e test extended (`test_full_cycle.py`).
+- Cold-start benchmark: median 260 ms (well under the 300 ms target; the bench script's stricter 250 ms internal threshold is a soft signal, not a regression).
+
 ## v0.4.0b — Phase 4b — Onboarding verbs · 2026-05-03
 
 Second sub-phase of Phase 4. Ships the onboarding surface (`nsc init`, `nsc login`, `nsc profiles`) on top of the 4a writer, finishes the migration off `pyyaml`, and adds the first e2e coverage for `login` against live NetBox.
