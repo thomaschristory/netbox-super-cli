@@ -83,7 +83,41 @@ class CacheStore:
     def _path_for(self, profile: str, schema_hash: str) -> Path:
         return self.root / profile / f"{schema_hash}.json"
 
+    def enumerate_caches(self) -> list[CacheEntry]:
+        """Walk the cache root and return one CacheEntry per valid <profile>/<hash>.json file.
+
+        Silently skips:
+          - Entries in `self.root` that aren't directories.
+          - Directories whose names don't match `_PROFILE_RE`.
+          - Files whose stems don't match `_HASH_RE` or whose suffix isn't `.json`.
+        """
+        if not self.root.exists():
+            return []
+        entries: list[CacheEntry] = []
+        for profile_dir in self.root.iterdir():
+            if not profile_dir.is_dir():
+                continue
+            if not _PROFILE_RE.match(profile_dir.name):
+                continue
+            for cache_file in profile_dir.iterdir():
+                if cache_file.suffix != ".json":
+                    continue
+                stem = cache_file.stem
+                if not _HASH_RE.match(stem):
+                    continue
+                entries.append(
+                    CacheEntry(profile=profile_dir.name, schema_hash=stem, path=cache_file)
+                )
+        return entries
+
     @staticmethod
     def _validate_profile(profile: str) -> None:
         if not _PROFILE_RE.match(profile):
             raise ValueError(f"invalid profile name {profile!r}: must match {_PROFILE_RE.pattern}")
+
+
+@dataclass(frozen=True, slots=True)
+class CacheEntry:
+    profile: str
+    schema_hash: str
+    path: Path
