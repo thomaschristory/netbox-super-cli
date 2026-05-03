@@ -52,6 +52,17 @@ def test_profiles_list_marks_default(home: Path) -> None:
     assert "*" in result.stdout or "(default)" in result.stdout
 
 
+def test_profiles_list_rejects_unknown_output_format(home: Path) -> None:
+    """`--output yaml` (or any non-{table,json}) must error, not silently fall through."""
+    _seed(
+        home,
+        "default_profile: prod\nprofiles:\n  prod: {url: https://nb1/, token: t1}\n",
+    )
+    runner = CliRunner()
+    result = runner.invoke(app, ["profiles", "list", "--output", "yaml"])
+    assert result.exit_code != 0
+
+
 def test_profiles_list_json_output(home: Path) -> None:
     _seed(
         home,

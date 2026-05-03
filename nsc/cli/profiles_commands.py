@@ -8,7 +8,9 @@ cache as the dynamic-tree handlers. `add` runs `verify()` before persisting;
 from __future__ import annotations
 
 import json
+from enum import StrEnum
 from pathlib import Path
+from typing import Annotated
 
 import typer
 from ruamel.yaml.comments import CommentedMap
@@ -26,6 +28,11 @@ from nsc.config.writer import (
     load_round_trip,
 )
 from nsc.output.errors import ErrorEnvelope, ErrorType
+
+
+class _ListFormat(StrEnum):
+    TABLE = "table"
+    JSON = "json"
 
 
 def _config_path() -> Path:
@@ -65,7 +72,10 @@ def register(app: typer.Typer) -> None:
 
     @profiles_app.command("list")
     def list_cmd(
-        output: str = typer.Option("table", "--output", "-o", help="table|json"),
+        output: Annotated[
+            _ListFormat,
+            typer.Option("--output", "-o", help="table|json"),
+        ] = _ListFormat.TABLE,
     ) -> None:
         _do_list(output)
 
@@ -106,14 +116,14 @@ def _load_doc() -> CommentedMap:
     return doc
 
 
-def _do_list(output: str) -> None:
+def _do_list(output: _ListFormat) -> None:
     try:
         config = load_config(_config_path())
     except ConfigParseError as exc:
         code = _emit_config_envelope(str(exc))
         raise typer.Exit(code=code) from exc
 
-    if output == "json":
+    if output is _ListFormat.JSON:
         payload = {
             "default": config.default_profile,
             "profiles": [{"name": p.name, "url": str(p.url)} for p in config.profiles.values()],
