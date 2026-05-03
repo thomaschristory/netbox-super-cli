@@ -10,7 +10,7 @@ from typer.core import TyperGroup
 from typer.main import get_group_from_info
 
 from nsc._version import __version__
-from nsc.cli import commands_dump, config_commands
+from nsc.cli import commands_dump, config_commands, init_commands
 from nsc.cli.globals import GlobalState, build_runtime_context
 from nsc.cli.registration import register_dynamic_commands
 from nsc.cli.runtime import (
@@ -32,7 +32,7 @@ from nsc.schema.source import SchemaSourceError
 _invocation: dict[str, object] = {"runtime": None, "error": None}
 
 # Static subcommands that do not need a profile.
-_META_COMMANDS: frozenset[str] = frozenset({"commands", "config"})
+_META_COMMANDS: frozenset[str] = frozenset({"commands", "config", "init"})
 
 
 def _extract_global_overrides(args: list[str]) -> CLIOverrides:
@@ -229,6 +229,7 @@ def _root(
 
 commands_dump.register(app)
 config_commands.register(app)
+init_commands.register(app)
 
 
 def main() -> None:
