@@ -7,7 +7,7 @@ from typing import Annotated, Any
 import click
 import typer
 from typer.core import TyperGroup
-from typer.main import get_group_from_info
+from typer.main import get_group, get_group_from_info
 
 from nsc._version import __version__
 from nsc.cli import (
@@ -40,6 +40,12 @@ _invocation: dict[str, object] = {"runtime": None, "error": None}
 
 # Static subcommands that do not need a profile.
 _META_COMMANDS: frozenset[str] = frozenset({"commands", "config", "init", "login", "profiles"})
+
+# Populated at module-load time (after all static `register()` calls) so that
+# make_context can tear down dynamically-added commands before each invocation.
+# See the bottom of this module where these are assigned.
+_static_groups_count: int = 0  # sentinel; set after `app` is created
+_static_command_names: frozenset[str] = frozenset()
 
 
 def _extract_global_overrides(args: list[str]) -> CLIOverrides:
@@ -118,6 +124,16 @@ class _BootstrappingGroup(TyperGroup):
     ) -> click.Context:
         _invocation["runtime"] = None
         _invocation["error"] = None
+
+        # Tear down any dynamic commands registered by a previous invocation so
+        # that each call to `app(...)` (e.g. consecutive CliRunner.invoke calls
+        # in tests) starts from a clean static baseline.  Without this, commands
+        # like `dcim` that were registered during an earlier invocation remain in
+        # `self.commands` and bypass the bootstrap-error path of `resolve_command`.
+        del app.registered_groups[_static_groups_count:]
+        for name in list(self.commands):
+            if name not in _static_command_names:
+                del self.commands[name]
 
         subcommand = _first_non_option(args)
 
@@ -243,6 +259,11 @@ init_commands.register(app)
 login_commands.register(app)
 profiles_commands.register(app)
 aliases_commands.register(app)
+
+# Capture the static baseline AFTER all static sub-apps are registered so that
+# make_context can restore this state at the start of every invocation.
+_static_groups_count = len(app.registered_groups)
+_static_command_names = frozenset(get_group(app).commands.keys())
 
 
 def main() -> None:
