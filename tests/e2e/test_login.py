@@ -77,12 +77,18 @@ def test_login_rotate_replaces_token_against_live_netbox(
     if not token_results:
         pytest.skip("calling user has no visible tokens; cannot mint a rotation token")
     user_id = token_results[0]["user"]["id"]
+    # `version: 1` forces v1 (HMAC-only) tokens. v2 tokens require a configured
+    # pepper which the e2e container doesn't set up, and omitting the field can
+    # default to v2 → 500 on mint. Pin to v1 explicitly.
     minted = netbox_client.post(
         "/api/users/tokens/",
-        json={"user": user_id, "description": "nsc e2e rotate"},
+        json={"user": user_id, "description": "nsc e2e rotate", "version": 1},
     )
-    if minted.status_code in (404, 405):
-        pytest.skip("this NetBox build does not expose user-token minting")
+    if minted.status_code in (404, 405, 500):
+        pytest.skip(
+            f"this NetBox build refused user-token minting "
+            f"(status {minted.status_code}); skipping rotate e2e."
+        )
     minted.raise_for_status()
     minted_payload = minted.json()
     new_token = minted_payload["key"]
