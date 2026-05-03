@@ -273,7 +273,6 @@ def prune_orphans(plan: PrunePlan) -> PruneResult:
     for d in plan.orphan_profile_dirs:
         if not d.exists():
             continue
-        # Tally bytes before rmtree so we can report freed.
         for f in d.rglob("*"):
             if f.is_file():
                 with contextlib.suppress(FileNotFoundError):
@@ -284,12 +283,10 @@ def prune_orphans(plan: PrunePlan) -> PruneResult:
     for f in (*plan.stale_hash_files, *plan.aged_files):
         if not f.exists():
             continue
-        try:
+        with contextlib.suppress(FileNotFoundError):
             freed += f.stat().st_size
-        except FileNotFoundError:
-            continue
-        f.unlink()
-        deleted_files += 1
+            f.unlink()
+            deleted_files += 1
 
     return PruneResult(
         deleted_dirs=deleted_dirs,
