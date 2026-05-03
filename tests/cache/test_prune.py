@@ -6,7 +6,7 @@ import os
 import time
 from pathlib import Path
 
-from nsc.cache.store import CacheEntry, CacheStore, PrunePlan, compute_prune_plan
+from nsc.cache.store import CacheEntry, CacheStore, PrunePlan, compute_prune_plan, prune_orphans
 from nsc.config.models import Config, Profile
 
 
@@ -185,3 +185,69 @@ def test_compute_prune_plan_dedupes_overlap(tmp_path: Path) -> None:
     assert plan.orphan_profile_dirs == [tmp_path / "removed"]
     # The file is NOT also listed under aged_files: the directory rmtree handles it.
     assert plan.aged_files == []
+
+
+# ---------------------------------------------------------------------------
+# Task 3: PruneResult + prune_orphans
+# ---------------------------------------------------------------------------
+
+
+def test_prune_orphans_deletes_orphan_profile_dirs(tmp_path: Path) -> None:
+    store = CacheStore(root=tmp_path)
+    _seed(tmp_path, "removed", "a" * 64)
+    _seed(tmp_path, "removed", "b" * 64)
+    config = _config(["prod"])
+
+    plan = compute_prune_plan(config=config, store=store)
+    result = prune_orphans(plan)
+
+    assert not (tmp_path / "removed").exists()
+    assert result.deleted_dirs == 1
+    assert result.deleted_files == 0  # files inside the dir are not counted separately
+
+
+def test_prune_orphans_deletes_stale_hash_files_only(tmp_path: Path) -> None:
+    store = CacheStore(root=tmp_path)
+    p_old = _seed(tmp_path, "prod", "a" * 64)
+    p_new = _seed(tmp_path, "prod", "b" * 64)
+    config = _config(["prod"])
+
+    def fetcher(profile: Profile) -> str:
+        return "b" * 64
+
+    plan = compute_prune_plan(config=config, store=store, fetch_live_hash=fetcher)
+    result = prune_orphans(plan)
+
+    assert not p_old.exists()
+    assert p_new.exists()
+    assert result.deleted_files == 1
+
+
+def test_prune_orphans_returns_freed_bytes(tmp_path: Path) -> None:
+    store = CacheStore(root=tmp_path)
+    p = _seed(tmp_path, "removed", "a" * 64)
+    p.write_text("x" * 100)
+    config = _config(["prod"])
+
+    plan = compute_prune_plan(config=config, store=store)
+    # bytes counted on the plan BEFORE deletion (verifies total_bytes accuracy)
+    assert plan.total_bytes() >= 100
+
+    result = prune_orphans(plan)
+    assert result.freed_bytes >= 100
+
+
+def test_prune_orphans_handles_already_deleted_paths(tmp_path: Path) -> None:
+    """Race-tolerance: if something else deleted a planned file first, do not raise."""
+    store = CacheStore(root=tmp_path)
+    p_old = _seed(tmp_path, "prod", "a" * 64)
+    config = _config(["prod"])
+
+    def fetcher(profile: Profile) -> str:
+        return "b" * 64
+
+    plan = compute_prune_plan(config=config, store=store, fetch_live_hash=fetcher)
+    p_old.unlink()  # external deletion between plan and apply
+
+    result = prune_orphans(plan)
+    assert result.deleted_files == 0  # nothing actually deleted

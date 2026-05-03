@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import re
 import shutil
@@ -44,6 +45,13 @@ class PrunePlan:
             if f.exists():
                 total += f.stat().st_size
         return total
+
+
+@dataclass(frozen=True, slots=True)
+class PruneResult:
+    deleted_dirs: int
+    deleted_files: int
+    freed_bytes: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -248,4 +256,43 @@ def compute_prune_plan(
         orphan_profile_dirs=orphan_dirs,
         stale_hash_files=stale_files,
         aged_files=aged,
+    )
+
+
+def prune_orphans(plan: PrunePlan) -> PruneResult:
+    """Delete every path in the plan; tolerant of paths deleted out-of-band.
+
+    Returns counts + freed bytes for output rendering. Bytes are measured
+    BEFORE deletion using `Path.stat()`; if a file vanished between
+    classification and apply, it contributes 0 bytes and 0 deletions.
+    """
+    deleted_dirs = 0
+    deleted_files = 0
+    freed = 0
+
+    for d in plan.orphan_profile_dirs:
+        if not d.exists():
+            continue
+        # Tally bytes before rmtree so we can report freed.
+        for f in d.rglob("*"):
+            if f.is_file():
+                with contextlib.suppress(FileNotFoundError):
+                    freed += f.stat().st_size
+        shutil.rmtree(d)
+        deleted_dirs += 1
+
+    for f in (*plan.stale_hash_files, *plan.aged_files):
+        if not f.exists():
+            continue
+        try:
+            freed += f.stat().st_size
+        except FileNotFoundError:
+            continue
+        f.unlink()
+        deleted_files += 1
+
+    return PruneResult(
+        deleted_dirs=deleted_dirs,
+        deleted_files=deleted_files,
+        freed_bytes=freed,
     )
