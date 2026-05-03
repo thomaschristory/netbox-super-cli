@@ -22,6 +22,11 @@ from nsc.config.models import Config, Profile
 from nsc.config.settings import default_paths
 from nsc.schema.hashing import canonical_sha256
 
+_PRUNE_FETCH_TIMEOUT_SECONDS = 5.0
+"""Per-profile timeout when fetching the live schema for stale-hash classification.
+Deliberately tighter than `Config.defaults.timeout` (30s): cache prune is a fast
+cleanup tool, and an unreachable profile must not stall the operation."""
+
 
 class _OutputFormat(StrEnum):
     TABLE = "table"
@@ -136,7 +141,7 @@ def register(app: typer.Typer) -> None:
     ) -> None:
         config = _load_config_or_empty()
         store = _store()
-        fetcher = _make_fetcher(default_timeout=5.0)
+        fetcher = _make_fetcher(default_timeout=_PRUNE_FETCH_TIMEOUT_SECONDS)
         plan = compute_prune_plan(
             config=config,
             store=store,
