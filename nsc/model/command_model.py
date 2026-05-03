@@ -66,6 +66,7 @@ class RequestBodyShape(_Frozen):
     top_level: Literal["object", "array", "object_or_array"]
     required: list[str] = Field(default_factory=list)
     fields: dict[str, FieldShape] = Field(default_factory=dict)
+    sensitive_paths: tuple[str, ...] = ()
 
 
 class Operation(_Frozen):

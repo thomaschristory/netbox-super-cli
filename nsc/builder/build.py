@@ -27,6 +27,18 @@ from nsc.schema.models import Operation as SchemaOperation
 from nsc.schema.models import Parameter as SchemaParameter
 
 _PARAM_SEGMENT = re.compile(r"^\{[^}]+\}$")
+_CANONICAL_SENSITIVE_NAMES: frozenset[str] = frozenset(
+    {
+        "password",
+        "secret",
+        "token",
+        "api_key",
+        "apikey",
+        "private_key",
+        "passphrase",
+        "client_secret",
+    }
+)
 _HTTP_METHODS: tuple[tuple[str, HttpMethod], ...] = (
     ("get", HttpMethod.GET),
     ("post", HttpMethod.POST),
@@ -283,7 +295,14 @@ def _to_request_body_shape(
     else:
         required = []
     fields = _flat_fields(schema, doc) if top_level in ("object", "object_or_array") else {}
-    return RequestBodyShape(top_level=top_level, required=required, fields=fields)
+    raw_paths = _collect_sensitive_paths(schema, doc)
+    sensitive_paths = tuple(sorted({".".join(p) for p in raw_paths if p}))
+    return RequestBodyShape(
+        top_level=top_level,
+        required=required,
+        fields=fields,
+        sensitive_paths=sensitive_paths,
+    )
 
 
 def _branch_type(raw: object, doc: OpenAPIDocument) -> str | None:
@@ -376,6 +395,62 @@ def _resolve_ref(schema: SchemaObject, doc: OpenAPIDocument) -> SchemaObject | N
         return None
     name = schema.ref[len(prefix) :]
     return doc.components.schemas.get(name)
+
+
+def _is_sensitive_field(name: str, schema: SchemaObject) -> bool:
+    if name.lower() in _CANONICAL_SENSITIVE_NAMES:
+        return True
+    return getattr(schema, "format", None) == "password"
+
+
+def _collect_sensitive_paths(
+    schema: SchemaObject,
+    doc: OpenAPIDocument,
+    *,
+    prefix: tuple[str, ...] = (),
+    seen: frozenset[str] = frozenset(),
+) -> list[tuple[str, ...]]:
+    """Return all dotted paths to sensitive fields under `schema`.
+
+    `seen` carries already-traversed `$ref` targets to break cycles in
+    self-referential schemas (NetBox has a few via `tags`).
+    """
+    target = _resolve_ref(schema, doc) or schema
+    new_seen = seen
+    if target.ref is not None:
+        if target.ref in seen:
+            return []
+        new_seen = seen | {target.ref}
+    elif schema.ref is not None:
+        if schema.ref in seen:
+            return []
+        new_seen = seen | {schema.ref}
+
+    paths: list[tuple[str, ...]] = []
+
+    if target.type == "object" and target.properties:
+        for name, prop in target.properties.items():
+            child_prefix = (*prefix, name)
+            resolved_prop = _resolve_ref(prop, doc) or prop
+            if _is_sensitive_field(name, resolved_prop):
+                paths.append(child_prefix)
+                continue
+            paths.extend(
+                _collect_sensitive_paths(resolved_prop, doc, prefix=child_prefix, seen=new_seen)
+            )
+
+    if target.type == "array" and target.items is not None:
+        paths.extend(_collect_sensitive_paths(target.items, doc, prefix=prefix, seen=new_seen))
+
+    candidates = (
+        (target.model_extra or {}).get("oneOf") or (target.model_extra or {}).get("anyOf") or []
+    )
+    for raw in candidates:
+        if isinstance(raw, dict):
+            branch = SchemaObject.model_validate(raw)
+            paths.extend(_collect_sensitive_paths(branch, doc, prefix=prefix, seen=new_seen))
+
+    return paths
 
 
 def _record_shape(response_schema: SchemaObject, doc: OpenAPIDocument) -> SchemaObject | None:
