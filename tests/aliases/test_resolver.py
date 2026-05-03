@@ -157,3 +157,42 @@ def test_resolve_returns_frozen_models() -> None:
     assert isinstance(result, ResolvedAlias)
     with pytest.raises(ValidationError):
         result.tag = "other"
+
+
+def test_resolve_search_finds_search_operation() -> None:
+    """When /api/search/ exists in the model, return it as a ResolvedAlias."""
+    search_op = Operation(
+        operation_id="core_search",
+        http_method=HttpMethod.GET,
+        path="/api/search/",
+    )
+    search_resource = Resource(name="search", list_op=search_op)
+    model = _model(Tag(name="core", resources={"search": search_resource}))
+    result = resolve(AliasVerb.SEARCH, "anything", model)
+    assert isinstance(result, ResolvedAlias)
+    assert result.operation.path == "/api/search/"
+    assert result.operation.http_method is HttpMethod.GET
+    assert result.operation.operation_id == "core_search"
+
+
+def test_resolve_search_unknown_when_endpoint_missing() -> None:
+    """No /api/search/ in the model → UnknownAlias with the search-specific reason."""
+    model = _model(Tag(name="dcim", resources={"devices": _devices_resource()}))
+    result = resolve(AliasVerb.SEARCH, "anything", model)
+    assert isinstance(result, UnknownAlias)
+    assert result.reason == "search_endpoint_unavailable"
+
+
+def test_resolve_search_ignores_non_get_search_paths() -> None:
+    """A POST /api/search/ (hypothetical plugin) must NOT match `nsc search`."""
+    bad_op = Operation(
+        operation_id="oddball_search_post",
+        http_method=HttpMethod.POST,
+        path="/api/search/",
+    )
+    model = _model(
+        Tag(name="oddball", resources={"search": Resource(name="search", create_op=bad_op)})
+    )
+    result = resolve(AliasVerb.SEARCH, "anything", model)
+    assert isinstance(result, UnknownAlias)
+    assert result.reason == "search_endpoint_unavailable"

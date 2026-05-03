@@ -11,7 +11,7 @@ from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict
 
-from nsc.model.command_model import CommandModel, Operation, Resource
+from nsc.model.command_model import CommandModel, HttpMethod, Operation, Resource
 
 
 class AliasVerb(StrEnum):
@@ -98,5 +98,15 @@ def _required_op_for(verb: AliasVerb, resource: Resource) -> Operation | None:
 
 
 def _resolve_search(term: str, model: CommandModel) -> ResolvedAlias | UnknownAlias:
-    """Stub for Task 3."""
-    return UnknownAlias(verb=AliasVerb.SEARCH, term=term, reason="search_endpoint_unavailable")
+    for tag_name, resource_name, op in model.iter_operations():
+        if op.path == "/api/search/" and op.http_method is HttpMethod.GET:
+            return ResolvedAlias(
+                tag=tag_name,
+                resource_name=resource_name,
+                operation=op,
+            )
+    return UnknownAlias(
+        verb=AliasVerb.SEARCH,
+        term=term,
+        reason="search_endpoint_unavailable",
+    )
