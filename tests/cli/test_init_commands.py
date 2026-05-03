@@ -60,6 +60,17 @@ def test_init_refuses_to_clobber_existing_config(home: Path) -> None:
     ) == "default_profile: existing\nprofiles: {}\n"
 
 
+def test_init_refuses_to_clobber_malformed_existing_config(home: Path) -> None:
+    """A pre-existing file that fails to parse is still 'present' — refuse, don't clobber."""
+    (home / "config.yaml").write_text("- not\n- a\n- mapping\n", encoding="utf-8")
+    runner = CliRunner()
+    result = runner.invoke(app, ["init"])
+    assert result.exit_code == 12
+    combined = result.stdout + result.stderr
+    assert "already exists" in combined
+    assert (home / "config.yaml").read_text(encoding="utf-8") == "- not\n- a\n- mapping\n"
+
+
 def test_init_treats_empty_existing_config_as_clean(home: Path) -> None:
     (home / "config.yaml").write_text("", encoding="utf-8")
     runner = CliRunner()

@@ -17,6 +17,7 @@ from ruamel.yaml.comments import CommentedMap, TaggedScalar
 
 from nsc.config.settings import default_paths
 from nsc.config.writer import (
+    ConfigWriteError,
     acquire_lock,
     atomic_write,
     dump_round_trip,
@@ -26,6 +27,19 @@ from nsc.config.writer import (
 
 def _config_path() -> Path:
     return default_paths().config_file
+
+
+def _existing_is_empty(path: Path) -> bool:
+    """True only when the file parses as an empty mapping; malformed → False.
+
+    A malformed pre-existing config is more worth refusing to clobber, not less —
+    so any parse failure is treated as 'present and non-empty.'
+    """
+    try:
+        existing = load_round_trip(path)
+    except ConfigWriteError:
+        return False
+    return len(existing) == 0
 
 
 def _build_doc(
@@ -55,15 +69,12 @@ def register(app: typer.Typer) -> None:
     @app.command("init", help="First-run wizard — create ~/.nsc/config.yaml.")
     def init_cmd() -> None:
         path = _config_path()
-        if path.exists():
-            existing = load_round_trip(path)
-            if len(existing) > 0:
-                typer.echo(
-                    f"error: config already exists at {path}; "
-                    f"use `nsc login --new` to add a profile.",
-                    err=True,
-                )
-                raise typer.Exit(code=12)
+        if path.exists() and not _existing_is_empty(path):
+            typer.echo(
+                f"error: config already exists at {path}; use `nsc login --new` to add a profile.",
+                err=True,
+            )
+            raise typer.Exit(code=12)
 
         profile_name = typer.prompt("Profile name", default="default")
         url = typer.prompt("NetBox URL (e.g. https://netbox.example.com/)")

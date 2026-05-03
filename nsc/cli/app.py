@@ -23,7 +23,7 @@ from nsc.cli.runtime import (
 )
 from nsc.config import default_paths
 from nsc.config.loader import ConfigParseError, load_config
-from nsc.config.models import OutputFormat
+from nsc.config.models import Config, OutputFormat
 from nsc.http.errors import NetBoxAPIError, NetBoxClientError
 from nsc.schema.source import SchemaSourceError
 
@@ -213,8 +213,11 @@ def _root(
     try:
         config = load_config(default_paths().config_file)
     except ConfigParseError as exc:
-        typer.echo(f"Error: {exc}", err=True)
-        raise typer.Exit(2) from exc
+        if ctx.invoked_subcommand == "init":
+            config = Config()
+        else:
+            typer.echo(f"Error: {exc}", err=True)
+            raise typer.Exit(2) from exc
 
     state = GlobalState(overrides=overrides, config=config, debug=debug)
     ctx.obj = state
