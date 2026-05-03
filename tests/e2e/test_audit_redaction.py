@@ -25,7 +25,7 @@ def test_user_password_is_redacted_in_audit(
     tmp_path: Path,
 ) -> None:
     """Create a user with a password; the wire body succeeds, the audit shows <redacted>."""
-    plaintext_password = "p4d-redact-" + secrets.token_hex(8)
+    plaintext_password = "P4d-Redact-" + secrets.token_hex(8)
     username = "p4d-redact-" + secrets.token_hex(4)
 
     record = tmp_path / "user.json"
