@@ -2,13 +2,42 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
 
 from nsc.builder.build import build_command_model
 from nsc.model.command_model import HttpMethod, ParameterLocation
-from nsc.schema.loader import load_schema
+from nsc.schema.hashing import canonical_sha256
+from nsc.schema.loader import LoadedSchema, load_schema
+from nsc.schema.models import OpenAPIDocument
+
+
+def _make_loaded_schema(
+    path: str,
+    method: str,
+    operation_id: str,
+    tags: list[str],
+) -> LoadedSchema:
+    """Build a minimal LoadedSchema with a single operation for testing."""
+    doc_dict: dict = {
+        "openapi": "3.0.3",
+        "info": {"title": "Test", "version": "0.0.1"},
+        "paths": {
+            path: {
+                method: {
+                    "operationId": operation_id,
+                    "tags": tags,
+                    "responses": {"200": {"description": "OK"}},
+                }
+            }
+        },
+    }
+    body = json.dumps(doc_dict).encode()
+    h = canonical_sha256(body)
+    doc = OpenAPIDocument.model_validate(doc_dict)
+    return LoadedSchema(source="<test>", body=body, hash=h, document=doc)
 
 
 @pytest.fixture(scope="module")
@@ -82,3 +111,39 @@ def test_iter_operations_yields_at_least_a_few_hundred(bundled_schema_path: Path
     count = sum(1 for _ in model.iter_operations())
     # NetBox 4.x has thousands of operations; sanity-check we built a real tree
     assert count > 500, f"expected many operations, got {count}"
+
+
+def test_two_segment_api_path_becomes_top_level_resource() -> None:
+    """Spec gap fix: /api/search/, /api/status/ etc. should be present in the model."""
+    loaded = _make_loaded_schema(
+        path="/api/search/",
+        method="get",
+        operation_id="core_search",
+        tags=["core"],
+    )
+    model = build_command_model(loaded)
+    found = [
+        (tag, resource, op)
+        for tag, resource, op in model.iter_operations()
+        if op.path == "/api/search/" and op.http_method is HttpMethod.GET
+    ]
+    assert len(found) == 1, f"expected 1 operation at /api/search/, got {len(found)}"
+    tag, resource, op = found[0]
+    assert tag == "core"
+    assert resource == "search"
+    assert op.operation_id == "core_search"
+
+
+def test_two_segment_api_path_with_status_tag() -> None:
+    """The tag from the spec (not derived from path) determines the model location."""
+    loaded = _make_loaded_schema(
+        path="/api/status/",
+        method="get",
+        operation_id="status_retrieve",
+        tags=["status"],
+    )
+    model = build_command_model(loaded)
+    found = [(t, r, o) for t, r, o in model.iter_operations() if o.path == "/api/status/"]
+    assert len(found) == 1, f"expected 1 operation at /api/status/, got {len(found)}"
+    assert found[0][0] == "status"
+    assert found[0][1] == "status"

@@ -249,14 +249,6 @@ def test_search_unavailable_in_schema_emits_unknown_alias() -> None:
     assert payload["details"]["reason"] == "search_endpoint_unavailable"
 
 
-@pytest.mark.skip(
-    reason=(
-        "The builder requires >=3 non-empty path segments (api/<tag>/<resource>) "
-        "but /api/search/ has only 2.  The builder must be extended to handle "
-        "2-segment API paths before this test can pass.  Happy path is covered "
-        "by the e2e suite (Task 9)."
-    )
-)
 @respx.mock
 def test_search_with_query_calls_endpoint() -> None:
     _mock_schema_with_search(respx.mock)

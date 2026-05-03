@@ -131,6 +131,10 @@ def _resource_from_path(path: str, tag: str) -> tuple[str | None, bool]:
     parts = [p for p in path.split("/") if p]
     if not parts or parts[0] != "api":
         return None, False
+    # Top-level resources (e.g., /api/search/, /api/status/) — single segment after /api/.
+    # The segment itself is the resource name and is always a collection path.
+    if len(parts) == 2:  # noqa: PLR2004
+        return parts[1], True
     # Expect: api / <tag-or-tag-with-dashes> / <resource> / [...]
     if len(parts) < _MIN_PATH_PARTS:
         return None, False
