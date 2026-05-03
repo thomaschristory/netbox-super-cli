@@ -53,6 +53,11 @@ dev = [
     "ruff>=0.15",
     "pre-commit>=3.7",
 ]
+docs = [
+    "mkdocs>=1.6",
+    "mkdocs-material>=9.5",
+    "pyyaml>=6.0",
+]
 
 [tool.ruff]
 target-version = "py312"

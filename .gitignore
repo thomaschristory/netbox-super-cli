@@ -32,3 +32,6 @@ venv/
 
 # Local-only design notes (kept out of git history)
 docs/superpowers/
+
+# mkdocs
+site/

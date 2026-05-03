@@ -1,0 +1,79 @@
+site_name: netbox-super-cli
+site_description: Dynamic NetBox CLI driven by the live OpenAPI schema
+site_url: https://thomaschristory.github.io/netbox-super-cli/
+repo_url: https://github.com/thomaschristory/netbox-super-cli
+repo_name: thomaschristory/netbox-super-cli
+edit_uri: edit/main/docs/
+
+docs_dir: docs
+exclude_docs: |
+  superpowers/
+
+theme:
+  name: material
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - content.code.copy
+    - search.suggest
+    - search.highlight
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.tabbed:
+      alternate_style: true
+  - toc:
+      permalink: true
+
+nav:
+  - Home: index.md
+  - Getting started:
+      - Install: getting-started/install.md
+      - First run: getting-started/first-run.md
+      - Concepts: getting-started/concepts.md
+  - Guides:
+      - Managing profiles: guides/managing-profiles.md
+      - Working with plugins: guides/working-with-plugins.md
+      - Output formats: guides/output-formats.md
+      - Writes and safety: guides/writes-and-safety.md
+      - CI and automation: guides/ci-and-automation.md
+      - Using with AI agents: guides/using-with-ai-agents.md
+  - Reference:
+      - CLI: reference/cli.md
+      - Configuration: reference/config.md
+      - Bundled schemas: reference/schemas.md
+      - Exit codes: reference/exit-codes.md
+  - Architecture:
+      - Overview: architecture/overview.md
+      - Schema loading: architecture/schema-loading.md
+      - Command generation: architecture/command-generation.md
+      - HTTP client: architecture/http-client.md
+      - Caching: architecture/caching.md
+  - Contributing:
+      - Development: contributing/development.md
+      - Release process: contributing/release-process.md
+      - Adding bundled schemas: contributing/adding-bundled-schemas.md
