@@ -495,6 +495,9 @@ def _emit_dry_run_audit(
     preflight_blocked: bool = False,
 ) -> None:
     log_dir = default_paths().logs_dir
+    sensitive_paths = (
+        operation.request_body.sensitive_paths if operation.request_body is not None else ()
+    )
     for r in resolved:
         entry = AuditEntry(
             timestamp=_now_iso(),
@@ -507,6 +510,7 @@ def _emit_dry_run_audit(
             },
             request_query=dict(r.query or {}),
             request_body=r.body,
+            sensitive_paths=sensitive_paths,
             response_status_code=None,
             response_headers={},
             response_body=None,
@@ -544,12 +548,16 @@ def _send_one(
 ) -> dict[str, Any]:
     relative = operation.path.format(**request.path_vars)
     indices = list(request.record_indices)
+    sensitive_paths = (
+        operation.request_body.sensitive_paths if operation.request_body is not None else ()
+    )
     if operation.http_method is HttpMethod.POST:
         return ctx.client.post(
             relative,
             json=request.body,
             operation_id=operation.operation_id,
             record_indices=indices,
+            sensitive_paths=sensitive_paths,
         )
     if operation.http_method is HttpMethod.PATCH:
         return ctx.client.patch(
@@ -557,6 +565,7 @@ def _send_one(
             json=request.body,
             operation_id=operation.operation_id,
             record_indices=indices,
+            sensitive_paths=sensitive_paths,
         )
     if operation.http_method is HttpMethod.PUT:
         return ctx.client.put(
@@ -564,12 +573,14 @@ def _send_one(
             json=request.body,
             operation_id=operation.operation_id,
             record_indices=indices,
+            sensitive_paths=sensitive_paths,
         )
     if operation.http_method is HttpMethod.DELETE:
         return ctx.client.delete(
             relative,
             operation_id=operation.operation_id,
             record_indices=indices,
+            sensitive_paths=sensitive_paths,
         )
     raise RuntimeError(f"unsupported write method: {operation.http_method}")
 

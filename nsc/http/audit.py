@@ -4,16 +4,18 @@ Two files under `~/.nsc/logs/`:
   - `last-request.json`  — single-exchange ephemeral, overwritten on every call.
   - `audit.jsonl`        — append-only, write attempts only (POST/PATCH/PUT/DELETE).
 
-Header redaction is centralized; body redaction is intentionally not done
-(custom-action endpoints can carry secrets in fields with arbitrary names).
+Header redaction is centralized; body redaction is opt-in via `sensitive_paths`
+threaded from the schema's `RequestBodyShape.sensitive_paths` field.
 """
 
 from __future__ import annotations
 
+import copy
 import json
 import os
 import sys
 import tempfile
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
@@ -39,6 +41,7 @@ class AuditEntry(_Frozen):
     request_headers: dict[str, str] = Field(default_factory=dict)
     request_query: dict[str, Any] = Field(default_factory=dict)
     request_body: Any = None
+    sensitive_paths: tuple[str, ...] = ()
     response_status_code: int | None = None
     response_headers: dict[str, str] = Field(default_factory=dict)
     response_body: Any = None
@@ -57,6 +60,44 @@ def redact_headers(headers: dict[str, str]) -> dict[str, str]:
     return {k: ("<redacted>" if k.lower() in SENSITIVE_HEADERS else v) for k, v in headers.items()}
 
 
+def redact_body(body: Any, sensitive_paths: Sequence[str]) -> Any:
+    """Return a deep-copy of `body` with all `sensitive_paths` rewritten to `"<redacted>"`.
+
+    Path semantics:
+      - Each path is a dotted string (e.g., "auth.password"). Empty paths are ignored.
+      - The walker descends into dicts by key.
+      - When it encounters a list, it applies the remainder of the path to every element.
+      - A missing key on the walk is a no-op (the schema may declare optional fields).
+      - A non-mapping/non-list intermediate aborts that path safely.
+    """
+    if body is None or not sensitive_paths:
+        return body
+    out = copy.deepcopy(body)
+    for path in sensitive_paths:
+        if not path:
+            continue
+        _apply_redaction(out, path.split("."))
+    return out
+
+
+def _apply_redaction(node: Any, parts: list[str]) -> None:
+    if not parts:
+        return
+    head, *tail = parts
+    if isinstance(node, list):
+        for item in node:
+            _apply_redaction(item, parts)
+        return
+    if not isinstance(node, dict):
+        return
+    if head not in node:
+        return
+    if not tail:
+        node[head] = "<redacted>"
+        return
+    _apply_redaction(node[head], tail)
+
+
 def truncate_body(body: Any, *, cap_bytes: int = DEFAULT_BODY_CAP_BYTES) -> tuple[Any, bool]:
     """Return (possibly-truncated body, was_truncated)."""
     if body is None:
@@ -69,7 +110,7 @@ def truncate_body(body: Any, *, cap_bytes: int = DEFAULT_BODY_CAP_BYTES) -> tupl
 
 def _to_dict(entry: AuditEntry) -> dict[str, Any]:
     """Serialize to the wire shape documented in spec §4.3."""
-    req_body, req_trunc = truncate_body(entry.request_body)
+    req_body, req_trunc = truncate_body(redact_body(entry.request_body, entry.sensitive_paths))
     resp_body, resp_trunc = truncate_body(entry.response_body)
     return {
         "schema_version": SCHEMA_VERSION,

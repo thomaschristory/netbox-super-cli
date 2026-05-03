@@ -82,6 +82,7 @@ class NetBoxClient:
         json: Any | None = None,
         operation_id: str | None = None,
         record_indices: list[int] | None = None,
+        sensitive_paths: tuple[str, ...] = (),
     ) -> dict[str, Any]:
         response = self._send_with_retry(
             HttpMethod.POST,
@@ -89,6 +90,7 @@ class NetBoxClient:
             json_body=json,
             operation_id=operation_id,
             record_indices=record_indices,
+            sensitive_paths=sensitive_paths,
         )
         return _parse_json(response)
 
@@ -99,6 +101,7 @@ class NetBoxClient:
         json: Any | None = None,
         operation_id: str | None = None,
         record_indices: list[int] | None = None,
+        sensitive_paths: tuple[str, ...] = (),
     ) -> dict[str, Any]:
         response = self._send_with_retry(
             HttpMethod.PATCH,
@@ -106,6 +109,7 @@ class NetBoxClient:
             json_body=json,
             operation_id=operation_id,
             record_indices=record_indices,
+            sensitive_paths=sensitive_paths,
         )
         return _parse_json(response)
 
@@ -116,6 +120,7 @@ class NetBoxClient:
         json: Any | None = None,
         operation_id: str | None = None,
         record_indices: list[int] | None = None,
+        sensitive_paths: tuple[str, ...] = (),
     ) -> dict[str, Any]:
         response = self._send_with_retry(
             HttpMethod.PUT,
@@ -123,6 +128,7 @@ class NetBoxClient:
             json_body=json,
             operation_id=operation_id,
             record_indices=record_indices,
+            sensitive_paths=sensitive_paths,
         )
         return _parse_json(response)
 
@@ -132,12 +138,14 @@ class NetBoxClient:
         *,
         operation_id: str | None = None,
         record_indices: list[int] | None = None,
+        sensitive_paths: tuple[str, ...] = (),
     ) -> dict[str, Any]:
         response = self._send_with_retry(
             HttpMethod.DELETE,
             path,
             operation_id=operation_id,
             record_indices=record_indices,
+            sensitive_paths=sensitive_paths,
         )
         return _parse_json(response)
 
@@ -180,6 +188,7 @@ class NetBoxClient:
         json_body: Any | None = None,
         operation_id: str | None = None,
         record_indices: list[int] | None = None,
+        sensitive_paths: tuple[str, ...] = (),
     ) -> httpx.Response:
         policy = policy_for_method(method)
         attempt = 0
@@ -208,6 +217,7 @@ class NetBoxClient:
                     operation_id=operation_id,
                     is_write=is_write,
                     record_indices=indices,
+                    sensitive_paths=sensitive_paths,
                 )
                 if not retry:
                     raise NetBoxClientError(url=self._absolute(path, params), cause=exc) from exc
@@ -232,6 +242,7 @@ class NetBoxClient:
                 operation_id=operation_id,
                 is_write=is_write,
                 record_indices=indices,
+                sensitive_paths=sensitive_paths,
             )
             if not retry:
                 if response.is_success:
@@ -271,6 +282,7 @@ class NetBoxClient:
         operation_id: str | None,
         is_write: bool,
         record_indices: list[int],
+        sensitive_paths: tuple[str, ...] = (),
     ) -> None:
         url = self._absolute(path, params)
         # httpx lowercases all header names; title-case them so the audit log
@@ -304,6 +316,7 @@ class NetBoxClient:
             request_headers=request_headers,
             request_query=dict(params or {}),
             request_body=request_body,
+            sensitive_paths=sensitive_paths,
             response_status_code=audit_status,
             response_headers=response_headers,
             response_body=response_body,
