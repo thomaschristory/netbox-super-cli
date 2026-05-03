@@ -12,7 +12,6 @@ or returns 0 (for bare). Cache is never touched.
 
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 from typing import Annotated
 
@@ -20,8 +19,9 @@ import typer
 from ruamel.yaml.comments import CommentedMap, TaggedScalar
 
 from nsc.auth.verify import VerifyError, verify
+from nsc.cli.runtime import emit_envelope
 from nsc.config.loader import ConfigParseError, load_config
-from nsc.config.models import Profile
+from nsc.config.models import OutputFormat, Profile
 from nsc.config.settings import default_paths
 from nsc.config.writer import (
     acquire_lock,
@@ -29,7 +29,7 @@ from nsc.config.writer import (
     dump_round_trip,
     load_round_trip,
 )
-from nsc.output.errors import ErrorEnvelope, ErrorType, render_to_json
+from nsc.output.errors import ErrorEnvelope, ErrorType
 
 
 def _config_path() -> Path:
@@ -56,8 +56,12 @@ def _emit_auth_envelope(
         status_code=status_code,
         details=details,
     )
-    print(render_to_json(env), file=sys.stderr)
-    return 8  # EXIT_CODES[ErrorType.AUTH]
+    return emit_envelope(env, output_format=OutputFormat.TABLE)
+
+
+def _emit_config_envelope(message: str) -> int:
+    env = ErrorEnvelope(error=message, type=ErrorType.CONFIG)
+    return emit_envelope(env, output_format=OutputFormat.TABLE)
 
 
 def _resolved_profile(name: str) -> Profile:
@@ -149,18 +153,15 @@ def _do_login_verify(profile_name: str | None) -> None:
     try:
         config = load_config(_config_path())
     except ConfigParseError as exc:
-        typer.echo(f"error: {exc}", err=True)
-        raise typer.Exit(code=12) from exc
+        code = _emit_config_envelope(str(exc))
+        raise typer.Exit(code=code) from exc
     name = profile_name or config.default_profile
     if name is None:
-        typer.echo(
-            "error: no profile selected and no default_profile set in config",
-            err=True,
-        )
-        raise typer.Exit(code=12)
+        code = _emit_config_envelope("no profile selected and no default_profile set in config")
+        raise typer.Exit(code=code)
     if name not in config.profiles:
-        typer.echo(f"error: profile {name!r} not in config", err=True)
-        raise typer.Exit(code=12)
+        code = _emit_config_envelope(f"profile {name!r} not in config")
+        raise typer.Exit(code=code)
     profile = config.profiles[name]
     try:
         result = verify(profile)
