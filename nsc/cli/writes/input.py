@@ -18,7 +18,8 @@ from ruamel.yaml import YAML
 from ruamel.yaml.error import YAMLError
 
 _FILE_SIZE_CAP_BYTES = 10 * 1024 * 1024
-_SUPPORTED_EXTENSIONS = frozenset({".yaml", ".yml", ".json"})
+_SUPPORTED_EXTENSIONS = frozenset({".yaml", ".yml", ".json", ".ndjson", ".jsonl"})
+_NDJSON_BAD_LINE_CAP = 20
 _BOM = "﻿"
 
 
@@ -34,6 +35,19 @@ def _safe_load(text: str) -> Any:
 
 class InputError(ValueError):
     """A user-facing error during input collection. Maps to ErrorType.CLIENT."""
+
+
+class NDJSONParseError(InputError):
+    """One or more NDJSON lines failed to parse. Carries a bounded `bad_lines` list."""
+
+    def __init__(self, bad_lines: list[dict[str, Any]], *, total_lines: int) -> None:
+        self.bad_lines = bad_lines
+        self.total_lines = total_lines
+        message = (
+            f"{len(bad_lines)} of {total_lines} NDJSON line(s) failed to parse; "
+            f"see details.bad_lines"
+        )
+        super().__init__(message)
 
 
 class _Frozen(BaseModel):
@@ -113,7 +127,52 @@ def _parse_file(path: Path) -> tuple[list[dict[str, Any]], bool]:
     except OSError as exc:
         raise InputError(f"could not read input file {path}: {exc}") from exc
     text = _decode_utf8(raw, path)
-    return _parse_text(text, hint=path.suffix.lower())
+    suffix = path.suffix.lower()
+    if suffix in {".ndjson", ".jsonl"}:
+        return _parse_ndjson(text), True
+    return _parse_text(text, hint=suffix)
+
+
+def _parse_ndjson(text: str) -> list[dict[str, Any]]:
+    """Parse one JSON object per non-blank line.
+
+    All-or-nothing semantics: if ANY line fails, raise `NDJSONParseError` with
+    a `bad_lines` list capped at `_NDJSON_BAD_LINE_CAP` entries. Blank/whitespace
+    lines are skipped (not counted as bad). Empty input → InputError.
+    """
+    records: list[dict[str, Any]] = []
+    bad_lines: list[dict[str, Any]] = []
+    total = 0
+    seen_any = False
+
+    for lineno, raw_line in enumerate(text.splitlines(), start=1):
+        stripped = raw_line.strip()
+        if not stripped:
+            continue
+        seen_any = True
+        total += 1
+        try:
+            parsed = json.loads(stripped)
+        except json.JSONDecodeError as exc:
+            if len(bad_lines) < _NDJSON_BAD_LINE_CAP:
+                bad_lines.append({"line": lineno, "reason": str(exc)})
+            continue
+        if not isinstance(parsed, dict):
+            if len(bad_lines) < _NDJSON_BAD_LINE_CAP:
+                bad_lines.append(
+                    {
+                        "line": lineno,
+                        "reason": f"top-level value is not a mapping (got {type(parsed).__name__})",
+                    }
+                )
+            continue
+        records.append(parsed)
+
+    if not seen_any:
+        raise InputError("input file contains no records (NDJSON file is empty or all blank)")
+    if bad_lines:
+        raise NDJSONParseError(bad_lines, total_lines=total)
+    return records
 
 
 def _parse_stdin(stream: TextIO) -> tuple[list[dict[str, Any]], bool]:
@@ -235,4 +294,4 @@ def _deep_merge(target: dict[str, Any], overlay: dict[str, Any]) -> dict[str, An
     return target
 
 
-__all__ = ["InputError", "RawWriteInput", "collect"]
+__all__ = ["InputError", "NDJSONParseError", "RawWriteInput", "collect"]
