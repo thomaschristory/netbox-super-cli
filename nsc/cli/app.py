@@ -240,7 +240,7 @@ def _root(
     try:
         config = load_config(default_paths().config_file)
     except ConfigParseError as exc:
-        if ctx.invoked_subcommand in ("cache", "init", "login", "profiles", "skill"):
+        if ctx.invoked_subcommand in _META_COMMANDS:
             config = Config()
         else:
             typer.echo(f"Error: {exc}", err=True)
