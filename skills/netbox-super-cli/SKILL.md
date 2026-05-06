@@ -27,7 +27,8 @@ nsc <tag> <resource> <verb> [args] [--apply] [--output json]
 - `<tag>` — the OpenAPI tag, e.g., `dcim`, `ipam`, `tenancy`, `circuits`, `extras`.
 - `<resource>` — plural form, e.g., `devices`, `prefixes`, `tenants`, `vlans`.
 - `<verb>` — `list`, `get`, `create`, `update`, `delete`. (Bulk variants exist
-  for write verbs via `-f <file>` / `--ndjson`.)
+  for write verbs via `-f <file>` — use a `.ndjson` / `.jsonl` extension to trigger
+  NDJSON mode.)
 
 A few curated aliases skip the tag:
 
@@ -136,7 +137,7 @@ The library stores definitions in its own YAML dialect. The NetBox API (and ther
 
 | Library field | NetBox API field | Notes |
 |---|---|---|
-| `manufacturer: Cisco` | `manufacturer: {slug: "cisco"}` | slug-keyed nested object |
+| `manufacturer: Cisco` | `manufacturer: {name: "Cisco", slug: "cisco"}` | both `name` and `slug` are required |
 | `interfaces:` | separate `POST /api/dcim/interface-templates/` | component templates are separate resources |
 | `console-ports:` | separate `POST /api/dcim/console-port-templates/` | same pattern |
 | `power-ports:` | separate `POST /api/dcim/power-port-templates/` | same pattern |
@@ -153,7 +154,7 @@ ls devicetype-library/device-types/Cisco/
 
 # 3. Ensure the manufacturer exists in NetBox (create if missing)
 nsc dcim manufacturers list --slug cisco --output json   # check first
-nsc dcim manufacturers create --name "Cisco" --slug "cisco" --apply
+nsc dcim manufacturers create --field name=Cisco --field slug=cisco --apply
 
 # 4. Create the device type (body only — no component templates yet)
 nsc dcim device-types create -f device-type-body.yaml --apply
@@ -162,9 +163,9 @@ nsc dcim device-types create -f device-type-body.yaml --apply
 DT_ID=$(nsc dcim device-types list --slug <slug> --output json | jq '.[0].id')
 
 # 6. Add component templates (repeat for each component type present in the library YAML)
-nsc dcim interface-templates create --ndjson iface-templates.ndjson --apply
-nsc dcim console-port-templates create --ndjson console-templates.ndjson --apply
-nsc dcim power-port-templates create --ndjson power-templates.ndjson --apply
+nsc dcim interface-templates create -f iface-templates.ndjson --apply
+nsc dcim console-port-templates create -f console-templates.ndjson --apply
+nsc dcim power-port-templates create -f power-templates.ndjson --apply
 ```
 
 ### Device type body YAML (for `nsc dcim device-types create -f`)
@@ -174,6 +175,7 @@ Translate the library YAML into the API shape before passing to `nsc`:
 ```yaml
 # device-type-body.yaml
 manufacturer:
+  name: Cisco
   slug: cisco
 model: "Catalyst 2960-24TC-L"
 slug: cisco-catalyst-2960-24tc-l
@@ -191,7 +193,7 @@ Each component template must reference the parent device type's `device_type` ID
 ```
 
 Generate this from the library YAML with any scripting tool (jq, Python, etc.) before
-passing to `nsc --ndjson`.
+passing to `nsc` via `-f <file>.ndjson`.
 
 ### Demo / seed workflow
 
@@ -200,15 +202,10 @@ To quickly seed a fresh NetBox with common hardware for demos:
 ```bash
 # List all manufacturer directories in the library
 ls devicetype-library/device-types/
-
-# Import a handful of device types from a single manufacturer
-for f in devicetype-library/device-types/Cisco/*.yaml; do
-  # extract body, create manufacturer, device-type, then component templates
-  ...
-done
 ```
 
-Because `nsc` dry-runs by default, you can preview each step before committing.
+For each YAML file, apply steps 3–6 above. Because `nsc` dry-runs by default, you can
+preview each step before committing.
 
 ### What NOT to do
 
