@@ -141,6 +141,30 @@ def _render_json(resolution: _Resolution, mode: str, written: bool, source: Path
     return json.dumps(payload)
 
 
+def _render_export_table(dest_file: Path, source: Path, mode: str, written: bool) -> str:
+    lines: list[str] = []
+    if mode == "dry-run":
+        lines.append("nsc skill export (dry-run) — pass --apply to write")
+        lines.append(f"  would write to {dest_file}")
+        lines.append(f"  source: {source}")
+    elif written:
+        lines.append(f"✓ exported netbox-super-cli skill to {dest_file}")
+    else:
+        lines.append("nsc skill export (no-op)")
+    return "\n".join(lines)
+
+
+def _render_export_json(dest_file: Path, source: Path, mode: str, written: bool) -> str:
+    payload: dict[str, object] = {
+        "mode": mode,
+        "destination": str(dest_file),
+        "source": str(source),
+    }
+    if mode == "apply":
+        payload["written"] = written
+    return json.dumps(payload)
+
+
 def register(app: typer.Typer) -> None:
     skill_app = typer.Typer(
         name="skill",
@@ -182,5 +206,40 @@ def register(app: typer.Typer) -> None:
                 typer.echo(_render_json(resolution, mode, written, source))
             else:
                 typer.echo(_render_table(resolution, mode, written, source))
+
+    @skill_app.command("export")
+    def export_cmd(
+        destination: Annotated[
+            Path,
+            typer.Argument(
+                help=(
+                    "Directory to export the skill into. The skill is written "
+                    "to <destination>/netbox-super-cli/SKILL.md."
+                ),
+            ),
+        ],
+        apply_: Annotated[
+            bool,
+            typer.Option("--apply", help="Actually copy the file (default: dry-run)."),
+        ] = False,
+        output: Annotated[
+            _OutputFormat,
+            typer.Option("--output", "-o", help="table|json"),
+        ] = _OutputFormat.TABLE,
+    ) -> None:
+        dest_file = (destination.expanduser() / BUNDLE_NAME / "SKILL.md").resolve()
+        mode = "apply" if apply_ else "dry-run"
+        written = False
+
+        with bundle_path() as source:
+            if apply_:
+                dest_file.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(source, dest_file)
+                written = True
+
+            if output is _OutputFormat.JSON:
+                typer.echo(_render_export_json(dest_file, source, mode, written))
+            else:
+                typer.echo(_render_export_table(dest_file, source, mode, written))
 
     app.add_typer(skill_app, name="skill")
