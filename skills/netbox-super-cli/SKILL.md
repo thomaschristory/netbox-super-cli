@@ -65,7 +65,7 @@ Errors come back as JSON envelopes (on stderr by default; on stdout when
 ```json
 {
   "error": "human-readable message",
-  "type": "auth | not_found | validation | conflict | rate_limited | server | transport | schema | config | client | internal | input_error | …",
+  "type": "auth | not_found | validation | conflict | rate_limited | server | transport | schema | config | client | internal | input_error | ambiguous_alias | unknown_alias",
   "endpoint": "/api/dcim/devices/",
   "method": "POST",
   "status_code": 400,

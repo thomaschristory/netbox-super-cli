@@ -23,12 +23,33 @@ publishes to PyPI via trusted publishing (no API tokens).
 
 Each planned release has a milestone named after its version (e.g., `v1.1.0`).
 Issues and PRs are triaged to a milestone when they are scoped to a specific
-release. At release time, close the milestone; open issues are either
-bumped to the next milestone or moved to the backlog.
+release. Milestones are purely organizational — they don't trigger anything.
 
 - Milestone name: `vX.Y.Z` (matches the git tag exactly).
 - An open milestone with no due date means "planned but not scheduled".
 - The `main` branch is always releasable; milestones are a planning aid, not a gate.
+
+**When a release ships, open the next milestone.** A milestone is considered
+closed once its release is published to PyPI and tagged on GitHub. As part
+of finalizing the release:
+
+1. Close the milestone:
+   ```sh
+   gh api repos/:owner/:repo/milestones/<N> -X PATCH -f state=closed
+   ```
+2. Open the next one:
+   ```sh
+   gh api repos/:owner/:repo/milestones -f title='v<next>' -f state=open
+   ```
+   For a patch release, increment the patch number; for a minor/major,
+   pick whatever's next based on what's queued.
+3. Bump or close any open issues left in the just-closed milestone — either
+   move them to the next milestone or drop them to the backlog.
+4. Leave the new milestone otherwise empty — issues get attached as they're
+   triaged.
+
+This keeps a milestone always available to file new issues against without
+having to think about it mid-bug-report.
 
 ## Patch releases (bug fixes)
 
@@ -56,4 +77,6 @@ From v1.0.0 onward:
 - `MAJOR` — breaking changes to the error envelope, exit codes, or config schema.
 
 The version in `pyproject.toml`, `nsc/_version.py`, and the git tag must
-always agree. `release.yml` validates this before publishing.
+always agree. `release.yml` validates the tag against `nsc/_version.py`
+before publishing; `pyproject.toml` is not currently checked, so keep it
+in sync manually as part of the release commit.
