@@ -43,6 +43,7 @@ packages = ["nsc"]
 
 [tool.hatch.build.targets.wheel.force-include]
 "nsc/schemas/bundled" = "nsc/schemas/bundled"
+"skills/netbox-super-cli" = "skills/netbox-super-cli"
 
 [dependency-groups]
 dev = [
