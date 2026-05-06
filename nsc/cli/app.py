@@ -18,6 +18,7 @@ from nsc.cli import (
     init_commands,
     login_commands,
     profiles_commands,
+    skill_commands,
 )
 from nsc.cli.globals import GlobalState, build_runtime_context
 from nsc.cli.registration import register_dynamic_commands
@@ -41,7 +42,7 @@ _invocation: dict[str, object] = {"runtime": None, "error": None}
 
 # Static subcommands that do not need a profile.
 _META_COMMANDS: frozenset[str] = frozenset(
-    {"cache", "commands", "config", "init", "login", "profiles"}
+    {"cache", "commands", "config", "init", "login", "profiles", "skill"}
 )
 
 # Populated at module-load time (after all static `register()` calls) so that
@@ -239,7 +240,7 @@ def _root(
     try:
         config = load_config(default_paths().config_file)
     except ConfigParseError as exc:
-        if ctx.invoked_subcommand in ("cache", "init", "login", "profiles"):
+        if ctx.invoked_subcommand in ("cache", "init", "login", "profiles", "skill"):
             config = Config()
         else:
             typer.echo(f"Error: {exc}", err=True)
@@ -263,6 +264,7 @@ init_commands.register(app)
 login_commands.register(app)
 profiles_commands.register(app)
 aliases_commands.register(app)
+skill_commands.register(app)
 
 # Capture the static baseline AFTER all static sub-apps are registered so that
 # make_context can restore this state at the start of every invocation.
