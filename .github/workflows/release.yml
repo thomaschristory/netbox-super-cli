@@ -1,0 +1,127 @@
+name: release
+
+# Tag-only trigger. NEVER on pull_request or branch push — the trusted
+# publisher is bound to this workflow filename + the v* tag pattern, so a
+# stray dispatch on main would either fail authentication (good) or, if
+# someone misconfigured PyPI, publish a bogus release (very bad).
+on:
+  push:
+    tags:
+      - "v*"
+
+# Trusted publishing requires id-token: write at the workflow level so the
+# OIDC token issued to pypa/gh-action-pypi-publish is signed.
+permissions:
+  contents: write   # gh release create
+  id-token: write   # PyPI trusted publishing OIDC
+
+# One in-flight release at a time; queue rather than cancel so a fast
+# re-tag never overlaps the previous publish.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    # PyPI trusted publishing reads the workflow filename + repo + tag-ref
+    # from the OIDC claim. No environment is required for PyPI; we
+    # explicitly do NOT set an `environment:` block here — adding one would
+    # change the OIDC subject claim and break the trusted-publisher binding
+    # the user registered against the no-environment form (per §Pre-tag
+    # prerequisites).
+    steps:
+      - name: Checkout (full history for changelog notes)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+
+      - name: Install Python
+        run: uv python install 3.12
+
+      - name: Sync runtime deps (for `nsc --version` smoke check)
+        run: uv sync --frozen
+
+      - name: Verify tag matches package version
+        run: |
+          set -euo pipefail
+          tag_version="${GITHUB_REF_NAME#v}"
+          pkg_version="$(uv run python -c 'from nsc._version import __version__; print(__version__)')"
+          if [ "$tag_version" != "$pkg_version" ]; then
+            echo "Tag $GITHUB_REF_NAME -> version $tag_version does not match nsc/_version.py $pkg_version" >&2
+            exit 1
+          fi
+          echo "Tag $GITHUB_REF_NAME matches package version $pkg_version"
+
+      - name: Build sdist + wheel
+        run: |
+          rm -rf dist
+          uv build --out-dir dist
+          ls -la dist/
+
+      - name: Verify wheel filename matches tag
+        run: |
+          set -euo pipefail
+          tag_version="${GITHUB_REF_NAME#v}"
+          if ! ls "dist/netbox_super_cli-${tag_version}-py3-none-any.whl" >/dev/null 2>&1; then
+            echo "Wheel for ${tag_version} not found in dist/" >&2
+            ls dist/ >&2
+            exit 1
+          fi
+          if ! ls "dist/netbox_super_cli-${tag_version}.tar.gz" >/dev/null 2>&1; then
+            echo "Sdist for ${tag_version} not found in dist/" >&2
+            ls dist/ >&2
+            exit 1
+          fi
+
+      - name: Publish to PyPI (trusted publishing)
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          # No `password:` — trusted publishing uses the OIDC token bound
+          # to id-token: write above. PyPI must have a Trusted Publisher
+          # registered for this repo + workflow + (no) environment before
+          # this step runs (see §Pre-tag prerequisites in the 5d plan).
+          packages-dir: dist
+          # Print which artifacts were uploaded; helps diagnose mismatches.
+          verbose: true
+          # Don't fail if a re-tag accidentally re-uploads identical
+          # artifacts (PyPI rejects duplicate uploads with 400). A re-run
+          # of an already-published version is a no-op rather than a hard
+          # failure — but DO fail if the artifact bytes differ (which would
+          # indicate a non-reproducible build, a real bug).
+          skip-existing: true
+
+      - name: Extract changelog section for release notes
+        id: notes
+        run: |
+          set -euo pipefail
+          tag_version="${GITHUB_REF_NAME#v}"
+          # Match the line `## v1.0.0 — …` (em-dash) and capture until the
+          # next `## ` heading. The dashes are em-dashes per the project's
+          # changelog style (see CHANGELOG.md headings).
+          awk -v ver="$tag_version" '
+            $0 ~ "^## v" ver " " { capture=1; print; next }
+            capture && /^## / { exit }
+            capture { print }
+          ' CHANGELOG.md > /tmp/release-notes.md
+          if [ ! -s /tmp/release-notes.md ]; then
+            echo "Release notes for v${tag_version} not found in CHANGELOG.md" >&2
+            exit 1
+          fi
+          echo "Extracted $(wc -l < /tmp/release-notes.md) lines of release notes."
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh release create "$GITHUB_REF_NAME" \
+            --title "$GITHUB_REF_NAME" \
+            --notes-file /tmp/release-notes.md \
+            dist/*.whl \
+            dist/*.tar.gz
