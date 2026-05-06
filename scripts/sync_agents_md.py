@@ -43,17 +43,19 @@ def main(argv: list[str] | None = None) -> int:
 
     rendered = render()
 
+    script_path = Path(__file__).resolve().relative_to(REPO_ROOT)
+
     if args.check:
         if not DEST.exists():
             print(
-                f"AGENTS.md is missing; run `uv run python {Path(__file__).name}`.",
+                f"AGENTS.md is missing; run `uv run python {script_path}`.",
                 file=sys.stderr,
             )
             return 1
         existing = DEST.read_text(encoding="utf-8")
         if existing != rendered:
             print(
-                f"AGENTS.md is out of date; run `uv run python {Path(__file__).name}` "
+                f"AGENTS.md is out of date; run `uv run python {script_path}` "
                 "and commit the result.",
                 file=sys.stderr,
             )
