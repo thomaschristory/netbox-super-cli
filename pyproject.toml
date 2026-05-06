@@ -43,7 +43,12 @@ build-backend = "hatchling.build"
 packages = ["nsc"]
 
 [tool.hatch.build.targets.wheel.force-include]
-"nsc/schemas/bundled" = "nsc/schemas/bundled"
+# `nsc/schemas/bundled/` is inside the `nsc` package and already ships
+# via `packages = ["nsc"]` above. Listing it here too produced wheels
+# with duplicate local-file headers, which PyPI's archive validator
+# rejects with a 400 (see https://docs.pypi.org/archives). Only
+# `skills/netbox-super-cli/`, which lives outside the package tree,
+# genuinely needs force-include.
 "skills/netbox-super-cli" = "skills/netbox-super-cli"
 
 [dependency-groups]
