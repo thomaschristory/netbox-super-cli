@@ -14,6 +14,7 @@ import sys
 from pathlib import Path
 
 import httpx
+from ruamel.yaml import YAML
 
 from nsc.builder.build import build_command_model
 from nsc.cache.store import CacheStore
@@ -113,8 +114,16 @@ def _find_any_cached(paths: Paths, profile_name: str) -> CommandModel | None:
 
 def _load_bundled_command_model() -> CommandModel | None:
     pkg_dir = Path(_bundled_pkg.__file__).resolve().parent
-    candidates = sorted(list(pkg_dir.glob("*.json")) + list(pkg_dir.glob("*.json.gz")))
-    if not candidates:
+    manifest_path = pkg_dir / "manifest.yaml"
+    if not manifest_path.exists():
         return None
-    loaded = load_schema(str(candidates[0]))
+    manifest = YAML(typ="safe").load(manifest_path.read_text())
+    schemas = manifest.get("schemas") if isinstance(manifest, dict) else None
+    if not schemas:
+        return None
+    newest = schemas[-1]
+    schema_path = pkg_dir / str(newest["file"])
+    if not schema_path.exists():
+        return None
+    loaded = load_schema(str(schema_path))
     return build_command_model(loaded)

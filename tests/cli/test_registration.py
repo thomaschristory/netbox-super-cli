@@ -254,7 +254,7 @@ def _collect_closures(app: typer.Typer) -> dict[tuple[str, str], list[str]]:
 
 
 def test_create_command_registered_for_resource_with_create_op() -> None:
-    loaded = load_schema("nsc/schemas/bundled/netbox-4.6.0-beta2.json.gz")
+    loaded = load_schema("nsc/schemas/bundled/netbox-4.6.0.json.gz")
     model = build_command_model(loaded)
     sample_tag = "dcim"
     sample_resource = "devices"
@@ -270,7 +270,7 @@ def test_create_command_registered_for_resource_with_create_op() -> None:
 
 
 def test_custom_action_post_registered_as_write_command() -> None:
-    loaded = load_schema("nsc/schemas/bundled/netbox-4.6.0-beta2.json.gz")
+    loaded = load_schema("nsc/schemas/bundled/netbox-4.6.0.json.gz")
     model = build_command_model(loaded)
     app = typer.Typer()
     register_dynamic_commands(app, model, lambda: _stub_ctx(model))

@@ -56,5 +56,5 @@ Restart your shell, then verify with `nsc <TAB><TAB>`.
 ## Requirements
 
 - Python ≥ 3.12.
-- A reachable NetBox install (any version with `/api/schema/` enabled — 4.4+).
+- A reachable NetBox install (any version with `/api/schema/` enabled — 4.5+).
 - A NetBox API token (read-only is enough for read commands; writable for `--apply`).
