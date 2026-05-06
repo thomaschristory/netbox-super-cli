@@ -71,6 +71,35 @@ class UnknownProfileError(Exception):
     """A profile was requested by name but is not in the config."""
 
 
+def resolve_transport_settings(
+    config: Config,
+    overrides: CLIOverrides,
+    env: Mapping[str, str],
+) -> tuple[bool, float]:
+    """Compute (verify_ssl, timeout) without requiring URL/token.
+
+    Used by meta commands like `nsc commands` that fetch a schema directly but
+    don't need a fully-resolved profile. Honours `--insecure`, `NSC_INSECURE`,
+    and the active profile's `verify_ssl`/`timeout` in the same precedence
+    order as `resolve_profile`.
+    """
+    name = overrides.profile or env.get("NSC_PROFILE") or config.default_profile
+    base = config.profiles.get(name) if name else None
+
+    insecure_env = _bool_env(env.get("NSC_INSECURE"))
+    if overrides.insecure is not None:
+        verify_ssl = not overrides.insecure
+    elif insecure_env is not None:
+        verify_ssl = not insecure_env
+    elif base is not None:
+        verify_ssl = base.verify_ssl
+    else:
+        verify_ssl = True
+
+    timeout = base.timeout if (base and base.timeout is not None) else config.defaults.timeout
+    return verify_ssl, timeout
+
+
 def resolve_profile(
     config: Config,
     overrides: CLIOverrides,

@@ -11,6 +11,7 @@ from nsc.cli.runtime import (
     ResolvedProfile,
     UnknownProfileError,
     resolve_profile,
+    resolve_transport_settings,
 )
 from nsc.config.models import Config, Defaults, Profile
 
@@ -151,3 +152,50 @@ def test_schema_url_overrides_chain() -> None:
         cfg, CLIOverrides(schema_override="https://other.example/schema.json"), env={}
     )
     assert str(rp2.schema_url) == "https://other.example/schema.json"
+
+
+def test_resolve_transport_settings_default() -> None:
+    verify_ssl, timeout = resolve_transport_settings(_cfg(), CLIOverrides(), env={})
+    assert verify_ssl is True
+    assert timeout == Defaults().timeout
+
+
+def test_resolve_transport_settings_insecure_flag_disables_verify() -> None:
+    verify_ssl, _ = resolve_transport_settings(_cfg(), CLIOverrides(insecure=True), env={})
+    assert verify_ssl is False
+
+
+def test_resolve_transport_settings_no_insecure_flag_forces_verify() -> None:
+    cfg = _cfg(
+        profiles={
+            "prod": Profile(name="prod", url="https://nb.example", token="t", verify_ssl=False)
+        },
+        default_profile="prod",
+    )
+    verify_ssl, _ = resolve_transport_settings(cfg, CLIOverrides(insecure=False), env={})
+    assert verify_ssl is True
+
+
+def test_resolve_transport_settings_env_var_disables_verify() -> None:
+    verify_ssl, _ = resolve_transport_settings(_cfg(), CLIOverrides(), env={"NSC_INSECURE": "1"})
+    assert verify_ssl is False
+
+
+def test_resolve_transport_settings_falls_back_to_profile_verify_ssl() -> None:
+    cfg = _cfg(
+        profiles={
+            "prod": Profile(name="prod", url="https://nb.example", token="t", verify_ssl=False)
+        },
+        default_profile="prod",
+    )
+    verify_ssl, _ = resolve_transport_settings(cfg, CLIOverrides(), env={})
+    assert verify_ssl is False
+
+
+def test_resolve_transport_settings_uses_profile_timeout() -> None:
+    cfg = _cfg(
+        profiles={"prod": Profile(name="prod", url="https://nb.example", token="t", timeout=7.5)},
+        default_profile="prod",
+    )
+    _, timeout = resolve_transport_settings(cfg, CLIOverrides(), env={})
+    assert timeout == 7.5

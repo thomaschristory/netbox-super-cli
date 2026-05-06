@@ -8,12 +8,15 @@ needing the dynamic Typer registration that Phase 2 will add.
 from __future__ import annotations
 
 import json
+import os
 import sys
 from enum import StrEnum
 
 import typer
 
 from nsc.builder.build import build_command_model
+from nsc.cli.globals import GlobalState
+from nsc.cli.runtime import resolve_transport_settings
 from nsc.schema.loader import SchemaLoadError, load_schema
 
 
@@ -24,6 +27,7 @@ class _Output(StrEnum):
 def register(app: typer.Typer) -> None:
     @app.command("commands")
     def commands_dump(
+        ctx: typer.Context,
         schema: str = typer.Option(
             ...,
             "--schema",
@@ -42,8 +46,16 @@ def register(app: typer.Typer) -> None:
         ),
     ) -> None:
         """Dump the schema-derived command tree."""
+        verify_ssl = True
+        timeout = 30.0
+        state = ctx.obj
+        if isinstance(state, GlobalState):
+            verify_ssl, timeout = resolve_transport_settings(
+                state.config, state.overrides, env=os.environ
+            )
+
         try:
-            loaded = load_schema(schema)
+            loaded = load_schema(schema, verify_ssl=verify_ssl, timeout=timeout)
         except SchemaLoadError as exc:
             typer.echo(f"error: {exc}", err=True)
             raise typer.Exit(code=2) from exc
