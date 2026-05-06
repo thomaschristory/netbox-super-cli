@@ -135,7 +135,7 @@ nsc --show-completion            # prints the script instead of installing
 
 Typer supports `bash`, `zsh`, `fish`, and `pwsh`. Completion of dynamic values (resource names, profile names, filter keys) is on the post-1.0 roadmap.
 
-### Bundled Skill for AI agents
+## Bundled Skill for AI agents
 
 `nsc` ships a portable Skill bundle at `skills/netbox-super-cli/SKILL.md`
 that briefs an AI agent on how to drive `nsc` correctly (dry-run discipline,
