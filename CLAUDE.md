@@ -1,6 +1,6 @@
 # Working on netbox-super-cli (for AI agents)
 
-This is the contributor guide for AI agents (and humans!) modifying this repo. The end-user-facing AI guide is the bundled Skill at `skills/netbox-super-cli/SKILL.md` (added in Phase 5).
+This is the contributor guide for AI agents (and humans!) modifying this repo. The end-user-facing AI guide is the bundled Skill at `skills/netbox-super-cli/SKILL.md`.
 
 ## Architecture cheat sheet
 
@@ -8,10 +8,13 @@ This is the contributor guide for AI agents (and humans!) modifying this repo. T
 - `nsc/model/` — the normalized command tree (data only, framework-free). The "brain".
 - `nsc/builder/` — converts a parsed schema into a `CommandModel`.
 - `nsc/cli/` — the Typer app; consumes a `CommandModel`.
-- `nsc/http/` — thin httpx wrapper (Phase 2+).
-- `nsc/output/` — formatters (Phase 2+).
-- `nsc/config/` — config loader + Pydantic models (Phase 1 has a minimal version).
+- `nsc/http/` — thin httpx wrapper: auth, retries, audit log.
+- `nsc/output/` — formatters (table/json/jsonl/yaml/csv) + error envelope.
+- `nsc/config/` — config loader + Pydantic models + ruamel.yaml round-trip writer.
 - `nsc/cache/` — disk cache for generated command-models.
+- `nsc/auth/` — login verification helpers (pre-flight probes, token rotate).
+- `nsc/aliases/` — curated alias resolver (`ls`, `get`, `rm`, `search`). Framework-free.
+- `nsc/skill/` — bundle-path helper for the portable `SKILL.md` shipped in the wheel.
 - `nsc/schemas/bundled/` — versioned NetBox OpenAPI snapshots, fallback when offline.
 
 The hard rule: **`nsc/model/` imports nothing from `nsc/cli/`, `nsc/http/`, or any framework.** If you need to add a dependency to `model/`, you're probably solving the wrong problem.
