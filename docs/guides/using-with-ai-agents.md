@@ -17,19 +17,33 @@ correctly without trial-and-error.
 
 ## Bundled portable Skill
 
-> **Phase 5b note:** the `nsc skill install` helper and the bundled
-> `skills/netbox-super-cli/SKILL.md` content land in **Phase 5c** (the next
-> sub-phase after this one). For now, point your agent at the [CLI
-> reference](../reference/cli.md) and this guide.
-
-After 5c, install the Skill into your tool with one command:
+`nsc` ships a portable Skill bundle at `skills/netbox-super-cli/SKILL.md`
+(installed inside the wheel). Install it into your agent harness with:
 
 ```sh
-nsc skill install --target claude-code --apply
-nsc skill install --target codex --apply
-nsc skill install --target gemini --apply
-nsc skill install --target copilot --apply
+nsc skill install --target claude-code            # dry-run; prints the destination
+nsc skill install --target claude-code --apply    # actually copies
 ```
+
+Use `--output json` for programmatic consumers; the dry-run envelope contains
+the resolved `destination` path.
+
+### Per-target resolved paths
+
+| Target       | Convention | Resolved path                                                  |
+|--------------|------------|----------------------------------------------------------------|
+| claude-code  | confirmed  | `~/.claude/skills/netbox-super-cli/SKILL.md`                   |
+| codex        | confirmed  | `~/.agents/skills/netbox-super-cli/SKILL.md`                   |
+| gemini       | manual     | (no programmatic install; prints manual instructions)          |
+| copilot      | manual     | (no programmatic install; prints manual instructions)          |
+
+For targets marked `manual`, `nsc skill install --target <t>` prints
+actionable instructions (exit 0) instead of writing a guessed path.
+The bundled Skill content is at `skills/netbox-super-cli/SKILL.md` in
+this repo and inside the installed wheel; for `manual` targets, paste
+its content into your tool's project-scoped configuration (e.g.
+`GEMINI.md` for Gemini CLI, `.github/copilot-instructions.md` for
+GitHub Copilot CLI).
 
 ## Agent prompts that work well
 
