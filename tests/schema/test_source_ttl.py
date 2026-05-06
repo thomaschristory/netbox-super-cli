@@ -8,7 +8,7 @@ Verifies that `resolve_command_model` honours the configured
 from __future__ import annotations
 
 import json
-import os
+import time
 from pathlib import Path
 from typing import Any
 
@@ -20,6 +20,13 @@ from nsc.cli.runtime import ResolvedProfile
 from nsc.config.models import SchemaRefresh
 from nsc.config.settings import Paths
 from nsc.schema.source import resolve_command_model
+
+
+def _age_sidecars(profile_dir: Path, fetched_at: float) -> None:
+    """Rewrite every `<hash>.meta.json` so the fast path treats the entry
+    as having been fetched at `fetched_at`."""
+    for meta in profile_dir.glob("*.meta.json"):
+        meta.write_text(json.dumps({"fetched_at": fetched_at}))
 
 
 def _profile(**kwargs: Any) -> ResolvedProfile:
@@ -104,9 +111,7 @@ def test_daily_refresh_refetches_when_cache_is_stale(tmp_path: Path) -> None:
     assert route.call_count == 1
 
     profile_dir = paths.cache_dir / profile.name
-    aged = os.path.getmtime(next(profile_dir.glob("*.json"))) - 2 * 86400
-    for f in profile_dir.glob("*.json"):
-        os.utime(f, (aged, aged))
+    _age_sidecars(profile_dir, time.time() - 2 * 86400)
 
     resolve_command_model(
         paths=paths,
@@ -136,9 +141,7 @@ def test_manual_refresh_uses_cache_indefinitely(tmp_path: Path) -> None:
     assert route.call_count == 1
 
     profile_dir = paths.cache_dir / profile.name
-    very_old = 0.0
-    for f in profile_dir.glob("*.json"):
-        os.utime(f, (very_old, very_old))
+    _age_sidecars(profile_dir, 0.0)
 
     resolve_command_model(
         paths=paths,
@@ -260,3 +263,99 @@ def test_ttl_for_policy(policy: SchemaRefresh, expected_ttl: float) -> None:
     from nsc.schema.source import _ttl_for_policy  # noqa: PLC0415
 
     assert _ttl_for_policy(policy) == expected_ttl
+
+
+@respx.mock
+def test_missing_sidecar_forces_refetch_under_daily(tmp_path: Path) -> None:
+    """A cache file without its `<hash>.meta.json` sidecar is distrusted —
+    the fast path can't prove freshness, so we refetch. This is the
+    upgrade path for caches written before the sidecar existed."""
+    route = respx.get("https://nb.example/api/schema/?format=json").mock(
+        return_value=httpx.Response(200, json=_minimal_schema_doc())
+    )
+    paths = _paths(tmp_path)
+    profile = _profile()
+
+    resolve_command_model(
+        paths=paths,
+        profile=profile,
+        schema_override=None,
+        schema_refresh=SchemaRefresh.DAILY,
+    )
+    assert route.call_count == 1
+
+    profile_dir = paths.cache_dir / profile.name
+    for meta in profile_dir.glob("*.meta.json"):
+        meta.unlink()
+
+    resolve_command_model(
+        paths=paths,
+        profile=profile,
+        schema_override=None,
+        schema_refresh=SchemaRefresh.DAILY,
+    )
+    assert route.call_count == 2
+
+
+@respx.mock
+def test_future_dated_sidecar_is_rejected(tmp_path: Path) -> None:
+    """A `fetched_at` more than a minute in the future (clock skew or
+    tampering) is treated as stale and forces a refetch."""
+    route = respx.get("https://nb.example/api/schema/?format=json").mock(
+        return_value=httpx.Response(200, json=_minimal_schema_doc())
+    )
+    paths = _paths(tmp_path)
+    profile = _profile()
+
+    resolve_command_model(
+        paths=paths,
+        profile=profile,
+        schema_override=None,
+        schema_refresh=SchemaRefresh.DAILY,
+    )
+    assert route.call_count == 1
+
+    profile_dir = paths.cache_dir / profile.name
+    _age_sidecars(profile_dir, time.time() + 3600)
+
+    resolve_command_model(
+        paths=paths,
+        profile=profile,
+        schema_override=None,
+        schema_refresh=SchemaRefresh.DAILY,
+    )
+    assert route.call_count == 2
+
+
+@respx.mock
+def test_fast_path_rejects_hash_mismatch(tmp_path: Path) -> None:
+    """If a cache file's contents claim a different schema_hash than its
+    filename, the fast path must reject it (`CacheStore.load` already
+    enforces this — verify the fast path actually routes through it)."""
+    route = respx.get("https://nb.example/api/schema/?format=json").mock(
+        return_value=httpx.Response(200, json=_minimal_schema_doc())
+    )
+    paths = _paths(tmp_path)
+    profile = _profile()
+
+    resolve_command_model(
+        paths=paths,
+        profile=profile,
+        schema_override=None,
+        schema_refresh=SchemaRefresh.DAILY,
+    )
+    assert route.call_count == 1
+
+    profile_dir = paths.cache_dir / profile.name
+    cache_file = next(p for p in profile_dir.glob("*.json") if not p.name.endswith(".meta.json"))
+    payload = json.loads(cache_file.read_text())
+    payload["schema_hash"] = "f" * 64
+    cache_file.write_text(json.dumps(payload))
+
+    resolve_command_model(
+        paths=paths,
+        profile=profile,
+        schema_override=None,
+        schema_refresh=SchemaRefresh.DAILY,
+    )
+    assert route.call_count == 2

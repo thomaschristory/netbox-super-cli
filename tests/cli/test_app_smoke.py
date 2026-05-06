@@ -70,6 +70,59 @@ def test_offline_with_no_cache_or_bundled_exits_three(
     assert result.exit_code == 3
 
 
+def test_refresh_schema_flag_forces_refetch_through_full_cli(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """End-to-end: `nsc --refresh-schema dcim devices list` must short-
+    circuit the TTL fast-path that a prior call warmed. Exercises the
+    Typer parsing -> _extract_global_overrides -> CLIOverrides ->
+    build_runtime_context -> resolve_command_model wire-through that
+    unit tests for `force_refresh=True` cannot prove."""
+    monkeypatch.setenv("NSC_HOME", str(tmp_path))
+    monkeypatch.setenv("NSC_URL", "https://nb.example/")
+    monkeypatch.setenv("NSC_TOKEN", "tok")
+    for var in ("NSC_PROFILE", "NSC_SCHEMA"):
+        monkeypatch.delenv(var, raising=False)
+
+    schema_doc = {
+        "openapi": "3.0.3",
+        "info": {"title": "T", "version": "1.0.0"},
+        "tags": [{"name": "dcim"}],
+        "paths": {
+            "/api/dcim/devices/": {
+                "get": {
+                    "operationId": "dcim_devices_list",
+                    "tags": ["dcim"],
+                    "parameters": [],
+                    "responses": {"200": {"description": "ok", "content": {}}},
+                }
+            }
+        },
+        "components": {"schemas": {}},
+    }
+    devices_response = {"count": 0, "next": None, "previous": None, "results": []}
+
+    with respx.mock:
+        schema_route = respx.get("https://nb.example/api/schema/?format=json").mock(
+            return_value=httpx.Response(200, json=schema_doc)
+        )
+        respx.get("https://nb.example/api/dcim/devices/").mock(
+            return_value=httpx.Response(200, json=devices_response)
+        )
+
+        first = CliRunner().invoke(app, ["dcim", "devices", "list"])
+        assert first.exit_code == 0, first.output
+        assert schema_route.call_count == 1
+
+        second = CliRunner().invoke(app, ["dcim", "devices", "list"])
+        assert second.exit_code == 0, second.output
+        assert schema_route.call_count == 1, "DAILY default must hit the fresh-cache fast-path"
+
+        third = CliRunner().invoke(app, ["--refresh-schema", "dcim", "devices", "list"])
+        assert third.exit_code == 0, third.output
+        assert schema_route.call_count == 2, "--refresh-schema must bypass the fast-path"
+
+
 def test_flag_equals_value_form_is_recognized_in_bootstrap(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

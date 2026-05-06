@@ -4,6 +4,17 @@ All notable changes to netbox-super-cli are tracked here. Format follows [Keep a
 
 ## Unreleased
 
+### Added
+
+- **Schema TTL fast-path** (issue #34). `nsc` now skips the per-invocation `GET /api/schema/` round-trip when a sidecar-validated cache entry is fresh. Freshness is tracked in `~/.nsc/cache/<profile>/<hash>.meta.json` (an explicit `fetched_at` timestamp), not file mtime — so `touch`, backup-restore, or `cp -p` can't fake freshness, and clocks that jumped forward then back are rejected (>60s skew distrusted).
+- **`nsc --refresh-schema <subcmd>`** — one-shot forced refresh that bypasses the TTL even on `daily`/`weekly`/`manual` policies. Use after a NetBox upgrade to pick up a new schema immediately without changing config.
+- Atomic cache writes — `CacheStore.save` now writes via temp-file + `os.replace`, so a concurrent `nsc` reader can never observe a partial cache file.
+
+### Changed
+
+- **Default `defaults.schema_refresh` is now `daily`** (was `on-hash-change`). This is the user-visible behaviour change behind the fast-path: under the new default, `nsc` trusts a cached schema for 24h. **If you need the v1.0.1 behaviour** (re-fetch every invocation to detect a schema change immediately), set `defaults.schema_refresh: on-hash-change` in `~/.nsc/config.yaml`. To force a one-shot refresh under any policy, prepend `--refresh-schema` to the command. Existing configs with an explicit `schema_refresh` value are unaffected.
+- Cache files written before this release have no sidecar and will be treated as stale on first invocation after upgrade — `nsc` refetches once, writes the sidecar, and the fast-path is active from there.
+
 ## v1.0.1 — 2026-05-06
 
 First patch release. Two bug fixes; no API or behavior changes elsewhere.
