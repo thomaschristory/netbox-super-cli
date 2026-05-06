@@ -13,9 +13,8 @@ from nsc.cli.app import app
 
 @pytest.fixture
 def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """Redirect $HOME (and $XDG_CONFIG_HOME) to a tmp dir for path resolution."""
+    """Redirect $HOME to a tmp dir so per-target resolvers stay sandboxed."""
     monkeypatch.setenv("HOME", str(tmp_path))
-    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / ".config"))
     return tmp_path
 
 
