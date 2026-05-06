@@ -4,6 +4,10 @@ All notable changes to netbox-super-cli are tracked here. Format follows [Keep a
 
 ## Unreleased
 
+## v0.5.0c — Phase 5c — Portable Skill bundle · 2026-05-06
+
+Third sub-phase of Phase 5 (the v1.0.0 release line). Adds the bundled portable Skill — a single canonical `SKILL.md` packaged into the wheel and installable into supported agent harnesses with one command. `claude-code` and `codex` are confirmed targets (codex resolves to `~/.agents/skills/`, the agent-tool-neutral path documented at `developers.openai.com/codex/skills`); `gemini` and `copilot` have no documented programmatic Skill-install path and print actionable manual instructions instead of writing a guessed location silently. Test count: 569 (552 from 5b + 17 new — 4 bundle-helper + 13 skill-command).
+
 ### Added
 
 - `nsc skill install --target {claude-code,codex,gemini,copilot} [--apply]` — installs the bundled portable Skill (`skills/netbox-super-cli/SKILL.md`) into the chosen agent harness. Dry-run by default (mirrors the project-wide write-safety convention); `--apply` actually copies. `--output json` emits a structured envelope. `claude-code` resolves to `~/.claude/skills/netbox-super-cli/SKILL.md`; `codex` resolves to `~/.agents/skills/netbox-super-cli/SKILL.md` (the agent-tool-neutral convention per `developers.openai.com/codex/skills`); `gemini` and `copilot` print actionable manual instructions and exit 0 (no documented programmatic install path).
