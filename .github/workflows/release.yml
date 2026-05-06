@@ -7,7 +7,12 @@ name: release
 on:
   push:
     tags:
-      - "v*"
+      # Release versions only: v<MAJOR>.<MINOR>.<PATCH>. GitHub's tag filter
+      # uses fnmatch, so character ranges like [0-9] are honored. Pre-release
+      # tags (v1.0.0-rc1) are intentionally excluded — they would also fail
+      # the version-match check below, but excluding them at the trigger
+      # avoids a wasted runner.
+      - "v[0-9]*.[0-9]*.[0-9]*"
 
 # Trusted publishing requires id-token: write at the workflow level so the
 # OIDC token issued to pypa/gh-action-pypi-publish is signed.
@@ -36,6 +41,21 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Verify tag is on main
+        run: |
+          set -euo pipefail
+          # Trusted publishing's OIDC claim is bound to the workflow filename
+          # and tag ref — it does NOT enforce that the tagged commit is on
+          # main. Tags pushed from a topic branch (or any unmerged commit)
+          # would otherwise publish from un-reviewed code. This guard rejects
+          # any tag whose commit is not reachable from origin/main.
+          git fetch origin main --depth=0 2>/dev/null || git fetch origin main
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "Tag $GITHUB_REF_NAME points at $GITHUB_SHA which is not reachable from main." >&2
+            exit 1
+          fi
+          echo "Tag $GITHUB_REF_NAME ($GITHUB_SHA) is on main."
+
       - name: Install uv
         uses: astral-sh/setup-uv@v3
         with:
@@ -44,7 +64,7 @@ jobs:
       - name: Install Python
         run: uv python install 3.12
 
-      - name: Sync runtime deps (for `nsc --version` smoke check)
+      - name: Sync runtime deps (so the next step can import nsc._version)
         run: uv sync --frozen
 
       - name: Verify tag matches package version
@@ -89,11 +109,16 @@ jobs:
           packages-dir: dist
           # Print which artifacts were uploaded; helps diagnose mismatches.
           verbose: true
-          # Don't fail if a re-tag accidentally re-uploads identical
-          # artifacts (PyPI rejects duplicate uploads with 400). A re-run
-          # of an already-published version is a no-op rather than a hard
-          # failure — but DO fail if the artifact bytes differ (which would
-          # indicate a non-reproducible build, a real bug).
+          # Don't fail if a re-tag attempts to re-upload an existing
+          # filename: the action calls PyPI's filename-exists check and
+          # silently skips the upload (it does NOT compare byte content
+          # of the existing vs. would-be-uploaded artifact). PyPI itself
+          # treats version artifacts as immutable, so the file already on
+          # PyPI is the canonical bytes for that version. A re-tag that
+          # builds different bytes for the same version would publish
+          # those bytes only to the GitHub Release, not to PyPI — diverging
+          # the two. Avoid that by never re-tagging an already-published
+          # version; bump to the next patch version instead.
           skip-existing: true
 
       - name: Extract changelog section for release notes
@@ -101,9 +126,10 @@ jobs:
         run: |
           set -euo pipefail
           tag_version="${GITHUB_REF_NAME#v}"
-          # Match the line `## v1.0.0 — …` (em-dash) and capture until the
-          # next `## ` heading. The dashes are em-dashes per the project's
-          # changelog style (see CHANGELOG.md headings).
+          # Match `## v<ver><space>...` and capture until the next `## `
+          # heading. The trailing space after <ver> in the regex is what
+          # disambiguates `v1.0` from `v1.0.1`; what follows (typically an
+          # em-dash, date, sub-phase name) is intentionally unconstrained.
           awk -v ver="$tag_version" '
             $0 ~ "^## v" ver " " { capture=1; print; next }
             capture && /^## / { exit }
@@ -120,8 +146,13 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
+          tag_version="${GITHUB_REF_NAME#v}"
+          # Use exact filenames (the verify-wheel-filename step proved both
+          # exist) rather than glob-expanding `dist/*.whl dist/*.tar.gz` —
+          # that glob would silently attach any stray artifact a future
+          # build step might drop into dist/.
           gh release create "$GITHUB_REF_NAME" \
             --title "$GITHUB_REF_NAME" \
             --notes-file /tmp/release-notes.md \
-            dist/*.whl \
-            dist/*.tar.gz
+            "dist/netbox_super_cli-${tag_version}-py3-none-any.whl" \
+            "dist/netbox_super_cli-${tag_version}.tar.gz"
