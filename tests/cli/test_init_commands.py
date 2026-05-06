@@ -21,11 +21,11 @@ def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 def test_init_writes_minimal_config_on_clean_home(home: Path) -> None:
     runner = CliRunner()
-    # Stdin order: profile name, URL, token storage choice, token literal.
+    # Stdin order: profile name, URL, verify_ssl (default Y), token storage choice, token literal.
     result = runner.invoke(
         app,
         ["init"],
-        input="prod\nhttps://nb.example/\nplaintext\nabcd1234\n",
+        input="prod\nhttps://nb.example/\n\nplaintext\nabcd1234\n",
     )
     assert result.exit_code == 0, result.stdout + result.stderr
     body = (home / "config.yaml").read_text(encoding="utf-8")
@@ -39,7 +39,7 @@ def test_init_with_env_token_storage_writes_env_tag(home: Path) -> None:
     result = runner.invoke(
         app,
         ["init"],
-        input="prod\nhttps://nb.example/\nenv\nNSC_PROD_TOKEN\n",
+        input="prod\nhttps://nb.example/\n\nenv\nNSC_PROD_TOKEN\n",
     )
     assert result.exit_code == 0, result.stdout + result.stderr
     body = (home / "config.yaml").read_text(encoding="utf-8")
@@ -77,7 +77,33 @@ def test_init_treats_empty_existing_config_as_clean(home: Path) -> None:
     result = runner.invoke(
         app,
         ["init"],
-        input="prod\nhttps://nb.example/\nplaintext\nabcd1234\n",
+        input="prod\nhttps://nb.example/\n\nplaintext\nabcd1234\n",
     )
     assert result.exit_code == 0, result.stdout + result.stderr
     assert "default_profile: prod" in (home / "config.yaml").read_text(encoding="utf-8")
+
+
+def test_init_defaults_verify_ssl_to_true_and_omits_from_config(home: Path) -> None:
+    """Accepting the default (Y) keeps the config minimal — verify_ssl is not written."""
+    runner = CliRunner()
+    result = runner.invoke(
+        app,
+        ["init"],
+        input="prod\nhttps://nb.example/\ny\nplaintext\nabcd1234\n",
+    )
+    assert result.exit_code == 0, result.stdout + result.stderr
+    body = (home / "config.yaml").read_text(encoding="utf-8")
+    assert "verify_ssl" not in body
+
+
+def test_init_with_verify_ssl_false_writes_verify_ssl(home: Path) -> None:
+    """Answering 'n' to verify SSL writes `verify_ssl: false` to the profile."""
+    runner = CliRunner()
+    result = runner.invoke(
+        app,
+        ["init"],
+        input="prod\nhttps://nb.example/\nn\nplaintext\nabcd1234\n",
+    )
+    assert result.exit_code == 0, result.stdout + result.stderr
+    body = (home / "config.yaml").read_text(encoding="utf-8")
+    assert "verify_ssl: false" in body
