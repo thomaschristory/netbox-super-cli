@@ -46,12 +46,15 @@ def _build_doc(
     profile_name: str,
     url: str,
     token_value: object,
+    verify_ssl: bool = True,
 ) -> CommentedMap:
     """Produce the minimal config doc for a fresh init run."""
     profiles = CommentedMap()
     profile = CommentedMap()
     profile["url"] = url
     profile["token"] = token_value
+    if not verify_ssl:
+        profile["verify_ssl"] = False
     profiles[profile_name] = profile
 
     doc = CommentedMap()
@@ -78,6 +81,7 @@ def register(app: typer.Typer) -> None:
 
         profile_name = typer.prompt("Profile name", default="default")
         url = typer.prompt("NetBox URL (e.g. https://netbox.example.com/)")
+        verify_ssl = typer.confirm("Verify SSL certificates?", default=True)
         storage = typer.prompt("Token storage [plaintext|env]", default="plaintext").strip().lower()
         token_value: object
         if storage == "env":
@@ -86,7 +90,7 @@ def register(app: typer.Typer) -> None:
         else:
             token_value = typer.prompt("Token", hide_input=True)
 
-        doc = _build_doc(profile_name.strip(), url.strip(), token_value)
+        doc = _build_doc(profile_name.strip(), url.strip(), token_value, verify_ssl=verify_ssl)
 
         with acquire_lock(path):
             atomic_write(path, dump_round_trip(doc))

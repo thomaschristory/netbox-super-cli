@@ -4,6 +4,12 @@ All notable changes to netbox-super-cli are tracked here. Format follows [Keep a
 
 ## Unreleased
 
+## v1.0.2 — 2026-05-06
+
+### Added
+
+- **`nsc init` now prompts for SSL certificate verification** (issue #22). The wizard asks "Verify SSL certificates? [Y/n]" after the URL prompt, defaulting to `yes`. When the user answers `no`, `verify_ssl: false` is written into the profile block; a `yes` answer omits the field (keeping the config minimal, since `true` is the default).
+
 ## v1.0.1 — 2026-05-06
 
 First patch release. Two bug fixes; no API or behavior changes elsewhere.
