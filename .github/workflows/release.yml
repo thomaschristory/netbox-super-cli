@@ -7,11 +7,13 @@ name: release
 on:
   push:
     tags:
-      # Release versions only: v<MAJOR>.<MINOR>.<PATCH>. GitHub's tag filter
-      # uses fnmatch, so character ranges like [0-9] are honored. Pre-release
-      # tags (v1.0.0-rc1) are intentionally excluded — they would also fail
-      # the version-match check below, but excluding them at the trigger
-      # avoids a wasted runner.
+      # Release versions: v<digit><anything>.<digit><anything>.<digit><anything>.
+      # GitHub's tag filter uses fnmatch (not regex), so the leading [0-9]
+      # excludes vfoobar / vNEXT entirely, but the unbounded `*` after each
+      # digit class also matches v1.0.0-rc1 and v1.0.0.1. Those slip through
+      # the trigger and are caught by the version-match step below — the
+      # filter narrows the obvious garbage; the version-match step is the
+      # actual gate.
       - "v[0-9]*.[0-9]*.[0-9]*"
 
 # Trusted publishing requires id-token: write at the workflow level so the
@@ -49,7 +51,10 @@ jobs:
           # main. Tags pushed from a topic branch (or any unmerged commit)
           # would otherwise publish from un-reviewed code. This guard rejects
           # any tag whose commit is not reachable from origin/main.
-          git fetch origin main --depth=0 2>/dev/null || git fetch origin main
+          # actions/checkout@v4 with fetch-depth: 0 fetches the tag's full
+          # history but does not populate origin/main as a ref locally; we
+          # fetch it explicitly here.
+          git fetch origin main
           if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
             echo "Tag $GITHUB_REF_NAME points at $GITHUB_SHA which is not reachable from main." >&2
             exit 1
