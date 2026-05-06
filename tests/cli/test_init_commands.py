@@ -8,6 +8,7 @@ import pytest
 from typer.testing import CliRunner
 
 from nsc.cli.app import app
+from nsc.config.loader import load_config
 
 
 @pytest.fixture
@@ -107,3 +108,21 @@ def test_init_with_verify_ssl_false_writes_verify_ssl(home: Path) -> None:
     assert result.exit_code == 0, result.stdout + result.stderr
     body = (home / "config.yaml").read_text(encoding="utf-8")
     assert "verify_ssl: false" in body
+    cfg = load_config(home / "config.yaml")
+    assert cfg.profiles["prod"].verify_ssl is False
+
+
+def test_init_env_token_with_verify_ssl_false(home: Path) -> None:
+    """env token storage combined with verify_ssl=false produces both fields correctly."""
+    runner = CliRunner()
+    result = runner.invoke(
+        app,
+        ["init"],
+        input="prod\nhttps://nb.example/\nn\nenv\nNSC_PROD_TOKEN\n",
+    )
+    assert result.exit_code == 0, result.stdout + result.stderr
+    body = (home / "config.yaml").read_text(encoding="utf-8")
+    assert "token: !env NSC_PROD_TOKEN" in body
+    assert "verify_ssl: false" in body
+    cfg = load_config(home / "config.yaml")
+    assert cfg.profiles["prod"].verify_ssl is False
