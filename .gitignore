@@ -35,3 +35,6 @@ docs/superpowers/
 
 # mkdocs
 site/
+
+# git worktrees
+.worktrees/

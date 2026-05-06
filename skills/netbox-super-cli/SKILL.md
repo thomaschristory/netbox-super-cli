@@ -27,7 +27,8 @@ nsc <tag> <resource> <verb> [args] [--apply] [--output json]
 - `<tag>` — the OpenAPI tag, e.g., `dcim`, `ipam`, `tenancy`, `circuits`, `extras`.
 - `<resource>` — plural form, e.g., `devices`, `prefixes`, `tenants`, `vlans`.
 - `<verb>` — `list`, `get`, `create`, `update`, `delete`. (Bulk variants exist
-  for write verbs via `-f <file>` / `--ndjson`.)
+  for write verbs via `-f <file>` — use a `.ndjson` / `.jsonl` extension to trigger
+  NDJSON mode.)
 
 A few curated aliases skip the tag:
 
@@ -121,7 +122,102 @@ schema. It self-heals on schema changes, but you can prune it:
 - `nsc cache prune` — show what would be deleted.
 - `nsc cache prune --apply` — actually delete orphans.
 
+## NetBox Device Type Library
+
+The [NetBox Device Type Library](https://github.com/netbox-community/devicetype-library)
+is a community-maintained collection of device type YAML definitions for hundreds of
+real-world hardware devices (routers, switches, servers, PDUs, firewalls, etc.). It is
+the canonical source for importing device types you don't want to define by hand, and is
+especially useful for demo setups.
+
+### Library YAML vs. NetBox API format
+
+The library stores definitions in its own YAML dialect. The NetBox API (and therefore
+`nsc`) uses a slightly different shape. The key differences:
+
+| Library field | NetBox API field | Notes |
+|---|---|---|
+| `manufacturer: Cisco` | `manufacturer: {name: "Cisco", slug: "cisco"}` | both `name` and `slug` are required |
+| `interfaces:` | separate `POST /api/dcim/interface-templates/` | component templates are separate resources |
+| `console-ports:` | separate `POST /api/dcim/console-port-templates/` | same pattern |
+| `power-ports:` | separate `POST /api/dcim/power-port-templates/` | same pattern |
+| `module-bays:` | separate `POST /api/dcim/module-bay-templates/` | same pattern |
+
+### Import workflow
+
+```bash
+# 1. Clone the library (once)
+git clone https://github.com/netbox-community/devicetype-library.git
+
+# 2. Find the device type you want
+ls devicetype-library/device-types/Cisco/
+
+# 3. Ensure the manufacturer exists in NetBox (create if missing)
+nsc dcim manufacturers list --slug cisco --output json   # check first
+nsc dcim manufacturers create --field name=Cisco --field slug=cisco --apply
+
+# 4. Create the device type (body only — no component templates yet)
+nsc dcim device-types create -f device-type-body.yaml --apply
+
+# 5. Get the newly created device type's ID
+DT_ID=$(nsc dcim device-types list --slug <slug> --output json | jq '.[0].id')
+
+# 6. Add component templates (repeat for each component type present in the library YAML)
+nsc dcim interface-templates create -f iface-templates.ndjson --apply
+nsc dcim console-port-templates create -f console-templates.ndjson --apply
+nsc dcim power-port-templates create -f power-templates.ndjson --apply
+```
+
+### Device type body YAML (for `nsc dcim device-types create -f`)
+
+Translate the library YAML into the API shape before passing to `nsc`:
+
+```yaml
+# device-type-body.yaml
+manufacturer:
+  name: Cisco
+  slug: cisco
+model: "Catalyst 2960-24TC-L"
+slug: cisco-catalyst-2960-24tc-l
+u_height: 1
+is_full_depth: true
+```
+
+### Component template NDJSON (one object per line)
+
+Each component template must reference the parent device type's `device_type` ID:
+
+```jsonl
+{"device_type": 42, "name": "GigabitEthernet0/1", "type": "1000base-t"}
+{"device_type": 42, "name": "GigabitEthernet0/2", "type": "1000base-t"}
+```
+
+Generate this from the library YAML with any scripting tool (jq, Python, etc.) before
+passing to `nsc` via `-f <file>.ndjson`.
+
+### Demo / seed workflow
+
+To quickly seed a fresh NetBox with common hardware for demos:
+
+```bash
+# List all manufacturer directories in the library
+ls devicetype-library/device-types/
+```
+
+For each YAML file, apply steps 3–6 above. Because `nsc` dry-runs by default, you can
+preview each step before committing.
+
+### What NOT to do
+
+- DO NOT pass the raw library YAML directly to `nsc` — it will fail schema validation
+  because `manufacturer` is a string in the library but a nested object in the API.
+- DO NOT try to create component templates before the parent device type exists; they
+  all require a `device_type` foreign key.
+- DO NOT import duplicates blindly; check `nsc dcim device-types list --slug <slug>`
+  first and skip if it already exists.
+
 ## See also
 
 - `nsc commands --output json` — the full command tree.
 - Project docs site (deployed on every release tag).
+- [NetBox Device Type Library](https://github.com/netbox-community/devicetype-library) — community YAML definitions.
