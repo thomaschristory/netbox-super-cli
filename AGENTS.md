@@ -42,6 +42,14 @@ The hard rule: **`nsc/model/` imports nothing from `nsc/cli/`, `nsc/http/`, or a
 - TDD: write the failing test first.
 - No comments on what code does; only on non-obvious *why*.
 
+## Branching
+
+`main` is protected — direct pushes are rejected. All work happens on
+short-lived feature branches (`fix/<slug>`, `feat/<slug>`, `docs/<slug>`,
+…), opens a PR against `main`, passes required CI checks, and squash-merges.
+Releases are *tags* on `main`, not branches. Full convention:
+[`docs/contributing/branching.md`](docs/contributing/branching.md).
+
 ## Where the design lives
 
 - `docs/superpowers/specs/2026-04-30-netbox-super-cli-design.md` — the full design.

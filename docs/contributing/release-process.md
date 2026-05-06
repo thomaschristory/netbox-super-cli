@@ -4,6 +4,12 @@
 Releases are tag-driven: `release.yml` fires on `v*.*.*` tag pushes and
 publishes to PyPI via trusted publishing (no API tokens).
 
+A release is a **tagged commit on `main`**, not a separate branch — see
+[Branching and merging](branching.md) for the trunk-based workflow this
+process assumes. Release prep (CHANGELOG roll + version bumps) happens
+on a `chore/release-X.Y.Z` feature branch, gets PR-merged into `main`,
+and only then is `vX.Y.Z` tagged on the resulting merge commit.
+
 ## Normal release checklist
 
 1. Full unit suite green: `just test`.

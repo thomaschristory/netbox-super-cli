@@ -75,5 +75,6 @@ nav:
       - Caching: architecture/caching.md
   - Contributing:
       - Development: contributing/development.md
+      - Branching and merging: contributing/branching.md
       - Release process: contributing/release-process.md
       - Adding bundled schemas: contributing/adding-bundled-schemas.md
