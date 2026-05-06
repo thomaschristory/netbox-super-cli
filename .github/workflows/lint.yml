@@ -39,3 +39,18 @@ jobs:
         run: uv sync --frozen --group docs
       - name: Verify auto-generated reference pages are up to date
         run: uv run python scripts/gen_docs.py --check
+
+  agents-md-fresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+      - name: Install Python
+        run: uv python install 3.12
+      - name: Sync deps
+        run: uv sync --frozen
+      - name: Check AGENTS.md is in sync with CLAUDE.md
+        run: uv run python scripts/sync_agents_md.py --check
