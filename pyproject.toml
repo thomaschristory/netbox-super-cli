@@ -1,10 +1,11 @@
 [project]
 name = "netbox-super-cli"
-version = "0.0.1"
+version = "1.0.0"
 description = "Dynamic NetBox CLI generated from the live OpenAPI schema."
 readme = "README.md"
 requires-python = ">=3.12"
-license = { text = "Apache-2.0" }
+license = "Apache-2.0"
+license-files = ["LICENSE"]
 authors = [{ name = "Thomas", email = "mick27@gmail.com" }]
 keywords = ["netbox", "cli", "openapi", "automation"]
 classifiers = [
