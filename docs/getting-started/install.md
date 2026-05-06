@@ -15,8 +15,6 @@ pipx install netbox-super-cli
 uv tool install netbox-super-cli
 ```
 
-> **Phase 5b note:** the PyPI release lands in Phase 5d. Until then, install from source (see below).
-
 Verify the install:
 
 ```sh

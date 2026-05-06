@@ -11,13 +11,15 @@ A Python CLI for [NetBox](https://netbox.dev/) that builds its command tree dyna
 - **Safe by default.** POST/PATCH/PUT/DELETE preview as dry-runs unless you pass `--apply`.
 - **Agent-friendly.** Deterministic command shape, machine-readable JSON output, stable error envelope with documented exit codes.
 
-## Install (preview)
+## Install
 
 ```
+pip install netbox-super-cli
+# or, if you use uv:
 uv tool install netbox-super-cli
 ```
 
-Not on PyPI yet; install from source:
+Or from source:
 ```
 git clone https://github.com/thomaschristory/netbox-super-cli
 cd netbox-super-cli
@@ -85,7 +87,7 @@ Stdin is sniffed from the first 512 bytes (first non-whitespace byte plus a one-
 - HTTP headers in the `SENSITIVE_HEADERS` set (e.g. `Authorization`, `X-API-Key`) — replaced with `"<redacted>"`.
 - Request-body fields whose OpenAPI definition has `format: password` OR whose name (case-insensitive) is one of: `password`, `secret`, `token`, `api_key`, `apikey`, `private_key`, `passphrase`, `client_secret`. Nested fields and arrays of objects are walked recursively.
 
-The wire body sent to NetBox is **not** redacted — only the audit log. A failed write still records the redacted body; redaction is irreversible. Treat `audit.jsonl` like a verbose application log: gate it behind your home-directory permissions and rotate / archive accordingly. A "redact everything" mode is deferred to Phase 5+.
+The wire body sent to NetBox is **not** redacted — only the audit log. A failed write still records the redacted body; redaction is irreversible. Treat `audit.jsonl` like a verbose application log: gate it behind your home-directory permissions and rotate / archive accordingly. A "redact everything" mode is on the post-v1.0 roadmap.
 
 ## Output and errors
 

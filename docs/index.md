@@ -4,8 +4,6 @@ Dynamic NetBox CLI driven by the live OpenAPI schema. The same `nsc` binary work
 against any NetBox version (4.4+) and exposes plugin-provided endpoints automatically
 because the schema — not hand-written code — defines the surface.
 
-> **Status:** Phase 5b. v1.0.0 publish lands in 5d. Until then, install from source.
-
 ## Why nsc
 
 - **Plugins just work.** New endpoints from any installed plugin appear as commands automatically.

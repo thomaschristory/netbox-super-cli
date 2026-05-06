@@ -1,42 +1,59 @@
 # Release process
 
-Releases are tag-driven. Each phase's sub-phases ship as `vX.Y.Z<a|b|c|d>`;
-the final cut of a phase drops the suffix (e.g., `v0.5.0` is Phase 5d).
+`nsc` follows [Semantic Versioning](https://semver.org/) from v1.0.0 onward.
+Releases are tag-driven: `release.yml` fires on `v*.*.*` tag pushes and
+publishes to PyPI via trusted publishing (no API tokens).
 
-## Sub-phase release checklist
-
-For a sub-phase tag like `v0.5.0b`:
+## Normal release checklist
 
 1. Full unit suite green: `just test`.
 2. Lint clean: `just lint`.
-3. Bench median <300ms: `just bench`.
-4. E2E green (against the live container): `just e2e` (requires Docker).
-5. CHANGELOG `[Unreleased]` rolled to `[v0.5.0b] — YYYY-MM-DD`.
-6. Tag annotated: `git tag -a v0.5.0b -m "Phase 5b: ..."`.
-7. Push: `git push origin main && git push origin v0.5.0b`.
-8. Watch CI: `gh run list --branch main --limit 4`.
+3. Bench median <300 ms: `just bench`.
+4. E2E green (requires Docker): `just e2e`.
+5. Roll `CHANGELOG.md`: move `[Unreleased]` to `[vX.Y.Z] — YYYY-MM-DD`.
+6. Bump `pyproject.toml` `[project].version` and `nsc/_version.py` `__version__`
+   to match the tag.
+7. Close the matching [GitHub milestone](https://github.com/thomaschristory/netbox-super-cli/milestones)
+   and verify all tracked issues are resolved or deferred.
+8. Commit: `git commit -m "chore(release): X.Y.Z"`.
+9. Annotate and push: `git tag -a vX.Y.Z -m "vX.Y.Z" && git push origin main vX.Y.Z`.
+10. Watch `release.yml` publish the wheel and create the GitHub Release.
 
-## Final v1.0.0 release
+## GitHub milestones convention
 
-Phase 5d cuts v1.0.0. The release pipeline:
+Each planned release has a milestone named after its version (e.g., `v1.1.0`).
+Issues and PRs are triaged to a milestone when they are scoped to a specific
+release. At release time, close the milestone; open issues are either
+bumped to the next milestone or moved to the backlog.
 
-1. `pyproject.toml` version bump from `0.0.1` to `1.0.0`.
-2. Trusted publishing configured on PyPI (one-time, manual; see PyPI's
-   "Publishing" tab).
-3. `release.yml` workflow runs on `v*` tag push: `uv build` →
-   `pypa/gh-action-pypi-publish` → `gh release create` with auto-generated
-   notes from `CHANGELOG.md`.
-4. `agents-md-sync.yml` regenerates `AGENTS.md` from `CLAUDE.md`.
-5. Phase 6+ GitHub issues filed for every deferred item (keyring, dynamic
-   completion, concurrency, multi-NetBox-version CI matrix, stricter
-   redaction, singular aliases, Skill install drift).
+- Milestone name: `vX.Y.Z` (matches the git tag exactly).
+- An open milestone with no due date means "planned but not scheduled".
+- The `main` branch is always releasable; milestones are a planning aid, not a gate.
+
+## Patch releases (bug fixes)
+
+Patch bumps (`Z` increment) follow the same checklist. Because they contain
+only bug fixes, the E2E run can be skipped if the fix is confined to a code
+path not exercised by the E2E suite — but running it is still recommended.
+
+## Minor / major releases
+
+Minor (`Y`) or major (`X`) bumps follow the full checklist. Before tagging,
+open a tracking issue or milestone for any follow-on items deferred from the
+release.
 
 ## Hot-fixing a tagged release
 
-Don't amend a tagged commit. Cut a fresh `vX.Y.Z<suffix>-fix1` tag with the
-fix and document in the next sub-phase's plan.
+Never amend a tagged commit. Cut a `vX.Y.Z+1` patch release with the fix
+and document it in `CHANGELOG.md` under a new `[vX.Y.Z+1]` entry.
 
 ## Versioning policy
 
-Phase milestones are pinned by git tags rather than `pyproject.toml` version
-bumps while pre-1.0. After v1.0.0, semver applies.
+From v1.0.0 onward:
+
+- `PATCH` — backwards-compatible bug fixes.
+- `MINOR` — new backwards-compatible features or CLI commands.
+- `MAJOR` — breaking changes to the error envelope, exit codes, or config schema.
+
+The version in `pyproject.toml`, `nsc/_version.py`, and the git tag must
+always agree. `release.yml` validates this before publishing.

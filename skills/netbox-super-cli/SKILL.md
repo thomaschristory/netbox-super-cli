@@ -47,9 +47,9 @@ nsc dcim devices create -f device.yaml          # dry-run; prints what would hap
 nsc dcim devices create -f device.yaml --apply  # actually creates
 ```
 
-Bulk writes accept `--ndjson <file>` (one JSON object per line) and the same
-`--apply` rule applies. Read commands (`list`, `get`, `describe`) ignore
-`--apply` — never paste it into a read by reflex.
+Bulk writes use `-f <file>` with a `.ndjson` / `.jsonl` extension (one JSON
+object per line) and the same `--apply` rule applies. Read commands (`list`,
+`get`, `describe`) ignore `--apply` — never paste it into a read by reflex.
 
 ## Stable JSON output
 
@@ -65,7 +65,7 @@ Errors come back as JSON envelopes (on stderr by default; on stdout when
 ```json
 {
   "error": "human-readable message",
-  "type": "validation | http | client | server | schema | …",
+  "type": "auth | not_found | validation | conflict | rate_limited | server | transport | schema | config | client | internal | input_error | …",
   "endpoint": "/api/dcim/devices/",
   "method": "POST",
   "status_code": 400,
@@ -84,7 +84,7 @@ the project's `reference/exit-codes.md` page.
 - **List with filters:** `nsc dcim devices list --site mysite --status active --output json`
 - **Get one:** `nsc dcim devices get 42 --output json`
 - **Create from a YAML file:** `nsc dcim devices create -f new-device.yaml --apply`
-- **Bulk create from NDJSON:** `nsc dcim devices create --ndjson devices.ndjson --apply`
+- **Bulk create from NDJSON:** `nsc dcim devices create -f devices.ndjson --apply`
 - **Update a field:** `nsc dcim devices update 42 --status decommissioning --apply`
 - **Delete:** `nsc dcim devices delete 42 --apply` (preview first WITHOUT `--apply`)
 

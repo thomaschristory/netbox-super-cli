@@ -26,7 +26,7 @@ one-line "schema changed, regenerating…" notice on stderr.
 
 ## Cleaning up
 
-`nsc cache prune` (Phase 5a) handles three classes of orphan:
+`nsc cache prune` handles three classes of orphan:
 
 1. Profile directories not in `~/.nsc/config.yaml` (e.g., a removed profile).
 2. `<schema_hash>.json` files inside an active profile whose hash no longer
