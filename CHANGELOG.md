@@ -4,6 +4,15 @@ All notable changes to netbox-super-cli are tracked here. Format follows [Keep a
 
 ## Unreleased
 
+## v1.0.1 — 2026-05-06
+
+First patch release. Two bug fixes; no API or behavior changes elsewhere.
+
+### Fixed
+
+- **`nsc commands --schema <https-url>` now honours `--insecure`, `NSC_INSECURE`, and the active profile's `verify_ssl: false`** (issue #8). The `commands` meta-command bypasses the bootstrap pipeline that resolves the SSL flag, so it had been calling `httpx.get` with `verify=True` regardless of the user's configuration. The handler now reads the global state and a new `resolve_transport_settings` helper computes `(verify_ssl, timeout)` without requiring URL/token (which `commands` does not need).
+- **`nsc commands` and `nsc config <…>` now run when `~/.nsc/config.yaml` fails to parse** (issue #10). The `ConfigParseError` recovery branch in `nsc/cli/app.py:_root` listed only 5 of the 7 meta subcommands — `commands` and `config` were missing, so running them against a malformed config aborted with the unhelpful root-level `Error: <ConfigParseError>` instead of recovering to an empty `Config()`. The recovery set is now sourced from `_META_COMMANDS` directly (single source of truth).
+
 ## v1.0.0 — 2026-05-06
 
 The 1.0.0 release. `nsc` is now a published package on PyPI: `pip install netbox-super-cli` (or `uv tool install netbox-super-cli`). Phase 5 (the v1.0.0 release line) shipped over four sub-phases: 5a added cache management and a static-completion CI contract; 5b shipped the MkDocs Material site at `https://thomaschristory.github.io/netbox-super-cli/` with auto-generated reference pages and a CI drift check; 5c bundled the portable Skill at `skills/netbox-super-cli/SKILL.md` with a one-command install helper for four agent harnesses; 5d wired the PyPI release pipeline (trusted publishing, no API tokens), the AGENTS.md drift-check, and modernized the package metadata to PEP 639 SPDX form. Test count: 569 (552 from 5b + 17 from 5c — 5d added no runtime tests). Bench median: 263ms (300ms target).
