@@ -14,9 +14,9 @@ A Python CLI for [NetBox](https://netbox.dev/) that builds its command tree dyna
 ## Install
 
 ```
-pip install netbox-super-cli
-# or, if you use uv:
 uv tool install netbox-super-cli
+# or, with pipx:
+pipx install netbox-super-cli
 ```
 
 Or from source:
