@@ -99,7 +99,7 @@ The wire body sent to NetBox is **not** redacted — only the audit log. A faile
 
 ```sh
 # Dump every endpoint in the bundled NetBox schema as JSON.
-uv run nsc commands --schema nsc/schemas/bundled/netbox-4.6.0-beta2.json.gz --output json | head
+uv run nsc commands --schema nsc/schemas/bundled/netbox-4.6.0.json.gz --output json | head
 
 # Or against a live install.
 uv run nsc commands --schema https://netbox.example.com/api/schema/?format=json --output json

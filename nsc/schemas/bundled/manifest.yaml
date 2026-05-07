@@ -1,5 +1,9 @@
-# Bundled NetBox OpenAPI snapshots.
-# Maintained by `just fetch-schemas` (added in Phase 4).
+# Bundled NetBox OpenAPI snapshots. Newest entry last.
+# When the offline fallback fires, `nsc/schema/source.py` loads the last
+# entry; `scripts/gen_docs.py` does the same for the auto-generated CLI
+# reference. To add a new version, see docs/contributing/adding-bundled-schemas.md.
 schemas:
-  - version: "4.6.0-beta2"
-    file: "netbox-4.6.0-beta2.json.gz"
+  - version: "4.5.10"
+    file: "netbox-4.5.10.json.gz"
+  - version: "4.6.0"
+    file: "netbox-4.6.0.json.gz"
