@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+import time
 from pathlib import Path
 
 import pytest
@@ -118,3 +120,40 @@ def test_purge_is_a_noop_when_profile_is_missing(tmp_path: Path) -> None:
     """Removing a profile that never had a cache must not raise."""
     store = CacheStore(root=tmp_path)
     store.purge("never-used")
+
+
+def test_save_writes_fetched_at_sidecar(tmp_path: Path) -> None:
+    """`save` must produce a `<hash>.meta.json` sidecar with a numeric
+    `fetched_at` close to now — the TTL fast-path keys freshness off
+    this, not file mtime."""
+    store = CacheStore(root=tmp_path)
+    before = time.time()
+    store.save("prod", _model("a" * 64))
+    after = time.time()
+
+    sidecar = tmp_path / "prod" / ("a" * 64 + ".meta.json")
+    assert sidecar.exists()
+    fetched_at = json.loads(sidecar.read_text())["fetched_at"]
+    assert before <= fetched_at <= after
+
+
+def test_load_fetched_at_returns_none_when_missing(tmp_path: Path) -> None:
+    """No sidecar means we can't prove freshness — distrust the entry."""
+    store = CacheStore(root=tmp_path)
+    assert store.load_fetched_at("prod", "a" * 64) is None
+
+
+def test_load_fetched_at_round_trips(tmp_path: Path) -> None:
+    store = CacheStore(root=tmp_path)
+    store.save("prod", _model("a" * 64))
+    fetched_at = store.load_fetched_at("prod", "a" * 64)
+    assert fetched_at is not None
+    assert fetched_at > 0
+
+
+def test_load_fetched_at_handles_corrupt_sidecar(tmp_path: Path) -> None:
+    store = CacheStore(root=tmp_path)
+    store.save("prod", _model("a" * 64))
+    sidecar = tmp_path / "prod" / ("a" * 64 + ".meta.json")
+    sidecar.write_text("not json")
+    assert store.load_fetched_at("prod", "a" * 64) is None

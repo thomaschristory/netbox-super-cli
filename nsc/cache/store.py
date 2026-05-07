@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import contextlib
+import json
 import logging
+import os
 import re
 import shutil
 import time
@@ -80,8 +82,32 @@ class CacheStore:
         self._validate_profile(profile)
         target = self._path_for(profile, model.schema_hash)
         target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(model.model_dump_json(indent=2))
+        _atomic_write(target, model.model_dump_json(indent=2))
+        meta = self._meta_path_for(profile, model.schema_hash)
+        _atomic_write(meta, json.dumps({"fetched_at": time.time()}))
         return target
+
+    def load_fetched_at(self, profile: str, schema_hash: str) -> float | None:
+        """Return epoch seconds when this cache entry was last fetched, or
+        `None` if the sidecar is missing/unreadable. Used by the TTL
+        fast-path so freshness is keyed off an explicit fetch timestamp
+        rather than the cache file's mtime (which can be touched, restored
+        from backup, or skewed by clock drift)."""
+        self._validate_profile(profile)
+        if not _HASH_RE.match(schema_hash):
+            return None
+        meta = self._meta_path_for(profile, schema_hash)
+        if not meta.exists():
+            return None
+        try:
+            data = json.loads(meta.read_text())
+        except Exception as exc:
+            _LOG.warning("cache: ignoring corrupt sidecar %s (%s)", meta, exc)
+            return None
+        value = data.get("fetched_at") if isinstance(data, dict) else None
+        if not isinstance(value, (int, float)):
+            return None
+        return float(value)
 
     def clear(self, *, profile: str | None = None) -> None:
         if profile is None:
@@ -149,10 +175,23 @@ class CacheStore:
     def _path_for(self, profile: str, schema_hash: str) -> Path:
         return self.root / profile / f"{schema_hash}.json"
 
+    def _meta_path_for(self, profile: str, schema_hash: str) -> Path:
+        return self.root / profile / f"{schema_hash}.meta.json"
+
     @staticmethod
     def _validate_profile(profile: str) -> None:
         if not _PROFILE_RE.match(profile):
             raise ValueError(f"invalid profile name {profile!r}: must match {_PROFILE_RE.pattern}")
+
+
+def _atomic_write(path: Path, content: str) -> None:
+    """Write `content` to `path` via temp-file + `os.replace` so that a
+    concurrent reader either sees the previous file or the new one — never
+    a partial write. Same-directory temp guarantees `replace` is atomic on
+    POSIX and Windows."""
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(content)
+    os.replace(tmp, path)
 
 
 ADHOC_PROFILE = "adhoc"
@@ -287,6 +326,11 @@ def prune_orphans(plan: PrunePlan) -> PruneResult:
             freed += f.stat().st_size
             f.unlink()
             deleted_files += 1
+        sidecar = f.with_name(f"{f.stem}.meta.json")
+        if sidecar.exists():
+            with contextlib.suppress(FileNotFoundError):
+                freed += sidecar.stat().st_size
+                sidecar.unlink()
 
     return PruneResult(
         deleted_dirs=deleted_dirs,

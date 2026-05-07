@@ -89,6 +89,70 @@ the project's `reference/exit-codes.md` page.
 - **Update a field:** `nsc dcim devices update 42 --status decommissioning --apply`
 - **Delete:** `nsc dcim devices delete 42 --apply` (preview first WITHOUT `--apply`)
 
+## Performance: prefer one bulk call to many small ones
+
+Each `nsc` invocation costs at least one HTTP round-trip to NetBox. When
+operating on many objects, **prefer one filtered list call to N individual
+gets, and one NDJSON write to a shell loop of single writes.** A loop of
+1,000 patches is 1,000+ round-trips; a single NDJSON apply is one bulk
+operation.
+
+### Read patterns
+
+- **Need every interface on a device?** Use `list` with a server-side
+  filter, not a loop:
+  ```bash
+  # GOOD — one call, returns all matching rows
+  nsc dcim interfaces list --device 42 --all --output json
+
+  # BAD — N+1 round-trips
+  nsc dcim devices get 42 --output json | jq '.interfaces[]' | \
+    while read id; do nsc dcim interfaces get "$id"; done
+  ```
+- **Need a subset by some non-filterable property?** Pull the wider set
+  once, then `jq` locally:
+  ```bash
+  nsc dcim interfaces list --device 42 --all --output json \
+    | jq '[.[] | select(.enabled == true and (.name | startswith("Gi")))]'
+  ```
+- **Pagination defaults:** `list` returns the first page (50 rows by
+  default). Pass `--all` to follow `next` links until exhausted, or
+  `--limit N` for a hard cap. `nsc describe <tag> <resource>` reveals
+  which fields can be filtered server-side.
+- **Don't query `nsc commands` or `nsc describe` per-resource in a
+  loop.** They serialize the whole command tree; cache the output once
+  per session.
+
+### Write patterns
+
+- **Bulk writes go through `-f <file>.ndjson --apply`.** One JSON object
+  per line; `nsc` streams them through a single bulk endpoint where the
+  schema supports it, otherwise issues one request per line *with shared
+  auth and connection pooling* — still much faster than a shell loop:
+  ```bash
+  # GOOD — one nsc invocation, connection reuse
+  nsc dcim interfaces update -f changes.ndjson --apply
+
+  # BAD — N invocations, N TLS handshakes, N schema-cache lookups
+  while read line; do
+    id=$(echo "$line" | jq .id)
+    nsc dcim interfaces update "$id" -f <(echo "$line") --apply
+  done < changes.ndjson
+  ```
+- **Generate the NDJSON once** with whatever scripting tool you prefer
+  (`jq`, Python, awk). Don't re-run `list` between every patch.
+
+### Schema fetches
+
+`nsc` fetches `/api/schema/` to build its command tree, then caches the
+result under `~/.nsc/cache/<profile>/<schema-hash>.json`. By default the
+cache is trusted for 24h (`schema_refresh: daily` in
+`~/.nsc/config.yaml`), so back-to-back commands don't repeat the schema
+GET. Force a refresh with `--refresh-schema` (one-shot) or set
+`defaults.schema_refresh: on-hash-change` if you need every invocation
+to verify against the live schema. Other policies: `manual` (cache
+indefinitely until manually refreshed), `weekly` (7-day TTL).
+
 ## When something fails
 
 1. Check the exit code (`echo $?`) — the type is in `EXIT_CODES`.
@@ -117,10 +181,14 @@ the project's `reference/exit-codes.md` page.
 ## Cache management
 
 The on-disk cache speeds up repeated invocations against the same NetBox
-schema. It self-heals on schema changes, but you can prune it:
+schema. By default the cache is trusted for 24h before re-fetching the
+live schema (see [Schema fetches](#schema-fetches) above).
 
-- `nsc cache prune` — show what would be deleted.
-- `nsc cache prune --apply` — actually delete orphans.
+- `nsc cache prune` — show what would be deleted (orphan profile dirs
+  and stale-hash files).
+- `nsc cache prune --apply` — actually delete.
+- `nsc --refresh-schema <subcmd>` — force a one-shot live re-fetch
+  bypassing the TTL.
 
 ## NetBox Device Type Library
 

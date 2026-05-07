@@ -84,6 +84,10 @@ def _extract_global_overrides(args: list[str]) -> CLIOverrides:
             kwargs["insecure"] = False
             i += 1
             continue
+        if a == "--refresh-schema":
+            kwargs["refresh_schema"] = True
+            i += 1
+            continue
         i += 1
     return CLIOverrides(**kwargs)  # type: ignore[arg-type]
 
@@ -225,6 +229,13 @@ def _root(
     token: Annotated[str | None, typer.Option("--token")] = None,
     insecure: Annotated[bool | None, typer.Option("--insecure/--no-insecure")] = None,
     schema: Annotated[str | None, typer.Option("--schema")] = None,
+    refresh_schema: Annotated[
+        bool,
+        typer.Option(
+            "--refresh-schema",
+            help="Force a fresh /api/schema/ fetch, bypassing the cache TTL.",
+        ),
+    ] = False,
     output: Annotated[str | None, typer.Option("--output", "-o")] = None,
     debug: Annotated[bool, typer.Option("--debug")] = False,
 ) -> None:
@@ -235,6 +246,7 @@ def _root(
         token=token,
         insecure=insecure,
         schema_override=schema,
+        refresh_schema=refresh_schema,
         output=output,
     )
     try:
