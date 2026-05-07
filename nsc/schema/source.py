@@ -124,6 +124,12 @@ def _build_and_cache(loaded: LoadedSchema, paths: Paths, profile: ResolvedProfil
     store = CacheStore(root=paths.cache_dir)
     cached = store.load(profile.name, loaded.hash)
     if cached is not None:
+        # Issue #39: a live fetch just confirmed this hash is current.
+        # Bump the sidecar so the TTL fast-path trusts the cache on the
+        # next invocation, otherwise an aged-out sidecar (or a legacy
+        # cache from before sidecars existed) makes us refetch every
+        # invocation even though the schema hasn't moved.
+        store.touch_fetched_at(profile.name, loaded.hash)
         return cached
     model = build_command_model(loaded)
     store.save(profile.name, model)

@@ -359,3 +359,92 @@ def test_fast_path_rejects_hash_mismatch(tmp_path: Path) -> None:
         schema_refresh=SchemaRefresh.DAILY,
     )
     assert route.call_count == 2
+
+
+@respx.mock
+def test_legacy_cache_without_sidecar_warms_then_uses_fast_path(tmp_path: Path) -> None:
+    """Issue #39: a cache file written by a pre-#35 version has no
+    sidecar. The first invocation under DAILY must fetch (sidecar
+    missing → no proof of freshness), confirm the live hash matches the
+    legacy file, write a sidecar, and the second invocation must hit
+    the fast path. Without this self-healing the user sees a fresh
+    `/api/schema/` request on every command."""
+    route = respx.get("https://nb.example/api/schema/?format=json").mock(
+        return_value=httpx.Response(200, json=_minimal_schema_doc())
+    )
+    paths = _paths(tmp_path)
+    profile = _profile()
+
+    resolve_command_model(
+        paths=paths,
+        profile=profile,
+        schema_override=None,
+        schema_refresh=SchemaRefresh.DAILY,
+    )
+    assert route.call_count == 1
+
+    profile_dir = paths.cache_dir / profile.name
+    for meta in profile_dir.glob("*.meta.json"):
+        meta.unlink()
+
+    resolve_command_model(
+        paths=paths,
+        profile=profile,
+        schema_override=None,
+        schema_refresh=SchemaRefresh.DAILY,
+    )
+    assert route.call_count == 2
+
+    resolve_command_model(
+        paths=paths,
+        profile=profile,
+        schema_override=None,
+        schema_refresh=SchemaRefresh.DAILY,
+    )
+    assert route.call_count == 2, (
+        "after the first warm-up the sidecar must exist, so the next "
+        "call goes through the fast path"
+    )
+
+
+@respx.mock
+def test_aged_cache_with_unchanged_hash_refreshes_sidecar(tmp_path: Path) -> None:
+    """Issue #39: when the cache has aged past the TTL but the live
+    schema hash is unchanged, `_build_and_cache` finds the cache hit by
+    hash. It must still bump `fetched_at` so the next invocation can
+    skip the network — otherwise every subsequent call refetches even
+    though the schema hasn't moved."""
+    route = respx.get("https://nb.example/api/schema/?format=json").mock(
+        return_value=httpx.Response(200, json=_minimal_schema_doc())
+    )
+    paths = _paths(tmp_path)
+    profile = _profile()
+
+    resolve_command_model(
+        paths=paths,
+        profile=profile,
+        schema_override=None,
+        schema_refresh=SchemaRefresh.DAILY,
+    )
+    assert route.call_count == 1
+
+    profile_dir = paths.cache_dir / profile.name
+    _age_sidecars(profile_dir, time.time() - 2 * 86400)
+
+    resolve_command_model(
+        paths=paths,
+        profile=profile,
+        schema_override=None,
+        schema_refresh=SchemaRefresh.DAILY,
+    )
+    assert route.call_count == 2
+
+    resolve_command_model(
+        paths=paths,
+        profile=profile,
+        schema_override=None,
+        schema_refresh=SchemaRefresh.DAILY,
+    )
+    assert route.call_count == 2, (
+        "the second resolve refreshed the sidecar, so the third must use the fast path"
+    )
