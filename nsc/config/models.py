@@ -35,7 +35,7 @@ class Defaults(_Frozen):
     output: OutputFormat = OutputFormat.TABLE
     page_size: int = 50
     timeout: float = 30.0
-    schema_refresh: SchemaRefresh = SchemaRefresh.ON_HASH_CHANGE
+    schema_refresh: SchemaRefresh = SchemaRefresh.DAILY
 
 
 class Profile(_Frozen):

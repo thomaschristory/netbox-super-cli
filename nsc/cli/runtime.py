@@ -51,6 +51,7 @@ class CLIOverrides(_Frozen):
     token: str | None = None
     insecure: bool | None = None
     schema_override: str | None = None
+    refresh_schema: bool = False
     output: str | None = None
 
 

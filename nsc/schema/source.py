@@ -1,16 +1,22 @@
-"""Schema-source resolution chain (Phase 2).
+"""Schema-source resolution chain.
 
-Order:
-  1. --schema flag (path or URL)
-  2. profile.schema_url
-  3. {profile.url}/api/schema/?format=json
-  4. cache hit (matched by profile name + schema hash)
-  5. bundled fallback
+Order, given a `schema_refresh` policy and an optional `force_refresh`:
+  1. --schema flag (path or URL) — always wins, never consults TTL.
+  2. TTL fast-path: if `schema_refresh` allows it and a cache entry for
+     this profile is fresher than the policy's TTL, return it directly
+     without any HTTP roundtrip. Skipped when `force_refresh=True`.
+  3. Network fetch from `profile.schema_url` or `{profile.url}/api/schema/`.
+  4. On fetch failure: any cached entry, then bundled fallback.
+
+Issue #34: prior to the TTL fast-path the schema was fetched on every
+invocation (one extra round-trip per command), which is visible in NetBox
+access logs as a `GET /api/schema/` between every PATCH.
 """
 
 from __future__ import annotations
 
 import sys
+import time
 from pathlib import Path
 
 import httpx
@@ -19,6 +25,7 @@ from ruamel.yaml import YAML
 from nsc.builder.build import build_command_model
 from nsc.cache.store import CacheStore
 from nsc.cli.runtime import ResolvedProfile
+from nsc.config.models import SchemaRefresh
 from nsc.config.settings import Paths
 from nsc.model.command_model import CommandModel
 from nsc.schema.hashing import canonical_sha256
@@ -26,9 +33,29 @@ from nsc.schema.loader import LoadedSchema, load_schema
 from nsc.schema.models import OpenAPIDocument
 from nsc.schemas import bundled as _bundled_pkg
 
+_DAILY_SECONDS = 86_400.0
+_WEEKLY_SECONDS = 604_800.0
+
 
 class SchemaSourceError(Exception):
     """Raised when no schema source could be resolved."""
+
+
+def _ttl_for_policy(policy: SchemaRefresh) -> float:
+    """How long a cache entry stays trusted under each refresh policy.
+
+    `0` means "never trust the cache without re-fetching" (the legacy
+    `on-hash-change` behaviour). `inf` means "trust the cache forever"
+    (manual — the user is responsible for refreshing)."""
+    match policy:
+        case SchemaRefresh.MANUAL:
+            return float("inf")
+        case SchemaRefresh.DAILY:
+            return _DAILY_SECONDS
+        case SchemaRefresh.WEEKLY:
+            return _WEEKLY_SECONDS
+        case SchemaRefresh.ON_HASH_CHANGE:
+            return 0.0
 
 
 def resolve_command_model(
@@ -36,12 +63,21 @@ def resolve_command_model(
     paths: Paths,
     profile: ResolvedProfile,
     schema_override: str | None,
+    schema_refresh: SchemaRefresh = SchemaRefresh.ON_HASH_CHANGE,
+    force_refresh: bool = False,
 ) -> CommandModel:
     if schema_override is not None:
         loaded = load_schema(
             schema_override, verify_ssl=profile.verify_ssl, timeout=profile.timeout
         )
         return _build_and_cache(loaded, paths, profile)
+
+    if not force_refresh:
+        ttl = _ttl_for_policy(schema_refresh)
+        if ttl > 0:
+            fresh = _find_fresh_cached(paths, profile.name, ttl_seconds=ttl)
+            if fresh is not None:
+                return fresh
 
     schema_url = (
         str(profile.schema_url)
@@ -95,20 +131,72 @@ def _build_and_cache(loaded: LoadedSchema, paths: Paths, profile: ResolvedProfil
     return model
 
 
+def _iter_cache_files(profile_dir: Path) -> list[Path]:
+    """Cache files only — excludes `<hash>.meta.json` sidecars."""
+    return [p for p in profile_dir.glob("*.json") if not p.name.endswith(".meta.json")]
+
+
 def _find_any_cached(paths: Paths, profile_name: str) -> CommandModel | None:
     profile_dir = paths.cache_dir / profile_name
     if not profile_dir.exists():
         return None
+    store = CacheStore(root=paths.cache_dir)
     candidates = sorted(
-        profile_dir.glob("*.json"),
+        _iter_cache_files(profile_dir),
         key=lambda p: p.stat().st_mtime,
         reverse=True,
     )
     for candidate in candidates:
-        try:
-            return CommandModel.model_validate_json(candidate.read_text())
-        except Exception:
+        model = store.load(profile_name, candidate.stem)
+        if model is not None:
+            return model
+    return None
+
+
+_CLOCK_SKEW_TOLERANCE_SECONDS = 60.0
+
+
+def _find_fresh_cached(
+    paths: Paths,
+    profile_name: str,
+    *,
+    ttl_seconds: float,
+    now: float | None = None,
+) -> CommandModel | None:
+    """Return the newest cached `CommandModel` for `profile_name` whose
+    sidecar `fetched_at` falls within `ttl_seconds` of `now`. Returns
+    `None` when the profile has never been warmed, the sidecar is missing
+    (so we can't trust the file's age), or every cache entry has aged out.
+
+    Freshness is keyed off the sidecar — never the cache file's mtime —
+    so a `touch`, backup-restore, or `cp -p` cannot fake freshness. A
+    sidecar dated more than `_CLOCK_SKEW_TOLERANCE_SECONDS` in the future
+    is also rejected (likely a clock that jumped forward then back).
+
+    `ttl_seconds=inf` (manual refresh) accepts any sidecar-validated
+    cache file regardless of age. The cache load itself routes through
+    `CacheStore.load` which re-verifies that `<hash>.json`'s contents
+    match `<hash>` — so a tampered or copied JSON file is rejected."""
+    profile_dir = paths.cache_dir / profile_name
+    if not profile_dir.exists():
+        return None
+    now_t = now if now is not None else time.time()
+    cutoff = now_t - ttl_seconds
+    skew_limit = now_t + _CLOCK_SKEW_TOLERANCE_SECONDS
+    store = CacheStore(root=paths.cache_dir)
+    fresh: list[tuple[float, str]] = []
+    for candidate in _iter_cache_files(profile_dir):
+        fetched_at = store.load_fetched_at(profile_name, candidate.stem)
+        if fetched_at is None:
             continue
+        if fetched_at > skew_limit or fetched_at < cutoff:
+            continue
+        fresh.append((fetched_at, candidate.stem))
+    fresh.sort(reverse=True)
+    for _, schema_hash in fresh:
+        model = store.load(profile_name, schema_hash)
+        if model is not None:
+            return model
     return None
 
 

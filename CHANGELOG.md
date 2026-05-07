@@ -2,7 +2,27 @@
 
 All notable changes to netbox-super-cli are tracked here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) loosely. From v1.0.0 onward, releases follow [Semantic Versioning](https://semver.org/) and the version in `pyproject.toml` matches the git tag. Pre-1.0 milestones (Phase 1-5) were pinned by tag while `pyproject.toml` stayed at `0.0.1`.
 
-## Unreleased
+## v1.0.2 — 2026-05-07
+
+Second patch release. Headline change is the schema TTL fast-path (issue #34), which eliminates the per-invocation `GET /api/schema/` round-trip on warm caches. Also includes a small `nsc init` UX addition (verify_ssl prompt) and the documentation pass that landed since v1.0.1.
+
+### Added
+
+- **Schema TTL fast-path** (issue #34). `nsc` now skips the per-invocation `GET /api/schema/` round-trip when a sidecar-validated cache entry is fresh. Freshness is tracked in `~/.nsc/cache/<profile>/<hash>.meta.json` (an explicit `fetched_at` timestamp), not file mtime — so `touch`, backup-restore, or `cp -p` can't fake freshness, and clocks that jumped forward then back are rejected (>60s skew distrusted).
+- **`nsc --refresh-schema <subcmd>`** — one-shot forced refresh that bypasses the TTL even on `daily`/`weekly`/`manual` policies. Use after a NetBox upgrade to pick up a new schema immediately without changing config.
+- Atomic cache writes — `CacheStore.save` now writes via temp-file + `os.replace`, so a concurrent `nsc` reader can never observe a partial cache file.
+- **`nsc init` prompts for SSL verification** (issue #22). The first-run wizard now asks `Verify SSL certificates?` (defaults `Y`) after URL entry. Accepting the default keeps the config minimal (no `verify_ssl` key written); answering `n` writes `verify_ssl: false` into the profile block.
+
+### Changed
+
+- **Default `defaults.schema_refresh` is now `daily`** (was `on-hash-change`). This is the user-visible behaviour change behind the fast-path: under the new default, `nsc` trusts a cached schema for 24h. **If you need the v1.0.1 behaviour** (re-fetch every invocation to detect a schema change immediately), set `defaults.schema_refresh: on-hash-change` in `~/.nsc/config.yaml`. To force a one-shot refresh under any policy, prepend `--refresh-schema` to the command. Existing configs with an explicit `schema_refresh` value are unaffected.
+- Cache files written before this release have no sidecar and will be treated as stale on first invocation after upgrade — `nsc` refetches once, writes the sidecar, and the fast-path is active from there.
+
+### Documentation
+
+- LICENSE file normalized byte-for-byte to the apache.org canonical Apache 2.0 text (issue #18).
+- Trunk-based branching guide added at `docs/contributing/branching.md`; branch protection enabled on `main` (PR #28).
+- Bundled Skill (`skills/netbox-super-cli/SKILL.md`) gained a NetBox device type library section (PR #27).
 
 ## v1.0.1 — 2026-05-06
 
