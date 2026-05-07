@@ -11,7 +11,7 @@ def test_defaults_have_sensible_values() -> None:
     assert d.output is OutputFormat.TABLE
     assert d.page_size == 50
     assert d.timeout == 30.0
-    assert d.schema_refresh is SchemaRefresh.ON_HASH_CHANGE
+    assert d.schema_refresh is SchemaRefresh.DAILY
 
 
 def test_profile_minimum_fields() -> None:

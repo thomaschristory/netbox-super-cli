@@ -33,7 +33,11 @@ def build_runtime_context(state: GlobalState) -> RuntimeContext:
     profile = resolve_profile(state.config, state.overrides, env=os.environ)
     paths = default_paths()
     model = resolve_command_model(
-        paths=paths, profile=profile, schema_override=state.overrides.schema_override
+        paths=paths,
+        profile=profile,
+        schema_override=state.overrides.schema_override,
+        schema_refresh=state.config.defaults.schema_refresh,
+        force_refresh=state.overrides.refresh_schema,
     )
     output = select_format(
         cli_value=state.overrides.output,
