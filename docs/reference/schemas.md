@@ -7,4 +7,5 @@ fallback when a live schema can't be fetched and no per-profile cache exists.
 
 | Version | File |
 |---|---|
-| `4.6.0-beta2` | `netbox-4.6.0-beta2.json.gz` |
+| `4.5.10` | `netbox-4.5.10.json.gz` |
+| `4.6.0` | `netbox-4.6.0.json.gz` |
