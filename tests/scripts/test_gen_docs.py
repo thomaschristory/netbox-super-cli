@@ -28,7 +28,7 @@ def test_render_cli_includes_top_level_heading_and_at_least_one_tag() -> None:
     g = _import_module()
     out = g.render_cli()
     assert out.startswith("# CLI reference"), out[:200]
-    # The bundled NetBox 4.6.0-beta2 schema has a 'dcim' tag. If your bundled
+    # The bundled NetBox 4.6.0 schema has a 'dcim' tag. If your bundled
     # manifest has a different version that doesn't include dcim, swap the
     # assertion to whichever tag IS present.
     assert "## dcim" in out or "## DCIM" in out, "expected a dcim section in cli.md"
