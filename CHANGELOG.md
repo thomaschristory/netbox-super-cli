@@ -2,6 +2,12 @@
 
 All notable changes to netbox-super-cli are tracked here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) loosely. From v1.0.0 onward, releases follow [Semantic Versioning](https://semver.org/) and the version in `pyproject.toml` matches the git tag. Pre-1.0 milestones (Phase 1-5) were pinned by tag while `pyproject.toml` stayed at `0.0.1`.
 
+## Unreleased — v1.0.3
+
+### Fixed
+
+- **Schema TTL fast-path now self-heals after a hash-confirmed fetch** (issue #39). When `nsc` fetched `/api/schema/` and the live hash matched an existing cache file, it returned the cached `CommandModel` without bumping the sidecar's `fetched_at`. So an aged-out sidecar — or a legacy cache from before the sidecar feature — never gained proof of freshness and every subsequent invocation refetched the schema, defeating the v1.0.2 fast-path. `_build_and_cache` now calls a new `CacheStore.touch_fetched_at` to refresh (or seed) the sidecar after any successful live fetch, so the next invocation hits the fast path.
+
 ## v1.0.2 — 2026-05-07
 
 Second patch release. Headline change is the schema TTL fast-path (issue #34), which eliminates the per-invocation `GET /api/schema/` round-trip on warm caches. Also includes a small `nsc init` UX addition (verify_ssl prompt) and the documentation pass that landed since v1.0.1.

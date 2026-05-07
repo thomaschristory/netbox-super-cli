@@ -87,6 +87,28 @@ class CacheStore:
         _atomic_write(meta, json.dumps({"fetched_at": time.time()}))
         return target
 
+    def touch_fetched_at(self, profile: str, schema_hash: str) -> None:
+        """Bump only the sidecar's `fetched_at` to now, without rewriting
+        the cache file. Called after a live fetch confirms an existing
+        cache entry is still valid (its hash matches): we want the TTL
+        fast-path to trust it on the next invocation, but the JSON body
+        on disk is byte-identical so re-serializing it is wasteful.
+
+        Also seeds a sidecar for caches written before #35 (legacy
+        upgrade path) — without this, those entries never gain proof of
+        freshness and every invocation refetches `/api/schema/` even
+        though the schema is unchanged. No-op when the cache file is
+        missing (don't leave an orphaned sidecar)."""
+        self._validate_profile(profile)
+        if not _HASH_RE.match(schema_hash):
+            return
+        target = self._path_for(profile, schema_hash)
+        if not target.exists():
+            return
+        meta = self._meta_path_for(profile, schema_hash)
+        meta.parent.mkdir(parents=True, exist_ok=True)
+        _atomic_write(meta, json.dumps({"fetched_at": time.time()}))
+
     def load_fetched_at(self, profile: str, schema_hash: str) -> float | None:
         """Return epoch seconds when this cache entry was last fetched, or
         `None` if the sidecar is missing/unreadable. Used by the TTL

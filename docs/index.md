@@ -1,7 +1,7 @@
 # netbox-super-cli
 
 Dynamic NetBox CLI driven by the live OpenAPI schema. The same `nsc` binary works
-against any NetBox version (4.4+) and exposes plugin-provided endpoints automatically
+against any NetBox version (4.5+) and exposes plugin-provided endpoints automatically
 because the schema — not hand-written code — defines the surface.
 
 ## Why nsc

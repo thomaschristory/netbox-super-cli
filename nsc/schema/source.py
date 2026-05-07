@@ -20,6 +20,7 @@ import time
 from pathlib import Path
 
 import httpx
+from ruamel.yaml import YAML
 
 from nsc.builder.build import build_command_model
 from nsc.cache.store import CacheStore
@@ -124,6 +125,12 @@ def _build_and_cache(loaded: LoadedSchema, paths: Paths, profile: ResolvedProfil
     store = CacheStore(root=paths.cache_dir)
     cached = store.load(profile.name, loaded.hash)
     if cached is not None:
+        # Issue #39: a live fetch just confirmed this hash is current.
+        # Bump the sidecar so the TTL fast-path trusts the cache on the
+        # next invocation, otherwise an aged-out sidecar (or a legacy
+        # cache from before sidecars existed) makes us refetch every
+        # invocation even though the schema hasn't moved.
+        store.touch_fetched_at(profile.name, loaded.hash)
         return cached
     model = build_command_model(loaded)
     store.save(profile.name, model)
@@ -201,8 +208,16 @@ def _find_fresh_cached(
 
 def _load_bundled_command_model() -> CommandModel | None:
     pkg_dir = Path(_bundled_pkg.__file__).resolve().parent
-    candidates = sorted(list(pkg_dir.glob("*.json")) + list(pkg_dir.glob("*.json.gz")))
-    if not candidates:
+    manifest_path = pkg_dir / "manifest.yaml"
+    if not manifest_path.exists():
         return None
-    loaded = load_schema(str(candidates[0]))
+    manifest = YAML(typ="safe").load(manifest_path.read_text())
+    schemas = manifest.get("schemas") if isinstance(manifest, dict) else None
+    if not schemas:
+        return None
+    newest = schemas[-1]
+    schema_path = pkg_dir / str(newest["file"])
+    if not schema_path.exists():
+        return None
+    loaded = load_schema(str(schema_path))
     return build_command_model(loaded)
