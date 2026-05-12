@@ -33,7 +33,6 @@ from nsc.cli.runtime import (
 from nsc.config import default_paths
 from nsc.config.loader import ConfigParseError, load_config
 from nsc.config.models import Config, OutputFormat
-from nsc.http.errors import NetBoxAPIError, NetBoxClientError
 from nsc.schema.source import SchemaSourceError
 
 # Mutable dict used as a single-slot holder to avoid `global` statements.
@@ -289,10 +288,6 @@ def main() -> None:
         app()
     except typer.Exit:
         raise
-    except (NetBoxAPIError, NetBoxClientError) as exc:
-        env = map_error(exc)
-        code = emit_envelope(env, output_format=OutputFormat.TABLE)
-        raise typer.Exit(code) from exc
     except Exception as exc:  # catch-all to produce internal envelope
         env = map_error(exc)
         code = emit_envelope(env, output_format=OutputFormat.TABLE)

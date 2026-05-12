@@ -1,9 +1,4 @@
-"""`nsc commands` — dump the generated CommandModel as JSON.
-
-In Phase 1 this is the only useful subcommand. It exists so an agent or human
-can see exactly what the schema-derived command tree would look like, without
-needing the dynamic Typer registration that Phase 2 will add.
-"""
+"""`nsc commands` — dump the generated CommandModel as JSON."""
 
 from __future__ import annotations
 
@@ -31,13 +26,13 @@ def register(app: typer.Typer) -> None:
         schema: str = typer.Option(
             ...,
             "--schema",
-            help="Path or URL to an OpenAPI schema. Required in Phase 1.",
+            help="Path or URL to an OpenAPI schema.",
         ),
         output: _Output = typer.Option(  # noqa: B008
             _Output.JSON,
             "--output",
             "-o",
-            help="Output format. Phase 1 supports `json` only.",
+            help="Output format.",
         ),
         compact: bool = typer.Option(
             False,
