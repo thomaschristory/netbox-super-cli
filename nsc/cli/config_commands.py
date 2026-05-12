@@ -33,7 +33,7 @@ def _config_path() -> Path:
 
 def _get_at(doc: CommentedMap, dotted: str) -> object:
     cursor: object = doc
-    for key in [p for p in dotted.split(".") if p]:
+    for key in (p for p in dotted.split(".") if p):
         if not isinstance(cursor, CommentedMap) or key not in cursor:
             raise KeyError(dotted)
         cursor = cursor[key]
@@ -61,8 +61,7 @@ def _get_cmd(key: str) -> None:
 
 def _list_cmd() -> None:
     """Print the entire config file."""
-    doc = load_round_trip(_config_path())
-    typer.echo(dump_round_trip(doc), nl=False)
+    typer.echo(dump_round_trip(load_round_trip(_config_path())), nl=False)
 
 
 def _set_cmd(key: str, value: str) -> None:
