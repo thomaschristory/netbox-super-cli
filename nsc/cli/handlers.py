@@ -60,6 +60,10 @@ from nsc.output.render import render
 _STATUS_NOT_FOUND_DELETE = 404
 
 
+def _resolve_stream(stream: TextIO | None) -> TextIO:
+    return stream if stream is not None else sys.stdout
+
+
 def parse_filters(raw: list[str]) -> dict[str, str]:
     out: dict[str, str] = {}
     for item in raw:
@@ -95,7 +99,7 @@ def handle_list(
             rows,
             format=ctx.output_format,
             columns=ctx.resolve_columns(op_tag, op_resource, operation),
-            stream=stream if stream is not None else sys.stdout,
+            stream=_resolve_stream(stream),
             compact=ctx.compact,
         )
     except (NetBoxAPIError, NetBoxClientError) as exc:
@@ -120,7 +124,7 @@ def handle_get(
             obj,
             format=ctx.output_format,
             columns=ctx.resolve_columns(op_tag, op_resource, operation),
-            stream=stream if stream is not None else sys.stdout,
+            stream=_resolve_stream(stream),
             compact=ctx.compact,
         )
     except (NetBoxAPIError, NetBoxClientError) as exc:
@@ -349,14 +353,13 @@ def _handle_dry_run_or_preflight(
     *,
     out: TextIO,
 ) -> bool:
-    """Handle dry-run rendering and preflight-blocked envelope emission.
+    """Short-circuit before the apply path when dry-run or preflight fails.
 
-    Returns True if the caller should return immediately (dry-run path);
-    False to continue to the apply path. Raises `typer.Exit` if preflight
-    failed (in either dry-run or apply mode).
+    Returns True to skip apply (dry-run mode); False to proceed.
+    Raises `typer.Exit` on preflight failure in both modes.
     """
     if not ctx.apply:
-        _emit_dry_run_audit(operation, resolved, preflight, ctx)
+        _emit_dry_run_audit(operation, resolved, ctx)
         _render_explain_or_dry_run(trace, ctx, stream=out)
         if not preflight.ok:
             env = _preflight_envelope(operation, preflight, applied=False)
@@ -364,7 +367,7 @@ def _handle_dry_run_or_preflight(
             raise typer.Exit(code)
         return True
     if not preflight.ok:
-        _emit_dry_run_audit(operation, resolved, preflight, ctx, preflight_blocked=True)
+        _emit_dry_run_audit(operation, resolved, ctx, preflight_blocked=True)
         env = _preflight_envelope(operation, preflight, applied=False)
         code = emit_envelope(env, output_format=ctx.output_format)
         raise typer.Exit(code)
@@ -381,12 +384,7 @@ def _decide_routing(
     Wraps `UnsupportedBulkError` into a ClientError via `refuse_unsupported_bulk`.
     """
     capability = detect_bulk_capability(operation)
-    if ctx.bulk is True:
-        bulk_flag: bool | None = True
-    elif ctx.no_bulk is True:
-        bulk_flag = False
-    else:
-        bulk_flag = None
+    bulk_flag: bool | None = True if ctx.bulk else (False if ctx.no_bulk else None)
     try:
         decision = route_to_bulk_or_loop(
             record_count=len(raw.records),
@@ -430,7 +428,7 @@ def _execute_loop(
         # per HTTP request. Writing here would double-count. The callback
         # exists so unit tests can verify per-attempt ordering; production
         # wiring leaves it as a no-op.
-        return
+        pass
 
     def _to_envelope(exc: Exception) -> ErrorEnvelope:
         if isinstance(exc, NetBoxAPIError | NetBoxClientError):
@@ -489,7 +487,6 @@ def _extract_path_vars(operation: Operation, kwargs: dict[str, Any]) -> dict[str
 def _emit_dry_run_audit(
     operation: Operation,
     resolved: list[ResolvedRequest],
-    preflight: PreflightResult,
     ctx: RuntimeContext,
     *,
     preflight_blocked: bool = False,
@@ -525,7 +522,6 @@ def _emit_dry_run_audit(
             explain=ctx.explain,
         )
         append_audit_jsonl(entry, path=log_dir / "audit.jsonl")
-    _ = preflight  # currently consumed only via preflight_blocked
 
 
 def _now_iso() -> str:
@@ -533,13 +529,11 @@ def _now_iso() -> str:
 
 
 def _render_explain_or_dry_run(trace: ExplainTrace, ctx: RuntimeContext, *, stream: TextIO) -> None:
-    if ctx.output_format is OutputFormat.JSON:
-        print(render_explain_json(trace), file=stream)
-    elif ctx.output_format is OutputFormat.TABLE:
+    if ctx.output_format is OutputFormat.TABLE:
         render_explain_rich(trace, stream=stream)
     else:
-        # CSV/YAML/JSONL on dry-run → JSON to stdout (the formatters expect rows,
-        # not a structured trace). Consistent with spec §4.2.3 fallback rules.
+        # CSV/YAML/JSONL on dry-run fall back to JSON — formatters expect rows,
+        # not a structured trace (spec §4.2.3).
         print(render_explain_json(trace), file=stream)
 
 
@@ -626,16 +620,7 @@ def _render_delete_already_absent(ctx: RuntimeContext, *, stream: TextIO) -> Non
 def _preflight_envelope(
     operation: Operation, preflight: PreflightResult, *, applied: bool
 ) -> ErrorEnvelope:
-    issues = [
-        {
-            "record_index": i.record_index,
-            "field_path": i.field_path,
-            "kind": i.kind,
-            "message": i.message,
-            "expected": i.expected,
-        }
-        for i in preflight.issues
-    ]
+    issues = [i.model_dump() for i in preflight.issues]
     return ErrorEnvelope(
         error="preflight validation failed",
         type=ErrorType.VALIDATION,
