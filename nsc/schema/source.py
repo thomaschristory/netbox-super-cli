@@ -20,6 +20,7 @@ import time
 from pathlib import Path
 
 import httpx
+from ruamel.yaml import YAML
 
 from nsc.builder.build import build_command_model
 from nsc.cache.store import CacheStore
@@ -124,6 +125,12 @@ def _build_and_cache(loaded: LoadedSchema, paths: Paths, profile: ResolvedProfil
     store = CacheStore(root=paths.cache_dir)
     cached = store.load(profile.name, loaded.hash)
     if cached is not None:
+        # Issue #39: a live fetch just confirmed this hash is current.
+        # Bump the sidecar so the TTL fast-path trusts the cache on the
+        # next invocation, otherwise an aged-out sidecar (or a legacy
+        # cache from before sidecars existed) makes us refetch every
+        # invocation even though the schema hasn't moved.
+        store.touch_fetched_at(profile.name, loaded.hash)
         return cached
     model = build_command_model(loaded)
     store.save(profile.name, model)
@@ -131,7 +138,6 @@ def _build_and_cache(loaded: LoadedSchema, paths: Paths, profile: ResolvedProfil
 
 
 def _iter_cache_files(profile_dir: Path) -> list[Path]:
-    """Cache files only — excludes `<hash>.meta.json` sidecars."""
     return [p for p in profile_dir.glob("*.json") if not p.name.endswith(".meta.json")]
 
 
@@ -162,20 +168,12 @@ def _find_fresh_cached(
     ttl_seconds: float,
     now: float | None = None,
 ) -> CommandModel | None:
-    """Return the newest cached `CommandModel` for `profile_name` whose
-    sidecar `fetched_at` falls within `ttl_seconds` of `now`. Returns
-    `None` when the profile has never been warmed, the sidecar is missing
-    (so we can't trust the file's age), or every cache entry has aged out.
-
-    Freshness is keyed off the sidecar — never the cache file's mtime —
+    """Freshness is keyed off the sidecar — never the cache file's mtime —
     so a `touch`, backup-restore, or `cp -p` cannot fake freshness. A
     sidecar dated more than `_CLOCK_SKEW_TOLERANCE_SECONDS` in the future
-    is also rejected (likely a clock that jumped forward then back).
-
-    `ttl_seconds=inf` (manual refresh) accepts any sidecar-validated
-    cache file regardless of age. The cache load itself routes through
-    `CacheStore.load` which re-verifies that `<hash>.json`'s contents
-    match `<hash>` — so a tampered or copied JSON file is rejected."""
+    is rejected (likely a clock that jumped forward then back).
+    `CacheStore.load` re-verifies `<hash>.json` contents match `<hash>`,
+    so a tampered or copied file is rejected."""
     profile_dir = paths.cache_dir / profile_name
     if not profile_dir.exists():
         return None
@@ -201,8 +199,16 @@ def _find_fresh_cached(
 
 def _load_bundled_command_model() -> CommandModel | None:
     pkg_dir = Path(_bundled_pkg.__file__).resolve().parent
-    candidates = sorted(list(pkg_dir.glob("*.json")) + list(pkg_dir.glob("*.json.gz")))
-    if not candidates:
+    manifest_path = pkg_dir / "manifest.yaml"
+    if not manifest_path.exists():
         return None
-    loaded = load_schema(str(candidates[0]))
+    manifest = YAML(typ="safe").load(manifest_path.read_text())
+    schemas = manifest.get("schemas") if isinstance(manifest, dict) else None
+    if not schemas:
+        return None
+    newest = schemas[-1]
+    schema_path = pkg_dir / str(newest["file"])
+    if not schema_path.exists():
+        return None
+    loaded = load_schema(str(schema_path))
     return build_command_model(loaded)

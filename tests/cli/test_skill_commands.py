@@ -122,3 +122,86 @@ def test_install_unknown_target_exits_nonzero(home: Path) -> None:
     result = runner.invoke(app, ["skill", "install", "--target", "bogus"])
 
     assert result.exit_code != 0
+
+
+def test_export_dry_run_prints_would_write(tmp_path: Path) -> None:
+    runner = CliRunner()
+    result = runner.invoke(app, ["skill", "export", str(tmp_path)])
+
+    assert result.exit_code == 0, result.output
+    assert "would write to" in result.output
+    assert "netbox-super-cli/SKILL.md" in result.output
+    assert not (tmp_path / "netbox-super-cli" / "SKILL.md").exists()
+
+
+def test_export_apply_writes_file(tmp_path: Path) -> None:
+    runner = CliRunner()
+    result = runner.invoke(app, ["skill", "export", str(tmp_path), "--apply"])
+
+    assert result.exit_code == 0, result.output
+    dest = tmp_path / "netbox-super-cli" / "SKILL.md"
+    assert dest.exists()
+    text = dest.read_text(encoding="utf-8")
+    assert text.startswith("---\n")
+    assert "name: netbox-super-cli" in text
+
+
+def test_export_apply_creates_parent_dirs(tmp_path: Path) -> None:
+    runner = CliRunner()
+    nested = tmp_path / "a" / "b" / "c"
+    result = runner.invoke(app, ["skill", "export", str(nested), "--apply"])
+
+    assert result.exit_code == 0, result.output
+    assert (nested / "netbox-super-cli" / "SKILL.md").exists()
+
+
+def test_export_apply_overwrites_existing_file(tmp_path: Path) -> None:
+    runner = CliRunner()
+    runner.invoke(app, ["skill", "export", str(tmp_path), "--apply"])
+    dest = tmp_path / "netbox-super-cli" / "SKILL.md"
+    dest.write_text("stale content")
+
+    result = runner.invoke(app, ["skill", "export", str(tmp_path), "--apply"])
+
+    assert result.exit_code == 0, result.output
+    assert "stale content" not in dest.read_text(encoding="utf-8")
+
+
+def test_export_json_output_dry_run(tmp_path: Path) -> None:
+    runner = CliRunner()
+    result = runner.invoke(app, ["skill", "export", str(tmp_path), "--output", "json"])
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["mode"] == "dry-run"
+    assert payload["destination"].endswith("netbox-super-cli/SKILL.md")
+    assert "written" not in payload
+    assert not (tmp_path / "netbox-super-cli" / "SKILL.md").exists()
+
+
+def test_export_json_output_apply(tmp_path: Path) -> None:
+    runner = CliRunner()
+    result = runner.invoke(app, ["skill", "export", str(tmp_path), "--apply", "--output", "json"])
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["mode"] == "apply"
+    assert payload["written"] is True
+    assert Path(payload["destination"]).exists()
+
+
+def test_export_expands_user_home(home: Path) -> None:
+    runner = CliRunner()
+    result = runner.invoke(app, ["skill", "export", "~/foo", "--output", "json"])
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    expected = (home / "foo" / "netbox-super-cli" / "SKILL.md").resolve()
+    assert payload["destination"] == str(expected)
+
+
+def test_export_missing_destination_arg_exits_nonzero(tmp_path: Path) -> None:
+    runner = CliRunner()
+    result = runner.invoke(app, ["skill", "export"])
+
+    assert result.exit_code != 0
