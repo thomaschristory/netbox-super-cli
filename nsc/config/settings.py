@@ -1,8 +1,4 @@
-"""On-disk locations.
-
-Phase 1 only models the paths under `~/.nsc/`. Profiles, tokens, defaults, and
-the YAML config file are added in Phase 4.
-"""
+"""On-disk locations for `~/.nsc/`."""
 
 from __future__ import annotations
 
