@@ -2,8 +2,7 @@
 
 `RuntimeContext` carries the live `NetBoxClient`, command model, config, and
 output preferences for a single invocation. It is populated by the bootstrap
-pipeline in the root Typer callback (Task 12) and consumed by the dynamic
-read handlers.
+pipeline in the root Typer callback and consumed by the dynamic handlers.
 """
 
 from __future__ import annotations
@@ -72,6 +71,25 @@ class UnknownProfileError(Exception):
     """A profile was requested by name but is not in the config."""
 
 
+def _resolve_ssl_and_timeout(
+    config: Config,
+    overrides: CLIOverrides,
+    env: Mapping[str, str],
+    base: Profile | None,
+) -> tuple[bool, float]:
+    insecure_env = _bool_env(env.get("NSC_INSECURE"))
+    if overrides.insecure is not None:
+        verify_ssl = not overrides.insecure
+    elif insecure_env is not None:
+        verify_ssl = not insecure_env
+    elif base is not None:
+        verify_ssl = base.verify_ssl
+    else:
+        verify_ssl = True
+    timeout = base.timeout if (base and base.timeout is not None) else config.defaults.timeout
+    return verify_ssl, timeout
+
+
 def resolve_transport_settings(
     config: Config,
     overrides: CLIOverrides,
@@ -86,19 +104,7 @@ def resolve_transport_settings(
     """
     name = overrides.profile or env.get("NSC_PROFILE") or config.default_profile
     base = config.profiles.get(name) if name else None
-
-    insecure_env = _bool_env(env.get("NSC_INSECURE"))
-    if overrides.insecure is not None:
-        verify_ssl = not overrides.insecure
-    elif insecure_env is not None:
-        verify_ssl = not insecure_env
-    elif base is not None:
-        verify_ssl = base.verify_ssl
-    else:
-        verify_ssl = True
-
-    timeout = base.timeout if (base and base.timeout is not None) else config.defaults.timeout
-    return verify_ssl, timeout
+    return _resolve_ssl_and_timeout(config, overrides, env, base)
 
 
 def resolve_profile(
@@ -116,17 +122,7 @@ def resolve_profile(
             "pass --url and --token, or configure a profile in ~/.nsc/config.yaml)"
         )
 
-    insecure_env = _bool_env(env.get("NSC_INSECURE"))
-    if overrides.insecure is not None:
-        verify_ssl = not overrides.insecure
-    elif insecure_env is not None:
-        verify_ssl = not insecure_env
-    elif base is not None:
-        verify_ssl = base.verify_ssl
-    else:
-        verify_ssl = True
-
-    timeout = base.timeout if (base and base.timeout is not None) else config.defaults.timeout
+    verify_ssl, timeout = _resolve_ssl_and_timeout(config, overrides, env, base)
 
     schema_url_raw = _first_set(
         _url_only(overrides.schema_override),
@@ -175,7 +171,7 @@ def _url_only(value: str | None) -> str | None:
     populate the profile's `schema_url` (which is HttpUrl-validated). The
     schema_override flow consumes the raw value directly from `CLIOverrides`.
     """
-    if value is None or not value:
+    if not value:
         return None
     if value.startswith(("http://", "https://")):
         return value
@@ -297,9 +293,7 @@ def map_error(
             operation_id=operation_id,
             details={"cause": "connect", "retry_safe": True},
         )
-    if isinstance(exc, NoProfileError):
-        return ErrorEnvelope(error=str(exc), type=ErrorType.CONFIG)
-    if isinstance(exc, UnknownProfileError):
+    if isinstance(exc, (NoProfileError, UnknownProfileError)):
         return ErrorEnvelope(error=str(exc), type=ErrorType.CONFIG)
     return ErrorEnvelope(
         error=f"internal error: {exc}",
