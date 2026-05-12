@@ -43,6 +43,19 @@ short-lived feature branches (`fix/<slug>`, `feat/<slug>`, `docs/<slug>`,
 Releases are *tags* on `main`, not branches. Full convention:
 [`docs/contributing/branching.md`](docs/contributing/branching.md).
 
+## Coordinating work on issues and PRs
+
+When you start working on a GitHub issue or PR, post a comment so other agents (and humans) can see it's actively being worked. Use `gh issue comment <n> -b "..."` or `gh pr comment <n> -b "..."`.
+
+Required updates:
+
+- **On claim (start)** — before you begin, check existing comments. If someone else has claimed within the last 24h and has not posted a blocker/handoff, stop and surface the conflict to the user. Otherwise post a claim: what you're doing, branch name (if known), expected scope.
+- **On milestones** — branch pushed, PR opened, CI green, review requested. One short line each.
+- **On blockers** — when paused, blocked on input, or handing off. State *why* and what's needed to resume.
+- **On completion** — when merged, closed, or abandoning. Final status so the next agent doesn't re-investigate.
+
+Keep comments terse (1–3 lines). Sign with the agent identity already used in commits (e.g. `Co-Authored-By` line not needed in comments). Don't spam — skip a milestone update if the previous one is under ~5 minutes old and nothing materially changed.
+
 ## Where the design lives
 
 - `docs/superpowers/specs/2026-04-30-netbox-super-cli-design.md` — the full design.

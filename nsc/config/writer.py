@@ -98,7 +98,7 @@ class ConfigWriteError(Exception):
 
 
 def _construct_env_tag(_loader: BaseConstructor, node: ScalarNode) -> TaggedScalar:
-    return TaggedScalar(value=str(node.value), style=None, tag="!env")
+    return TaggedScalar(value=str(node.value), tag="!env")
 
 
 def _writer_yaml() -> YAML:

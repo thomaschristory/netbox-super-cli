@@ -70,7 +70,6 @@ class ErrorEnvelope(_Frozen):
 
 
 def render_to_json(env: ErrorEnvelope) -> str:
-    """Serialize the envelope as compact, one-line JSON for stdout."""
     return env.model_dump_json()
 
 
@@ -99,7 +98,6 @@ def select_render_target(*, output_format: OutputFormat, stdout_is_tty: bool) ->
 
 
 def render_to_rich_stderr(env: ErrorEnvelope, *, stream: TextIO) -> None:
-    """Render the envelope as a Rich panel to the given stream (stderr in prod)."""
     console = Console(file=stream, soft_wrap=True, force_terminal=False)
     body_lines = [
         f"[bold red]{env.type.value}[/]: {env.error}",
@@ -322,7 +320,6 @@ def summary_envelope(
         error=(f"{failed} of {attempted} records failed (worst type: {chosen_type.value})"),
         type=chosen_type,
         operation_id=operation_id,
-        record_index=None,
         details=details,
     )
 

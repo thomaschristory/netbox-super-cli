@@ -9,7 +9,7 @@ the repo and shipped inside the wheel.
 ```
 nsc/schemas/bundled/
 ├── manifest.yaml
-├── netbox-4.6.0-beta2.json.gz
+├── netbox-4.6.0.json.gz
 └── netbox-<other-version>.json.gz
 ```
 
@@ -17,8 +17,8 @@ nsc/schemas/bundled/
 
 ```yaml
 schemas:
-  - version: "4.6.0-beta2"
-    file: "netbox-4.6.0-beta2.json.gz"
+  - version: "4.6.0"
+    file: "netbox-4.6.0.json.gz"
 ```
 
 ## Adding a new version

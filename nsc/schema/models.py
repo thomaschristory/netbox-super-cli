@@ -8,7 +8,6 @@ break parsing.
 from __future__ import annotations
 
 from enum import StrEnum
-from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -34,7 +33,7 @@ class SchemaObject(_Tolerant):
 
     type: str | None = None
     format: str | None = None
-    enum: list[Any] | None = None
+    enum: list[str | int | float | bool | None] | None = None
     items: SchemaObject | None = None
     properties: dict[str, SchemaObject] | None = None
     required: list[str] | None = None

@@ -157,3 +157,63 @@ def test_load_fetched_at_handles_corrupt_sidecar(tmp_path: Path) -> None:
     sidecar = tmp_path / "prod" / ("a" * 64 + ".meta.json")
     sidecar.write_text("not json")
     assert store.load_fetched_at("prod", "a" * 64) is None
+
+
+def test_touch_fetched_at_refreshes_existing_sidecar(tmp_path: Path) -> None:
+    """`touch_fetched_at` must update an existing sidecar's `fetched_at`
+    without rewriting the cache file. Used by the source resolver after
+    a live fetch confirms an existing-by-hash cache entry is still valid."""
+    store = CacheStore(root=tmp_path)
+    h = "a" * 64
+    store.save("prod", _model(h))
+    cache_file = tmp_path / "prod" / f"{h}.json"
+    original_cache_mtime = cache_file.stat().st_mtime
+
+    old_ts = time.time() - 10_000
+    sidecar = tmp_path / "prod" / f"{h}.meta.json"
+    sidecar.write_text(json.dumps({"fetched_at": old_ts}))
+
+    before = time.time()
+    store.touch_fetched_at("prod", h)
+    after = time.time()
+
+    assert cache_file.stat().st_mtime == original_cache_mtime
+    refreshed = json.loads(sidecar.read_text())["fetched_at"]
+    assert before <= refreshed <= after
+
+
+def test_touch_fetched_at_creates_sidecar_for_legacy_cache(tmp_path: Path) -> None:
+    """A cache file written before the sidecar feature has no
+    `<hash>.meta.json`. After a live fetch confirms the hash matches,
+    `touch_fetched_at` must create the sidecar so the next invocation
+    can use the TTL fast-path."""
+    store = CacheStore(root=tmp_path)
+    h = "a" * 64
+    store.save("prod", _model(h))
+    sidecar = tmp_path / "prod" / f"{h}.meta.json"
+    sidecar.unlink()
+
+    before = time.time()
+    store.touch_fetched_at("prod", h)
+    after = time.time()
+
+    assert sidecar.exists()
+    fetched_at = json.loads(sidecar.read_text())["fetched_at"]
+    assert before <= fetched_at <= after
+
+
+def test_touch_fetched_at_noop_when_cache_file_missing(tmp_path: Path) -> None:
+    """No cache file means there is nothing to mark fresh — must not
+    create an orphaned sidecar."""
+    store = CacheStore(root=tmp_path)
+    h = "a" * 64
+    store.touch_fetched_at("prod", h)
+    sidecar = tmp_path / "prod" / f"{h}.meta.json"
+    assert not sidecar.exists()
+
+
+def test_touch_fetched_at_rejects_invalid_hash(tmp_path: Path) -> None:
+    store = CacheStore(root=tmp_path)
+    store.touch_fetched_at("prod", "not-a-hash")
+    profile_dir = tmp_path / "prod"
+    assert not profile_dir.exists() or not any(profile_dir.iterdir())
