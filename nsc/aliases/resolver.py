@@ -73,11 +73,9 @@ def _resolve_term(
                 continue
             candidates.append((tag_name, resource_name, op))
     if len(candidates) == 1:
-        resolved_tag, resolved_resource, resolved_op = candidates[0]
-        return ResolvedAlias(
-            tag=resolved_tag, resource_name=resolved_resource, operation=resolved_op
-        )
-    if len(candidates) > 1:
+        tag_name, resource_name, op = candidates[0]
+        return ResolvedAlias(tag=tag_name, resource_name=resource_name, operation=op)
+    if candidates:
         return AmbiguousAlias(
             verb=verb,
             term=term,
@@ -87,14 +85,13 @@ def _resolve_term(
 
 
 def _required_op_for(verb: AliasVerb, resource: Resource) -> Operation | None:
-    """Return the `Operation` the verb requires on `resource`, or None."""
     if verb is AliasVerb.LS:
         return resource.list_op
     if verb is AliasVerb.GET:
         return resource.get_op
     if verb is AliasVerb.RM:
         return resource.delete_op
-    return None  # SEARCH does not flow through this branch
+    return None
 
 
 def _resolve_search(term: str, model: CommandModel) -> ResolvedAlias | UnknownAlias:
