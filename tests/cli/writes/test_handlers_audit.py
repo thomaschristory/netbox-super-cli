@@ -30,7 +30,7 @@ def test_dry_run_create_appends_synthetic_audit_entry(
         app,
         [
             "--schema",
-            "nsc/schemas/bundled/netbox-4.6.0-beta2.json.gz",
+            "nsc/schemas/bundled/netbox-4.6.0.json.gz",
             "dcim",
             "devices",
             "create",

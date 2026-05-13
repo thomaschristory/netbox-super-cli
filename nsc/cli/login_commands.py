@@ -19,7 +19,7 @@ import typer
 from ruamel.yaml.comments import CommentedMap, TaggedScalar
 
 from nsc.auth.verify import VerifyError, verify
-from nsc.cli.runtime import emit_envelope
+from nsc.cli.runtime import ResolvedProfile, emit_envelope
 from nsc.config.loader import ConfigParseError, load_config
 from nsc.config.models import OutputFormat, Profile
 from nsc.config.settings import default_paths
@@ -30,6 +30,7 @@ from nsc.config.writer import (
     load_round_trip,
 )
 from nsc.output.errors import ErrorEnvelope, ErrorType
+from nsc.schema.source import resolve_command_model
 
 
 def _config_path() -> Path:
@@ -117,6 +118,33 @@ def _print_success(username: str, version: str) -> None:
     typer.echo(f"✓ authenticated as {username}, NetBox {version}")
 
 
+def _fetch_schema_for_login(profile: Profile, token: str) -> None:
+    rp = ResolvedProfile(
+        name=profile.name,
+        url=profile.url,
+        token=token,
+        verify_ssl=profile.verify_ssl,
+        timeout=profile.timeout if profile.timeout is not None else 30.0,
+        schema_url=profile.schema_url,
+    )
+    schema_url = (
+        str(rp.schema_url)
+        if rp.schema_url is not None
+        else f"{str(rp.url).rstrip('/')}/api/schema/?format=json"
+    )
+    typer.echo(f"Fetching schema from {schema_url} ...")
+    try:
+        resolve_command_model(
+            paths=default_paths(),
+            profile=rp,
+            schema_override=None,
+            force_refresh=True,
+        )
+        typer.echo("Schema cached.")
+    except Exception as exc:
+        typer.echo(f"Warning: schema fetch failed ({exc}); skipping.", err=True)
+
+
 def register(app: typer.Typer) -> None:
     @app.command("login", help="Verify / create / rotate a profile's token.")
     def login_cmd(
@@ -136,20 +164,27 @@ def register(app: typer.Typer) -> None:
                 help="Environment variable name (required when --store=env).",
             ),
         ] = None,
+        fetch_schema: Annotated[
+            bool,
+            typer.Option(
+                "--fetch-schema",
+                help="Fetch and cache the live OpenAPI schema (applies to verify and --new).",
+            ),
+        ] = False,
     ) -> None:
         if new and rotate:
             raise typer.BadParameter("--new and --rotate are mutually exclusive")
 
         if new:
-            _do_login_new(profile, url, store, env_var)
+            _do_login_new(profile, url, store, env_var, fetch_schema=fetch_schema)
             return
         if rotate:
             _do_login_rotate(profile, store, env_var)
             return
-        _do_login_verify(profile)
+        _do_login_verify(profile, fetch_schema=fetch_schema)
 
 
-def _do_login_verify(profile_name: str | None) -> None:
+def _do_login_verify(profile_name: str | None, *, fetch_schema: bool = False) -> None:
     try:
         config = load_config(_config_path())
     except ConfigParseError as exc:
@@ -173,6 +208,12 @@ def _do_login_verify(profile_name: str | None) -> None:
         )
         raise typer.Exit(code=code) from exc
     _print_success(result.username, result.netbox_version)
+    if fetch_schema:
+        token = profile.token
+        if token is None:
+            typer.echo("Warning: token not available from config; skipping schema fetch.", err=True)
+            return
+        _fetch_schema_for_login(profile, token)
 
 
 def _do_login_new(
@@ -180,6 +221,8 @@ def _do_login_new(
     url: str | None,
     store: str,
     env_var: str | None,
+    *,
+    fetch_schema: bool = False,
 ) -> None:
     if profile_name is None:
         raise typer.BadParameter("--new requires --profile <name>")
@@ -224,6 +267,8 @@ def _do_login_new(
         set_default=set_default,
     )
     _print_success(result.username, result.netbox_version)
+    if fetch_schema or typer.confirm("Fetch and cache the live schema now?", default=True):
+        _fetch_schema_for_login(candidate, token_for_verify)
 
 
 def _do_login_rotate(

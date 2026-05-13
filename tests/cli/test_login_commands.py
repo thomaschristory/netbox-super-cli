@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import pytest
 import respx
@@ -85,7 +86,7 @@ def test_login_new_creates_and_verifies(home: Path) -> None:
             "--store",
             "plaintext",
         ],
-        input="T123\n",
+        input="T123\nn\n",
     )
     assert result.exit_code == 0, result.stdout + result.stderr
     body = (home / "config.yaml").read_text(encoding="utf-8")
@@ -150,10 +151,132 @@ def test_login_new_with_env_storage_writes_env_tag(home: Path) -> None:
             "--env-var",
             "NSC_PROD_TOKEN",
         ],
-        input="T123\n",  # token is still prompted; only the storage form differs
+        input="T123\nn\n",  # token is still prompted; only the storage form differs
         env={"NSC_PROD_TOKEN": "T123"},
     )
     assert result.exit_code == 0, result.stdout + result.stderr
     body = (home / "config.yaml").read_text(encoding="utf-8")
     assert "!env" in body
     assert "NSC_PROD_TOKEN" in body
+
+
+# ---------------------------------------------------------------------------
+# --fetch-schema flag and interactive schema-fetch prompt
+# ---------------------------------------------------------------------------
+
+
+def _patch_resolve(monkeypatch: pytest.MonkeyPatch, calls: list[Any]) -> None:
+    def _mock(**_: Any) -> Any:
+        calls.append(True)
+
+    monkeypatch.setattr("nsc.cli.login_commands.resolve_command_model", _mock)
+
+
+@respx.mock
+def test_login_new_without_flag_prompts_yes_fetches(
+    home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _good_status()
+    calls: list[Any] = []
+    _patch_resolve(monkeypatch, calls)
+    result = CliRunner().invoke(
+        app,
+        ["login", "--new", "--profile", "prod", "--url", "https://nb.example/"],
+        input="T123\ny\n",
+    )
+    assert result.exit_code == 0, result.output
+    assert len(calls) == 1
+    assert "Fetching schema" in result.output
+
+
+@respx.mock
+def test_login_new_without_flag_default_yes_fetches(
+    home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _good_status()
+    calls: list[Any] = []
+    _patch_resolve(monkeypatch, calls)
+    result = CliRunner().invoke(
+        app,
+        ["login", "--new", "--profile", "prod", "--url", "https://nb.example/"],
+        input="T123\n\n",
+    )
+    assert result.exit_code == 0, result.output
+    assert len(calls) == 1
+
+
+@respx.mock
+def test_login_new_without_flag_prompts_no_skips(
+    home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _good_status()
+    calls: list[Any] = []
+    _patch_resolve(monkeypatch, calls)
+    result = CliRunner().invoke(
+        app,
+        ["login", "--new", "--profile", "prod", "--url", "https://nb.example/"],
+        input="T123\nn\n",
+    )
+    assert result.exit_code == 0, result.output
+    assert len(calls) == 0
+
+
+@respx.mock
+def test_login_new_fetch_schema_flag_skips_prompt(
+    home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _good_status()
+    calls: list[Any] = []
+    _patch_resolve(monkeypatch, calls)
+    result = CliRunner().invoke(
+        app,
+        ["login", "--new", "--profile", "prod", "--url", "https://nb.example/", "--fetch-schema"],
+        input="T123\n",
+    )
+    assert result.exit_code == 0, result.output
+    assert len(calls) == 1
+    assert "Fetching schema" in result.output
+
+
+@respx.mock
+def test_login_verify_fetch_schema_flag_fetches(
+    home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _seed(
+        home,
+        "default_profile: prod\n"
+        "profiles:\n"
+        "  prod:\n"
+        "    url: https://nb.example/\n"
+        "    token: T123\n",
+    )
+    _good_status()
+    calls: list[Any] = []
+    _patch_resolve(monkeypatch, calls)
+    result = CliRunner().invoke(app, ["login", "--fetch-schema"])
+    assert result.exit_code == 0, result.output
+    assert len(calls) == 1
+    assert "Fetching schema" in result.output
+
+
+@respx.mock
+def test_login_fetch_schema_failure_warns_and_exits_zero(
+    home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _seed(
+        home,
+        "default_profile: prod\n"
+        "profiles:\n"
+        "  prod:\n"
+        "    url: https://nb.example/\n"
+        "    token: T123\n",
+    )
+    _good_status()
+
+    def _fail(**_: Any) -> Any:
+        raise RuntimeError("network down")
+
+    monkeypatch.setattr("nsc.cli.login_commands.resolve_command_model", _fail)
+    result = CliRunner().invoke(app, ["login", "--fetch-schema"])
+    assert result.exit_code == 0, result.output
+    assert "Warning" in result.output

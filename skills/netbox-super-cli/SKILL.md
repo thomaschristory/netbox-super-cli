@@ -115,6 +115,29 @@ operation.
   nsc dcim interfaces list --device 42 --all --output json \
     | jq '[.[] | select(.enabled == true and (.name | startswith("Gi")))]'
   ```
+- **Working across many devices? Scope once, filter locally.** Don't
+  loop `nsc dcim interfaces list --device <id>` over every device — pull
+  the broadest reasonable scope (a site, a role, a device type) in a
+  single call, then narrow with `jq`. Server-side filters compose, so
+  pick the tightest scope NetBox can apply for you:
+  ```bash
+  # GOOD — one call scoped to a site, local filtering by device list
+  nsc dcim interfaces list --site dc1 --all --output json \
+    | jq --argjson ids '[42, 43, 44]' \
+        '[.[] | select(.device.id as $d | $ids | index($d))]'
+
+  # GOOD — one call scoped to a role, then group by device
+  nsc dcim interfaces list --device_role leaf-switch --all --output json \
+    | jq 'group_by(.device.name)'
+
+  # BAD — N round-trips, one per device
+  for id in 42 43 44; do
+    nsc dcim interfaces list --device "$id" --all --output json
+  done
+  ```
+  The same pattern applies to IPs, cables, inventory items, and any
+  child resource: filter by the parent scope (site, tenant, role,
+  device-type), fetch once, partition locally.
 - **Pagination defaults:** `list` returns the first page (50 rows by
   default). Pass `--all` to follow `next` links until exhausted, or
   `--limit N` for a hard cap. `nsc describe <tag> <resource>` reveals

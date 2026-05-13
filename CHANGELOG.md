@@ -2,6 +2,24 @@
 
 All notable changes to netbox-super-cli are tracked here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) loosely. From v1.0.0 onward, releases follow [Semantic Versioning](https://semver.org/) and the version in `pyproject.toml` matches the git tag. Pre-1.0 milestones (Phase 1-5) were pinned by tag while `pyproject.toml` stayed at `0.0.1`.
 
+## v1.0.3 — 2026-05-07
+
+Third patch release. Headline changes: `nsc login --new` now prompts to fetch the live schema (issue #32), the schema TTL fast-path self-heals on hash-confirmed fetches (issue #39), and bundled schemas are updated to 4.5.10 and 4.6.0.
+
+### Added
+
+- **`nsc login --new` prompts to fetch the live schema** (issue #32, PR #44). After a new profile is created, `nsc login` asks whether to fetch the live OpenAPI spec immediately. Answering yes primes the schema cache so the next command skips the bootstrap fetch entirely.
+- **`nsc skill export <dir>`** (PR #37). Copies the bundled `SKILL.md` to an arbitrary directory so it can be dropped into any agent harness without `nsc` on the `PATH`. Useful in CI or shared-skill repos where the package is not installed globally.
+- **Bundled schemas updated** (PR #36). Ships 4.5.10 and 4.6.0; drops the 4.6.0-beta2 snapshot. Offline fallback is now available for both stable release lines.
+
+### Fixed
+
+- **Schema TTL fast-path now self-heals after a hash-confirmed fetch** (issue #39). When `nsc` fetched `/api/schema/` and the live hash matched an existing cache file, it returned the cached `CommandModel` without bumping the sidecar's `fetched_at`. So an aged-out sidecar — or a legacy cache from before the sidecar feature — never gained proof of freshness and every subsequent invocation refetched the schema, defeating the v1.0.2 fast-path. `_build_and_cache` now calls a new `CacheStore.touch_fetched_at` to refresh (or seed) the sidecar after any successful live fetch, so the next invocation hits the fast path.
+
+### Documentation
+
+- Bundled Skill (`skills/netbox-super-cli/SKILL.md`) gained a scope-then-filter pattern for multi-device bulk reads (PR #41). The guidance shows how to narrow with `--site`, `--rack`, or `--role` before applying `--filter`, avoiding a full-table scan on large NetBox instances.
+
 ## v1.0.2 — 2026-05-07
 
 Second patch release. Headline change is the schema TTL fast-path (issue #34), which eliminates the per-invocation `GET /api/schema/` round-trip on warm caches. Also includes a small `nsc init` UX addition (verify_ssl prompt) and the documentation pass that landed since v1.0.1.
