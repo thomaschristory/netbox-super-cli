@@ -62,7 +62,6 @@ def _check_required(index: int, record: dict[str, Any], body: RequestBodyShape) 
             field_path=name,
             kind="missing_required",
             message=f"required field {name!r} is missing",
-            expected=None,
         )
         for name in body.required
         if name not in record

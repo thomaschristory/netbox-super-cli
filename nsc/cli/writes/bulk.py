@@ -209,9 +209,9 @@ def run_loop(
             attempts.append(LoopAttempt(request=request, response=None, failure=failure))
             if on_error == "stop":
                 break
-            continue
-        audit_attempt(request, response, None)
-        attempts.append(LoopAttempt(request=request, response=response, failure=None))
+        else:
+            audit_attempt(request, response, None)
+            attempts.append(LoopAttempt(request=request, response=response, failure=None))
     return LoopResult(attempts=attempts)
 
 
