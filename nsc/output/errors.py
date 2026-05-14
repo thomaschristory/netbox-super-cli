@@ -98,9 +98,12 @@ def select_render_target(*, output_format: OutputFormat, stdout_is_tty: bool) ->
     return RenderTarget.JSON_STDERR
 
 
-def render_to_rich_stderr(env: ErrorEnvelope, *, stream: TextIO) -> None:
+def render_to_rich_stderr(env: ErrorEnvelope, *, stream: TextIO, color: bool = False) -> None:
     """Render the envelope as a Rich panel to the given stream (stderr in prod)."""
-    console = Console(file=stream, soft_wrap=True, force_terminal=False)
+    if color:
+        console = Console(file=stream, soft_wrap=True, force_terminal=True)
+    else:
+        console = Console(file=stream, soft_wrap=True, no_color=True, highlight=False)
     body_lines = [
         f"[bold red]{env.type.value}[/]: {env.error}",
     ]

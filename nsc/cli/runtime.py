@@ -325,5 +325,5 @@ def emit_envelope(env: ErrorEnvelope, *, output_format: OutputFormat, color: boo
     elif target is RenderTarget.JSON_STDERR:
         print(render_to_json(env), file=sys.stderr)
     else:
-        render_to_rich_stderr(env, stream=sys.stderr)
+        render_to_rich_stderr(env, stream=sys.stderr, color=color)
     return EXIT_CODES.get(env.type, 1)
