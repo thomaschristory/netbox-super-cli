@@ -100,7 +100,7 @@ def select_render_target(*, output_format: OutputFormat, stdout_is_tty: bool) ->
 
 def render_to_rich_stderr(env: ErrorEnvelope, *, stream: TextIO, color: bool = False) -> None:
     """Render the envelope as a Rich panel to the given stream (stderr in prod)."""
-    console = make_console(stream, color=color)
+    console = make_console(stream, color=color, soft_wrap=True)
     body_lines = [
         f"[bold red]{env.type.value}[/]: {env.error}",
     ]

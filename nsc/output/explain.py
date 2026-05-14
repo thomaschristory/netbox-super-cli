@@ -152,7 +152,7 @@ def render_to_json(trace: ExplainTrace) -> str:
 
 
 def render_to_rich_stdout(trace: ExplainTrace, *, stream: TextIO, color: bool = False) -> None:
-    console = make_console(stream, color=color)
+    console = make_console(stream, color=color, soft_wrap=True)
     body = [
         f"[bold cyan]operation:[/] {trace.operation_id}",
     ]
