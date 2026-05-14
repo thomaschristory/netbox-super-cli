@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from nsc.config.models import Config, Defaults, OutputFormat, Profile, SchemaRefresh
+from nsc.config.models import ColorMode, Config, Defaults, OutputFormat, Profile, SchemaRefresh
 
 
 def test_defaults_have_sensible_values() -> None:
@@ -43,3 +43,12 @@ def test_config_holds_columns_per_tag_and_resource() -> None:
 
 def test_output_format_values() -> None:
     assert {f.value for f in OutputFormat} == {"table", "json", "jsonl", "yaml", "csv"}
+
+
+def test_defaults_color_mode_is_auto() -> None:
+    d = Defaults()
+    assert d.color_mode is ColorMode.AUTO
+
+
+def test_color_mode_values() -> None:
+    assert {m.value for m in ColorMode} == {"auto", "on", "off"}
