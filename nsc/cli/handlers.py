@@ -615,8 +615,8 @@ def _render_delete_ok(ctx: RuntimeContext, *, stream: TextIO) -> None:
     payload = {"deleted": True}
     if ctx.output_format is OutputFormat.JSON:
         print(_json.dumps(payload), file=stream)
-    elif ctx.color:
-        Console(file=stream, force_terminal=True).print("[yellow]deleted[/]")
+    elif ctx.output_format is OutputFormat.TABLE and ctx.color:
+        Console(file=stream, force_terminal=True, no_color=False).print("[yellow]deleted[/]")
     else:
         print("deleted", file=stream)
 
@@ -625,8 +625,9 @@ def _render_delete_already_absent(ctx: RuntimeContext, *, stream: TextIO) -> Non
     payload = {"deleted": False, "reason": "already_absent"}
     if ctx.output_format is OutputFormat.JSON:
         print(_json.dumps(payload), file=stream)
-    elif ctx.color:
-        Console(file=stream, force_terminal=True).print("[dim]already absent (no change)[/]")
+    elif ctx.output_format is OutputFormat.TABLE and ctx.color:
+        c = Console(file=stream, force_terminal=True, no_color=False)
+        c.print("[dim]already absent (no change)[/]")
     else:
         print("already absent (no change)", file=stream)
 
