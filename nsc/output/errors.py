@@ -10,11 +10,11 @@ from enum import Enum, StrEnum
 from typing import Any, Literal, TextIO
 
 from pydantic import BaseModel, ConfigDict, Field
-from rich.console import Console
 from rich.panel import Panel
 
 from nsc.config.models import OutputFormat
 from nsc.model.command_model import HttpMethod
+from nsc.output._console import make_console
 
 
 class ErrorType(StrEnum):
@@ -100,10 +100,7 @@ def select_render_target(*, output_format: OutputFormat, stdout_is_tty: bool) ->
 
 def render_to_rich_stderr(env: ErrorEnvelope, *, stream: TextIO, color: bool = False) -> None:
     """Render the envelope as a Rich panel to the given stream (stderr in prod)."""
-    if color:
-        console = Console(file=stream, soft_wrap=True, force_terminal=True)
-    else:
-        console = Console(file=stream, soft_wrap=True, no_color=True, highlight=False)
+    console = make_console(stream, color=color)
     body_lines = [
         f"[bold red]{env.type.value}[/]: {env.error}",
     ]

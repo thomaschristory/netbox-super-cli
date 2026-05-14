@@ -11,7 +11,6 @@ from __future__ import annotations
 from typing import Any, Literal, TextIO
 
 from pydantic import BaseModel, ConfigDict, Field
-from rich.console import Console
 from rich.panel import Panel
 
 from nsc.cli.writes.apply import ResolvedRequest
@@ -19,6 +18,7 @@ from nsc.cli.writes.bulk import RoutingDecision
 from nsc.cli.writes.input import RawWriteInput
 from nsc.cli.writes.preflight import PreflightResult
 from nsc.model.command_model import Operation
+from nsc.output._console import make_console
 
 DECISION_CAP = 200
 
@@ -152,10 +152,7 @@ def render_to_json(trace: ExplainTrace) -> str:
 
 
 def render_to_rich_stdout(trace: ExplainTrace, *, stream: TextIO, color: bool = False) -> None:
-    if color:
-        console = Console(file=stream, soft_wrap=True, force_terminal=True)
-    else:
-        console = Console(file=stream, soft_wrap=True, no_color=True, highlight=False)
+    console = make_console(stream, color=color)
     body = [
         f"[bold cyan]operation:[/] {trace.operation_id}",
     ]

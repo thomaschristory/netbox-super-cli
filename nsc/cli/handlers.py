@@ -9,7 +9,6 @@ from pathlib import Path
 from typing import Any, TextIO
 
 import typer
-from rich.console import Console
 
 from nsc.cli.runtime import RuntimeContext, apply_limit, emit_envelope, map_error
 from nsc.cli.writes.apply import ResolvedRequest
@@ -39,6 +38,7 @@ from nsc.config.settings import default_paths
 from nsc.http.audit import AuditEntry, append_audit_jsonl
 from nsc.http.errors import NetBoxAPIError, NetBoxClientError
 from nsc.model.command_model import HttpMethod, Operation, ParameterLocation
+from nsc.output._console import make_console
 from nsc.output.errors import (
     ClientError,
     ErrorEnvelope,
@@ -616,7 +616,7 @@ def _render_delete_ok(ctx: RuntimeContext, *, stream: TextIO) -> None:
     if ctx.output_format is OutputFormat.JSON:
         print(_json.dumps(payload), file=stream)
     elif ctx.output_format is OutputFormat.TABLE and ctx.color:
-        Console(file=stream, force_terminal=True, no_color=False).print("[yellow]deleted[/]")
+        make_console(stream, color=True).print("[yellow]deleted[/]")
     else:
         print("deleted", file=stream)
 
@@ -626,8 +626,7 @@ def _render_delete_already_absent(ctx: RuntimeContext, *, stream: TextIO) -> Non
     if ctx.output_format is OutputFormat.JSON:
         print(_json.dumps(payload), file=stream)
     elif ctx.output_format is OutputFormat.TABLE and ctx.color:
-        c = Console(file=stream, force_terminal=True, no_color=False)
-        c.print("[dim]already absent (no change)[/]")
+        make_console(stream, color=True).print("[dim]already absent (no change)[/]")
     else:
         print("already absent (no change)", file=stream)
 

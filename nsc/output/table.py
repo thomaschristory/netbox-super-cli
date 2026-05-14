@@ -5,9 +5,9 @@ from __future__ import annotations
 import sys
 from typing import Any, TextIO
 
-from rich.console import Console
 from rich.table import Table
 
+from nsc.output._console import make_console
 from nsc.output.flatten import flatten
 
 _STATUS_COLORS: dict[str, str] = {
@@ -27,12 +27,6 @@ _STATUS_COLORS: dict[str, str] = {
 }
 
 
-def _make_console(stream: TextIO, *, color: bool) -> Console:
-    if color:
-        return Console(file=stream, force_terminal=True)
-    return Console(file=stream, no_color=True, highlight=False)
-
-
 def render(
     data: list[dict[str, Any]] | dict[str, Any],
     *,
@@ -42,7 +36,7 @@ def render(
 ) -> None:
     records = [data] if isinstance(data, dict) else list(data)
     if not records:
-        _make_console(stream, color=color).print("(no records)")
+        make_console(stream, color=color).print("(no records)")
         return
 
     flat_records = [flatten(r, columns=columns) for r in records]
@@ -54,7 +48,7 @@ def render(
     for r in flat_records:
         table.add_row(*[_format_cell(r.get(col, ""), color=color) for col in fieldnames])
 
-    _make_console(stream, color=color).print(table)
+    make_console(stream, color=color).print(table)
 
 
 def _gather_fieldnames(records: list[dict[str, Any]]) -> list[str]:
