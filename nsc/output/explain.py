@@ -151,8 +151,11 @@ def render_to_json(trace: ExplainTrace) -> str:
     return trace.model_dump_json()
 
 
-def render_to_rich_stdout(trace: ExplainTrace, *, stream: TextIO) -> None:
-    console = Console(file=stream, soft_wrap=True, force_terminal=False)
+def render_to_rich_stdout(trace: ExplainTrace, *, stream: TextIO, color: bool = False) -> None:
+    if color:
+        console = Console(file=stream, soft_wrap=True, force_terminal=True)
+    else:
+        console = Console(file=stream, soft_wrap=True, no_color=True, highlight=False)
     body = [
         f"[bold cyan]operation:[/] {trace.operation_id}",
     ]
