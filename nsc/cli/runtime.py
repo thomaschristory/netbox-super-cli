@@ -16,7 +16,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, HttpUrl, SkipValidation
 
 from nsc.cache.store import ADHOC_PROFILE
-from nsc.config.models import Config, OutputFormat, Profile
+from nsc.config.models import ColorMode, Config, OutputFormat, Profile
 from nsc.config.settings import default_paths
 from nsc.http.client import NetBoxClient
 from nsc.http.errors import NetBoxAPIError, NetBoxClientError
@@ -182,6 +182,14 @@ def _url_only(value: str | None) -> str | None:
     return None
 
 
+def resolve_color(mode: ColorMode, *, is_tty: bool) -> bool:
+    if mode is ColorMode.ON:
+        return True
+    if mode is ColorMode.OFF:
+        return False
+    return is_tty
+
+
 class RuntimeContext(BaseModel):
     """Per-invocation runtime state.
 
@@ -202,6 +210,7 @@ class RuntimeContext(BaseModel):
     limit: int | None = None
     fetch_all: bool = False
     compact: bool = False
+    color: bool = False
     apply: bool = False
     explain: bool = False
     strict: bool = False
@@ -308,7 +317,7 @@ def map_error(
     )
 
 
-def emit_envelope(env: ErrorEnvelope, *, output_format: OutputFormat) -> int:
+def emit_envelope(env: ErrorEnvelope, *, output_format: OutputFormat, color: bool = False) -> int:
     """Write the envelope to the right target and return the exit code."""
     target = select_render_target(output_format=output_format, stdout_is_tty=sys.stdout.isatty())
     if target is RenderTarget.JSON_STDOUT:
