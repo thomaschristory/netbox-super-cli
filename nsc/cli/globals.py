@@ -12,6 +12,7 @@ from nsc.cli.runtime import (
     ResolvedProfile,
     RuntimeContext,
     UnknownProfileError,
+    resolve_color,
     resolve_profile,
 )
 from nsc.config import default_paths
@@ -54,6 +55,7 @@ def build_runtime_context(state: GlobalState) -> RuntimeContext:
         output_format=output,
         debug=state.debug,
         page_size=state.config.defaults.page_size,
+        color=resolve_color(state.config.defaults.color_mode, is_tty=sys.stdout.isatty()),
     )
 
 
