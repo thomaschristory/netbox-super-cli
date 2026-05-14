@@ -3,6 +3,8 @@ from __future__ import annotations
 import io
 import re
 
+from nsc.config.models import OutputFormat
+from nsc.output.render import render as render_dispatch
 from nsc.output.table import _format_cell, render
 
 
@@ -91,3 +93,30 @@ def test_render_empty_no_records_message() -> None:
     buf = io.StringIO()
     render([], stream=buf, color=False)
     assert "no records" in buf.getvalue()
+
+
+# --- render_dispatch (the main entry point) ---
+
+
+def test_render_dispatch_passes_color_to_table() -> None:
+    buf = io.StringIO()
+    render_dispatch(
+        [{"status": "active"}],
+        format=OutputFormat.TABLE,
+        stream=buf,
+        color=True,
+    )
+    assert "\x1b[" in buf.getvalue()
+
+
+def test_render_dispatch_non_table_ignores_color() -> None:
+    buf = io.StringIO()
+    render_dispatch(
+        [{"status": "active"}],
+        format=OutputFormat.JSON,
+        stream=buf,
+        color=True,
+    )
+    out = buf.getvalue()
+    assert "\x1b[" not in out
+    assert "active" in out
