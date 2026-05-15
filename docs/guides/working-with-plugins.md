@@ -22,25 +22,33 @@ become e.g. `nsc my_plugin widgets calibrate 7 --apply`.
 ## Discovery
 
 ```sh
-nsc commands --output json | jq '.tags | keys'        # every tag in your install
-nsc describe my_plugin widgets                         # fields, filters, operations
-nsc commands --output json | jq '.tags.my_plugin'      # full subtree
+nsc commands --schema <path-or-url> -o json | jq '.tags | keys'      # every tag
+nsc commands --schema <path-or-url> -o json | jq '.tags.my_plugin'   # full subtree
 ```
+
+`nsc commands` requires an explicit `--schema` (a path or URL to the OpenAPI
+document) and emits JSON only. The dumped tree is
+`{info_title, info_version, schema_hash, tags: {<tag>: {resources: ...}}}`.
 
 ## Schema cache and plugin upgrades
 
-The cache is keyed by the schema's SHA-256 hash. When you upgrade a plugin (or
-any NetBox component that changes the schema), the next `nsc` invocation
-notices the hash change and regenerates the command-model in the background. The
-old `<schema_hash>.json` file becomes stale and gets cleaned by
-`nsc cache prune` — see [Caching](../architecture/caching.md) for the details.
+The cache is keyed by the schema's SHA-256 hash, stored at
+`~/.nsc/cache/<profile>/<sha256>.json`. When you upgrade a plugin (or any
+NetBox component that changes the schema), the next *fresh* schema fetch
+produces a new hash and a new cache file. Under the default `daily` refresh
+policy that fetch happens once the cache TTL (1 day) expires; force it sooner
+with the global `--refresh-schema` flag or `nsc login --fetch-schema`. The old
+`<schema_hash>.json` file becomes stale and gets cleaned by `nsc cache prune`
+— see [Caching](../architecture/caching.md) for the details.
 
 ## When a plugin endpoint is missing
 
 If `nsc` doesn't know about an endpoint you can hit with `curl`:
 
-1. Check `nsc commands --output json | jq '.tags' | grep -i <name>` — the schema
-   may use a different tag than you expect.
-2. Run `nsc refresh --profile <name>` to force re-fetch the schema.
+1. Check `nsc commands --schema <path-or-url> -o json | jq '.tags' | grep -i
+   <name>` — the schema may use a different tag than you expect.
+2. Re-run any command with the global `--refresh-schema` flag (or
+   `nsc login --profile <name> --fetch-schema`) to force re-fetch the schema,
+   bypassing the cache TTL.
 3. Confirm the endpoint is in `/api/schema/?format=json` for your install
    (some plugins generate routes lazily and don't register them with drf-spectacular).

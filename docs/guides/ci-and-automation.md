@@ -89,10 +89,16 @@ just means one extra fetch on the next run — never a wrong command tree.
 
 ```sh
 # Verify connectivity + auth before doing anything mutating.
-nsc login --output json || { echo "auth failed"; exit 1; }
+nsc login || { echo "auth failed"; exit 1; }
 ```
+
+`nsc login` verifies the active profile's token (exit **8** on auth failure,
+**12** on a config/profile problem). It takes no `--output` flag; on failure it
+prints the standard JSON error envelope.
 
 ## Cleaning up the cache
 
-`nsc cache prune` removes orphan profile dirs and stale-hash files (with `--apply`).
-Safe to run unattended; never deletes the `adhoc` cache.
+`nsc cache prune` removes orphan profile dirs and stale-hash files (it is
+dry-run unless you pass `--apply`). Add `--max-age N` to also prune cache
+files older than N days. Safe to run unattended; never deletes the `adhoc`
+cache.

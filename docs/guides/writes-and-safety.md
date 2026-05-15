@@ -20,6 +20,18 @@ nsc dcim devices update 42 --field status=active --explain
 # Annotates the resolved request with operationId, HTTP method, the matched path.
 ```
 
+## Strict deletes
+
+`--strict` makes a delete of an object that does not exist a hard failure:
+
+```sh
+nsc dcim devices delete 999 --apply --strict
+# Missing object → not_found error, exit code 9 (instead of treating it as a no-op).
+```
+
+Without `--strict`, deleting an absent object is tolerated. Use `--strict` in
+idempotency-sensitive automation where "already gone" should still surface.
+
 ## Bulk vs loop
 
 When the input is a list (JSON array or NDJSON file or stdin) and the schema
@@ -90,6 +102,10 @@ On failure with `--output json`:
   "details": { "source": "server", "body_excerpt": "..." }
 }
 ```
+
+A malformed NDJSON/JSON/YAML input is reported as an `input_error` envelope and
+exits **4** (the same code as a request `validation` error). A `--strict`
+delete of a missing object exits **9** (`not_found`).
 
 The full exit-code table lives at [Exit codes](../reference/exit-codes.md).
 Type values and exit codes are locked — they never change once shipped.
