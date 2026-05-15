@@ -26,17 +26,26 @@ nsc <tag> <resource> <verb> [args] [--apply] [--output json]
 
 - `<tag>` — the OpenAPI tag, e.g., `dcim`, `ipam`, `tenancy`, `circuits`, `extras`.
 - `<resource>` — plural form, e.g., `devices`, `prefixes`, `tenants`, `vlans`.
-- `<verb>` — `list`, `get`, `create`, `update`, `delete`. (Bulk variants exist
+- `<verb>` — reads: `list`, `get`. Writes: `create`, `update`, `replace`,
+  `delete`, plus any custom actions the schema exposes. `replace` is a
+  PUT-with-id (full-object) replace; `update` is a PATCH. (Bulk variants exist
   for write verbs via `-f <file>` — use a `.ndjson` / `.jsonl` extension to trigger
   NDJSON mode.)
 
-A few curated aliases skip the tag:
+A few curated aliases skip the tag (`ls`, `get`, `rm`, `search`):
 
 - `nsc ls <resource>` — alias for `nsc <tag> <resource> list`.
+- `nsc get <resource> <id_or_name>` — fetch one (dereferences a non-numeric
+  name via `name=`).
+- `nsc rm <resource> <id_or_name>` — delete one (dry-run unless `--apply`).
+- `nsc search <query>` — `/api/search/?q=<query>`.
+
+Plus interactive meta-commands (not aliases):
+
 - `nsc init` — interactive config bootstrap.
-- `nsc login` — interactive token capture.
-- `nsc commands` — dump the entire generated command tree (useful for discovery).
-- `nsc describe <tag> <resource>` — dump one resource's fields, filters, operations.
+- `nsc login` — verify / create / rotate a profile's token.
+- `nsc commands --schema <path-or-url>` — dump the entire generated command
+  tree as JSON (useful for discovery; `--schema` is required here).
 
 ## Dry-run / apply discipline
 
@@ -50,11 +59,17 @@ nsc dcim devices create -f device.yaml --apply  # actually creates
 
 Bulk writes use `-f <file>` with a `.ndjson` / `.jsonl` extension (one JSON
 object per line) and the same `--apply` rule applies. Read commands (`list`,
-`get`, `describe`) ignore `--apply` — never paste it into a read by reflex.
+`get`) ignore `--apply` — never paste it into a read by reflex. A `--strict`
+delete of an object that does not exist exits **9**; an NDJSON/input parse
+error exits **4**.
 
 ## Stable JSON output
 
-Use `--output json` for everything an agent reads:
+The default output is `table`, but when stdout is not a TTY (piped, captured)
+`nsc` auto-switches to `json` — overriding any configured default. Still,
+pass `--output json` (or `-o json`) explicitly for everything an agent reads;
+formats are exactly `table, json, jsonl, yaml, csv`. The `NSC_OUTPUT` env var
+sets the default format (a `--output/-o` flag still wins over it).
 
 ```
 nsc ls devices --output json | jq '.[] | select(.status.value == "active")'
@@ -75,13 +90,16 @@ Errors come back as JSON envelopes (on stderr by default; on stdout when
 }
 ```
 
-Exit codes correspond to envelope `type` — see `nsc commands --output json` or
-the project's `reference/exit-codes.md` page.
+Exit codes correspond to envelope `type` (the stable scripting contract):
+`0` success; `1` internal; `2` usage/bootstrap; `3` schema; `4` validation
+*or* input/NDJSON parse error; `5` server (5xx); `6` client; `7` transport;
+`8` auth (401/403); `9` not_found (404, also `--strict` delete of an absent
+object); `10` conflict (409); `11` rate_limited (429); `12` config/profile;
+`13` ambiguous_alias; `14` unknown_alias.
 
 ## Common patterns
 
-- **Discover the surface:** `nsc commands --output json | jq 'keys'`
-- **Discover a resource:** `nsc describe dcim devices --output json`
+- **Discover the surface:** `nsc commands --schema <path-or-url> --output json | jq 'keys'`
 - **List with filters:** `nsc dcim devices list --site mysite --status active --output json`
 - **Get one:** `nsc dcim devices get 42 --output json`
 - **Create from a YAML file:** `nsc dcim devices create -f new-device.yaml --apply`
@@ -140,11 +158,11 @@ operation.
   device-type), fetch once, partition locally.
 - **Pagination defaults:** `list` returns the first page (50 rows by
   default). Pass `--all` to follow `next` links until exhausted, or
-  `--limit N` for a hard cap. `nsc describe <tag> <resource>` reveals
-  which fields can be filtered server-side.
-- **Don't query `nsc commands` or `nsc describe` per-resource in a
-  loop.** They serialize the whole command tree; cache the output once
-  per session.
+  `--limit N` for a hard cap. `nsc commands --schema <path-or-url>
+  --output json` reveals every resource's parameters (which fields can
+  be filtered server-side).
+- **Don't run `nsc commands` per-resource in a loop.** It serializes
+  the whole command tree; cache the output once per session.
 
 ### Write patterns
 
@@ -188,7 +206,8 @@ indefinitely until manually refreshed), `weekly` (7-day TTL).
 - DO NOT skip `--apply`'s dry-run by reflex. The dry-run is your one chance to
   surface an objection BEFORE the wire request.
 - DO NOT hand-curate endpoint lists in your reasoning. Use
-  `nsc commands --output json` instead — endpoints change with NetBox versions.
+  `nsc commands --schema <path-or-url> --output json` instead — endpoints
+  change with NetBox versions.
 - DO NOT authenticate per-command. Configure a profile (`nsc init` then
   `nsc login`) once at session start; `--profile <name>` switches between them.
 - DO NOT assume singular resource names. Plural-only is the v1 stance:
@@ -197,7 +216,11 @@ indefinitely until manually refreshed), `weekly` (7-day TTL).
 ## Profile management
 
 - `nsc init` — first-time setup; writes `~/.nsc/config.yaml`.
-- `nsc login` — interactive token capture for the active profile.
+- `nsc login` — verify the active profile's token. `nsc login --new
+  --profile <name> --url <url>` creates a new profile (then prompts
+  "Fetch and cache the live schema now?", default yes); `--rotate
+  --profile <name>` replaces an existing token. `--fetch-schema` forces
+  a schema fetch without the prompt.
 - `nsc profiles list` — show configured profiles.
 - `nsc --profile prod ls devices` — one-shot profile override.
 
@@ -208,8 +231,9 @@ schema. By default the cache is trusted for 24h before re-fetching the
 live schema (see [Schema fetches](#schema-fetches) above).
 
 - `nsc cache prune` — show what would be deleted (orphan profile dirs
-  and stale-hash files).
-- `nsc cache prune --apply` — actually delete.
+  and stale-hash files). `prune` is the only `nsc cache` subcommand.
+- `nsc cache prune --apply` — actually delete. Add `--max-age N` to
+  also prune cache files older than N days.
 - `nsc --refresh-schema <subcmd>` — force a one-shot live re-fetch
   bypassing the TTL.
 
@@ -309,6 +333,6 @@ preview each step before committing.
 
 ## See also
 
-- `nsc commands --output json` — the full command tree.
+- `nsc commands --schema <path-or-url> --output json` — the full command tree.
 - Project docs site (deployed on every release tag).
 - [NetBox Device Type Library](https://github.com/netbox-community/devicetype-library) — community YAML definitions.
