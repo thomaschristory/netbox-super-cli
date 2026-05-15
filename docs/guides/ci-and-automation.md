@@ -99,6 +99,7 @@ prints the standard JSON error envelope.
 ## Cleaning up the cache
 
 `nsc cache prune` removes orphan profile dirs and stale-hash files (it is
-dry-run unless you pass `--apply`). Add `--max-age N` to also prune cache
-files older than N days. Safe to run unattended; never deletes the `adhoc`
-cache.
+dry-run unless you pass `--apply`). The default prune never touches the
+`adhoc` cache. Add `--max-age N` to also prune cache files older than N days
+by mtime — note that age-based pruning is profile-agnostic and *will* remove
+aged `adhoc` files too. Safe to run unattended (dry-run by default).

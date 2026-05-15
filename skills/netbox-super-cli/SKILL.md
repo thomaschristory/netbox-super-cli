@@ -60,8 +60,10 @@ nsc dcim devices create -f device.yaml --apply  # actually creates
 Bulk writes use `-f <file>` with a `.ndjson` / `.jsonl` extension (one JSON
 object per line) and the same `--apply` rule applies. Read commands (`list`,
 `get`) ignore `--apply` — never paste it into a read by reflex. A `--strict`
-delete of an object that does not exist exits **9**; an NDJSON/input parse
-error exits **4**.
+delete of an object that does not exist exits **9**. A malformed line in an
+NDJSON/JSONL bulk input exits **4** (`input_error`); any other bad input — a
+malformed single JSON/YAML document, an empty list, a missing `-f` file —
+exits **6** (`client`).
 
 ## Stable JSON output
 
@@ -91,11 +93,14 @@ Errors come back as JSON envelopes (on stderr by default; on stdout when
 ```
 
 Exit codes correspond to envelope `type` (the stable scripting contract):
-`0` success; `1` internal; `2` usage/bootstrap; `3` schema; `4` validation
-*or* input/NDJSON parse error; `5` server (5xx); `6` client; `7` transport;
-`8` auth (401/403); `9` not_found (404, also `--strict` delete of an absent
-object); `10` conflict (409); `11` rate_limited (429); `12` config/profile;
-`13` ambiguous_alias; `14` unknown_alias.
+`0` success; `1` internal; `3` schema; `4` `validation` *or* `input_error`
+(a malformed NDJSON/JSONL line); `5` server (5xx); `6` client (incl. a
+malformed single JSON/YAML input, an empty list, a missing `-f` file);
+`7` transport; `8` auth (401/403); `9` not_found (404, also `--strict`
+delete of an absent object); `10` conflict (409); `11` rate_limited (429);
+`12` config/profile; `13` ambiguous_alias; `14` unknown_alias. (Code `2` is
+an argument/usage error from the CLI framework and is not part of the typed
+contract.)
 
 ## Common patterns
 

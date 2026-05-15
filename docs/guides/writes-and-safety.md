@@ -103,8 +103,10 @@ On failure with `--output json`:
 }
 ```
 
-A malformed NDJSON/JSON/YAML input is reported as an `input_error` envelope and
-exits **4** (the same code as a request `validation` error). A `--strict`
+A malformed line in an NDJSON/JSONL bulk input is reported as an `input_error`
+envelope and exits **4** (the same code as a request `validation` error). Any
+other bad input — a malformed single JSON/YAML document, an empty list, a
+missing `-f` file — is a `client` error and exits **6**. A `--strict`
 delete of a missing object exits **9** (`not_found`).
 
 The full exit-code table lives at [Exit codes](../reference/exit-codes.md).

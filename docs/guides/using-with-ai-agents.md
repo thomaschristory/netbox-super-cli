@@ -9,7 +9,7 @@ correctly without trial-and-error.
 | Feature | Mechanism |
 |---|---|
 | Predictable command shape | `nsc <tag> <resource> <verb>` — derived from the OpenAPI schema, no hand-curation |
-| Self-describing | `nsc commands --output json` dumps the full command-model (tags → resources → operations) |
+| Self-describing | `nsc commands --schema <path-or-url> --output json` dumps the full command-model (tags → resources → operations) |
 | Stable machine output | `--output json` everywhere; data on stdout, errors as JSON on stderr (or stdout when `--output json`), non-zero exit on failure |
 | Stable error envelope | `{error, type, endpoint, method, status_code, operation_id, details}` — locked schema, see [Exit codes](../reference/exit-codes.md) |
 | Safe by default | Writes preview as dry-runs; `--apply` is the only path to mutation |
