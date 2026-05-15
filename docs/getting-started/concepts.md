@@ -38,6 +38,7 @@ nsc <tag> <resource> <verb> [args] [options]
    │     │               GET /things/{id}/ → get
    │     │               POST /things/     → create
    │     │               PATCH /things/{id}/ → update
+   │     │               PUT /things/{id}/ → replace
    │     │               DELETE /things/{id}/ → delete
    │     └── path segment (e.g., devices, prefixes)
    └── OpenAPI tag (e.g., dcim, ipam)
