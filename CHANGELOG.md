@@ -2,6 +2,19 @@
 
 All notable changes to netbox-super-cli are tracked here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) loosely. From v1.0.0 onward, releases follow [Semantic Versioning](https://semver.org/) and the version in `pyproject.toml` matches the git tag. Pre-1.0 milestones (Phase 1-5) were pinned by tag while `pyproject.toml` stayed at `0.0.1`.
 
+## v1.0.4 — 2026-05-16
+
+Maintenance release: a codebase-wide internal simplification pass (no behavioural change), a full documentation parity audit, and a dependency bump. There are no CLI, config, or output-contract changes — upgrading from v1.0.3 is transparent.
+
+### Changed
+
+- **Codebase-wide simplification pass** (PRs #61–#71). Every package was audited to remove dead code, tighten types, and drop unreachable branches: schema parsing (#61), cache store & schema source (#62), output (#63), command model / alias resolver / auth verify (#64), config (#65), http (#66), cli (#68), builder (#69), top-level package files (#70), and the cli writes pipeline (#71). These are internal-only changes — the public CLI surface, command tree, error envelope, and exit codes are unchanged and remain covered by the existing test suite.
+- Bumped `urllib3` 2.6.3 → 2.7.0 (PR #46).
+
+### Documentation
+
+- **Full documentation parity audit** (PR #73). Every hand-written user-facing and contributor page, plus the bundled `SKILL.md`, was audited file-by-file against the current code and corrected. Notable fixes: removed references to non-existent `nsc describe` / `nsc refresh` commands; documented the real `replace` (PUT) verb; corrected the HTTP retry policy (writes are never retried on 5xx); corrected the schema-cache invalidation model to the TTL fast-path; documented `nsc skill export`, `nsc login --fetch-schema`, and the post-`login --new` schema-fetch prompt; and corrected exit-code semantics (a malformed single JSON/YAML input is a `client`/exit-6 error — only a bad NDJSON line is `input_error`/exit 4). Auto-generated reference pages were verified current.
+
 ## v1.0.3 — 2026-05-07
 
 Third patch release. Headline changes: `nsc login --new` now prompts to fetch the live schema (issue #32), the schema TTL fast-path self-heals on hash-confirmed fetches (issue #39), and bundled schemas are updated to 4.5.10 and 4.6.0.
