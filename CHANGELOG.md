@@ -8,8 +8,8 @@ Third patch release. Headline changes: `nsc login --new` now prompts to fetch th
 
 ### Added
 
-- **`nsc login --new` prompts to fetch the live schema** (issue #32, PR #44). After a new profile is created, `nsc login` asks whether to fetch the live OpenAPI spec immediately. Answering yes primes the schema cache so the next command skips the bootstrap fetch entirely.
-- **`nsc skill export <dir>`** (PR #37). Copies the bundled `SKILL.md` to an arbitrary directory so it can be dropped into any agent harness without `nsc` on the `PATH`. Useful in CI or shared-skill repos where the package is not installed globally.
+- **`nsc login --new` prompts to fetch the live schema** (issue #32, PR #44). After a new profile is created, `nsc login` asks `Fetch and cache the live schema now?` (defaults `Y`) and fetches if accepted. A new `nsc login --fetch-schema` flag fetches unconditionally (no prompt) and also applies to the bare/`--profile` verify path. Either way the schema is fetched with a forced refresh, priming the cache so the next command skips the bootstrap fetch entirely. `--rotate` does not prompt for or fetch the schema.
+- **`nsc skill export <dir>`** (PR #37). Copies the bundled `SKILL.md` into `<dir>/netbox-super-cli/SKILL.md` so it can be dropped into any agent harness without `nsc` on the `PATH`. Dry-run by default (prints the would-write path); `--apply` actually copies. `--output json` emits a structured envelope. Useful in CI or shared-skill repos where the package is not installed globally.
 - **Bundled schemas updated** (PR #36). Ships 4.5.10 and 4.6.0; drops the 4.6.0-beta2 snapshot. Offline fallback is now available for both stable release lines.
 
 ### Fixed

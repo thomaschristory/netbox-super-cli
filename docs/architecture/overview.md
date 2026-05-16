@@ -1,21 +1,24 @@
 # Architecture overview
 
-`nsc` is composed of five layers. The "brain" — schema parsing and the normalized
-command-model — knows nothing about Typer, Rich, or httpx. The CLI layer
-consumes the brain; a future TUI could too without changing the brain.
+`nsc` is layered around a framework-free "brain". The brain — schema parsing
+and the normalized command-model — knows nothing about Typer, Rich, or httpx.
+The CLI layer consumes the brain; a future TUI could too without changing the
+brain.
 
 ```
 nsc/
-├── schema/    # OpenAPI fetching, hashing, parsing
-├── model/     # Normalized command-model (data only, framework-free)
-├── builder/   # Schema → CommandModel
-├── cli/       # Typer application; walks the model, registers commands
-├── http/      # Thin httpx wrapper: auth, retries, audit
-├── output/    # Formatters (table/json/jsonl/yaml/csv) + error envelope
-├── config/    # Pydantic config models + ruamel.yaml writer
-├── cache/     # On-disk cache for generated CommandModels
-├── auth/      # Login verification helpers
-└── aliases/   # Curated alias resolver (ls/get/rm/search)
+├── schema/          # OpenAPI fetching, hashing, parsing
+├── model/           # Normalized command-model (data only, framework-free)
+├── builder/         # Schema → CommandModel
+├── cli/             # Typer application; walks the model, registers commands
+├── http/            # Thin httpx wrapper: auth, retries, audit
+├── output/          # Formatters (table/json/jsonl/yaml/csv) + error envelope
+├── config/          # Pydantic config models + ruamel.yaml writer
+├── cache/           # On-disk cache for generated CommandModels
+├── auth/            # Login verification helpers (verify probe, token rotate)
+├── aliases/         # Curated alias resolver (ls/get/rm/search)
+├── skill/           # Bundle-path helper for the portable SKILL.md
+└── schemas/bundled/ # Versioned NetBox OpenAPI snapshots (offline fallback)
 ```
 
 ## The hard rule
@@ -26,7 +29,8 @@ If you need to add a dependency to `model/`, you're solving the wrong problem.
 ## Data flow at runtime
 
 1. `nsc` startup → resolve profile (CLI flags > env > config > adhoc).
-2. Resolve schema source (live URL > cache > bundled fallback).
+2. Resolve schema source (`--schema` override > fresh cache within the
+   TTL policy > live fetch > stale cache > bundled fallback).
 3. Hash + parse → build the command-model (or load cached).
 4. Hand model to Typer; register commands dynamically.
 5. Dispatch.

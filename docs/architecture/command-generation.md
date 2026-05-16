@@ -5,13 +5,13 @@
 ## The shape
 
 ```python
-CommandModel
+CommandModel(info_title, info_version, schema_hash, tags: dict[str, Tag])
 ├── tags: dict[str, Tag]
-│   └── Tag(name, resources: dict[str, Resource])
+│   └── Tag(name, description?, resources: dict[str, Resource])
 │       └── Resource(name, list_op?, get_op?, create_op?, update_op?, replace_op?,
 │                    delete_op?, custom_actions: list[Operation])
-└── Operation(operation_id, http_method, path, parameters, request_body?,
-              response_schema?, summary?)
+└── Operation(operation_id, http_method, path, summary?, description?,
+              parameters, request_body?, default_columns?)
 ```
 
 Pure Pydantic. JSON-serializable. Cached to disk.

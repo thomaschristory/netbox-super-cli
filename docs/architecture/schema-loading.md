@@ -18,10 +18,13 @@ and an optional `--refresh-schema` override:
    `{profile.url}/api/schema/?format=json`. The fetched body is hashed;
    if a cache file already exists at that hash it's loaded directly,
    otherwise the command-model is rebuilt and saved.
-4. On fetch failure: any cached entry for the profile (warns once on
-   stderr).
-5. Bundled snapshot at `nsc/schemas/bundled/netbox-<closest-version>.json`
-   (shipped in the wheel) — last-resort offline fallback.
+4. On fetch failure: the newest valid cached entry for the profile
+   (warns once on stderr), sorted by mtime.
+5. Bundled snapshot — the **last (newest) entry** in
+   `nsc/schemas/bundled/manifest.yaml` (currently
+   `netbox-4.6.0.json.gz`), shipped in the wheel. This is the
+   last-resort offline fallback; it is *not* version-matched to the
+   unreachable instance.
 
 ## Hashing
 
@@ -49,12 +52,12 @@ that's the upgrade path for caches written before sidecars existed.
 
 ## Offline behavior
 
-- Live schema unreachable + cache present → use cache, warn once on
-  stderr.
-- Live schema unreachable + no cache → fall back to the closest bundled
-  version, warn loudly.
-- All such errors include a remediation hint pointing at
-  `--refresh-schema` for once the instance is reachable again.
+- Live schema unreachable + cache present → use the newest valid cached
+  entry, warn once on stderr.
+- Live schema unreachable + no cache → fall back to the newest bundled
+  snapshot (last manifest entry), warn once on stderr.
+- Neither cache nor bundled snapshot available → `SchemaSourceError`
+  (exit 3).
 
 ## Refresh modes
 

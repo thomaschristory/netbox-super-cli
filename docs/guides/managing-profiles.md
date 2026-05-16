@@ -16,8 +16,8 @@ nsc profiles add lab --url https://netbox-lab.local --token "$LAB_TOKEN"
 ```
 
 This is the scriptable equivalent of `nsc login --new --profile lab`. It runs
-the same verification (`GET /api/users/tokens/?limit=1`) before persisting.
-Refuses if `lab` already exists.
+the same verification (`GET /api/status/` plus `GET /api/users/tokens/?limit=1`)
+before persisting. Refuses if `lab` already exists.
 
 ## Add a profile interactively
 
@@ -25,6 +25,31 @@ Refuses if `lab` already exists.
 nsc init                                                              # first time, no config yet
 nsc login --new --profile staging --url https://netbox-staging.local  # subsequent profiles
 ```
+
+`nsc login --new` requires both `--profile` and `--url`, then prompts for the
+token (hidden input) and runs verification before persisting. Add `--store env
+--env-var NAME` to store the token as an `!env NAME` reference instead of
+plaintext. Refuses (exit 12) if the profile already exists.
+
+After a successful `--new`, `nsc` interactively asks **"Fetch and cache the
+live schema now?"** (default **yes**) — accept it to pre-warm the command-model
+cache, or pass `--fetch-schema` to fetch unconditionally without the prompt.
+
+## Verify, rotate, and fetch the schema
+
+```sh
+nsc login                                    # verify the default profile's token
+nsc login --profile lab                      # verify a specific profile
+nsc login --profile lab --fetch-schema       # verify, then refresh the cached schema
+nsc login --rotate --profile lab             # prompt for a new token, verify, then persist
+```
+
+`nsc login` (bare or with `--profile`) verifies the token by probing
+`GET /api/status/` and `GET /api/users/tokens/?limit=1`; it writes no config.
+`--fetch-schema` additionally force-refreshes the cached OpenAPI schema.
+`--rotate` requires `--profile`, prompts for the new token, verifies it
+*before* writing, and does **not** prompt for or fetch the schema. `--new` and
+`--rotate` are mutually exclusive.
 
 ## Rename / set default / remove
 

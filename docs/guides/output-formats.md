@@ -1,7 +1,10 @@
 # Output formats
 
-`nsc` ships five output formats. Default is **table** on a TTY and **JSON** when
-stdout is piped.
+`nsc` ships five output formats: `table`, `json`, `jsonl`, `yaml`, `csv`.
+Default is **table** on a TTY and **JSON** when stdout is piped — the piped
+default is JSON even if your config sets a different `defaults.output`.
+Selection precedence (highest first): `--output`/`-o` > `NSC_OUTPUT` env var >
+non-TTY → JSON > `defaults.output` in config (default `table`).
 
 ## The five formats
 

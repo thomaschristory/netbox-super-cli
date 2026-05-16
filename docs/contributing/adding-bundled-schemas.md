@@ -9,14 +9,16 @@ the repo and shipped inside the wheel.
 ```
 nsc/schemas/bundled/
 ├── manifest.yaml
-├── netbox-4.6.0.json.gz
-└── netbox-<other-version>.json.gz
+├── netbox-4.5.10.json.gz
+└── netbox-4.6.0.json.gz
 ```
 
-`manifest.yaml`:
+`manifest.yaml` (newest entry last):
 
 ```yaml
 schemas:
+  - version: "4.5.10"
+    file: "netbox-4.5.10.json.gz"
   - version: "4.6.0"
     file: "netbox-4.6.0.json.gz"
 ```
@@ -56,6 +58,9 @@ versions when they're no longer cited by any active deployment.
 
 1. **First-run offline.** A new install with no cache, no network — the user
    gets a usable command tree from the bundled schema.
-2. **CI without a NetBox container.** `nsc commands --schema bundled-default
-   --output json` produces a deterministic command-model for tests that
-   don't need a live NetBox.
+2. **CI without a NetBox container.** Pointing `--schema` at a bundled
+   snapshot path (e.g. `nsc commands --schema
+   nsc/schemas/bundled/netbox-4.6.0.json.gz --output json`) produces a
+   deterministic command-model for tests that don't need a live NetBox.
+   `--schema` accepts an `http(s)://` URL or a local path; `.json.gz`
+   files are gunzipped automatically — there is no `bundled` keyword.
