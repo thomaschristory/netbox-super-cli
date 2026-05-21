@@ -1,4 +1,4 @@
-"""Sync httpx-based NetBox client (Phase 3a: reads + retry + audit)."""
+"""Sync httpx-based NetBox client."""
 
 from __future__ import annotations
 
@@ -34,7 +34,7 @@ _HTTP_4XX_MIN = 400
 
 
 class _ProfileLike(Protocol):
-    url: Any
+    url: object
     token: str | None
     verify_ssl: bool
     timeout: float
@@ -200,7 +200,7 @@ class NetBoxClient:
             try:
                 response = self._client.request(method.value, path, params=params, json=json_body)
             except httpx.RequestError as exc:
-                error_class: ErrorClass | None = classify_error(exc)
+                error_class: ErrorClass = classify_error(exc)
                 duration_ms = int((time.monotonic() - started) * 1000)
                 retry = should_retry(
                     policy, attempt=attempt, status_code=None, error_class=error_class
@@ -255,8 +255,6 @@ class NetBoxClient:
         return str(request.url)
 
     def _raise_for_status(self, response: httpx.Response) -> None:
-        if response.is_success:
-            return
         try:
             body = response.text[:_BODY_SNIPPET_BYTES]
         except Exception:  # pragma: no cover
@@ -336,7 +334,6 @@ class NetBoxClient:
             append_audit_jsonl(entry, path=log_dir / "audit.jsonl")
 
     def _event_hooks(self) -> dict[str, list[Any]]:
-        # Phase 2 stderr streaming — keep alongside Phase 3a audit.jsonl writes.
         def on_request(request: httpx.Request) -> None:
             print(f">>> {request.method} {request.url}", file=sys.stderr)
             for k, v in request.headers.items():

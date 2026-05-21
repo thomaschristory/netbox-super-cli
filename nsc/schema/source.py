@@ -138,7 +138,6 @@ def _build_and_cache(loaded: LoadedSchema, paths: Paths, profile: ResolvedProfil
 
 
 def _iter_cache_files(profile_dir: Path) -> list[Path]:
-    """Cache files only — excludes `<hash>.meta.json` sidecars."""
     return [p for p in profile_dir.glob("*.json") if not p.name.endswith(".meta.json")]
 
 
@@ -169,20 +168,12 @@ def _find_fresh_cached(
     ttl_seconds: float,
     now: float | None = None,
 ) -> CommandModel | None:
-    """Return the newest cached `CommandModel` for `profile_name` whose
-    sidecar `fetched_at` falls within `ttl_seconds` of `now`. Returns
-    `None` when the profile has never been warmed, the sidecar is missing
-    (so we can't trust the file's age), or every cache entry has aged out.
-
-    Freshness is keyed off the sidecar — never the cache file's mtime —
+    """Freshness is keyed off the sidecar — never the cache file's mtime —
     so a `touch`, backup-restore, or `cp -p` cannot fake freshness. A
     sidecar dated more than `_CLOCK_SKEW_TOLERANCE_SECONDS` in the future
-    is also rejected (likely a clock that jumped forward then back).
-
-    `ttl_seconds=inf` (manual refresh) accepts any sidecar-validated
-    cache file regardless of age. The cache load itself routes through
-    `CacheStore.load` which re-verifies that `<hash>.json`'s contents
-    match `<hash>` — so a tampered or copied JSON file is rejected."""
+    is rejected (likely a clock that jumped forward then back).
+    `CacheStore.load` re-verifies `<hash>.json` contents match `<hash>`,
+    so a tampered or copied file is rejected."""
     profile_dir = paths.cache_dir / profile_name
     if not profile_dir.exists():
         return None

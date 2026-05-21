@@ -30,13 +30,11 @@ def _construct_env(_loader: BaseConstructor, node: ScalarNode) -> str | None:
     raw = str(node.value)
     parts = raw.strip().split(maxsplit=1)
     var = parts[0]
-    parts_count = 2
-    default = parts[1] if len(parts) == parts_count else None
+    default = parts[1] if len(parts) > 1 else None
     return os.environ.get(var, default)
 
 
 def _round_trip_yaml() -> YAML:
-    """Build a fresh round-trip YAML parser shared in shape between loader and writer."""
     yaml = YAML(typ="rt")
     yaml.preserve_quotes = True
     yaml.constructor.add_constructor("!env", _construct_env)

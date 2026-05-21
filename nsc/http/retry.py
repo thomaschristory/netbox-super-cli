@@ -1,4 +1,4 @@
-"""Per-method retry policy + error classification (Phase 3a).
+"""Per-method retry policy + error classification.
 
 Pure functions only. The retry *loop* lives in `NetBoxClient`; this module
 decides whether to keep going.

@@ -22,7 +22,7 @@ just lint          # ruff + ruff format --check + mypy --strict
 just fix           # auto-fix ruff issues
 just bench         # cold-start benchmark (target <300ms median)
 just nsc <args>    # run the local CLI (e.g., just nsc dcim devices list)
-just docs          # serve the docs site at http://localhost:8000
+just docs          # serve the docs site at http://127.0.0.1:8000
 just docs-build    # build the site, fail on broken links / missing nav
 ```
 

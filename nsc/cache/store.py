@@ -142,13 +142,8 @@ class CacheStore:
             shutil.rmtree(target)
 
     def move(self, old: str, new: str) -> None:
-        """Rename a profile's cache directory from `old` to `new`.
-
-        No-op when `old` does not exist (the profile was never warmed). Raises
-        `FileExistsError` when `new` already exists — the caller must purge
-        the target first if that's the intent. Both names are validated to
-        prevent path-component injection (matches `_PROFILE_RE`).
-        """
+        """Raises `FileExistsError` when `new` already exists — caller must purge first.
+        Both names are validated to prevent path-component injection."""
         self._validate_profile(old)
         self._validate_profile(new)
         src = self.root / old
@@ -168,13 +163,6 @@ class CacheStore:
             shutil.rmtree(target)
 
     def enumerate_caches(self) -> list[CacheEntry]:
-        """Walk the cache root and return one CacheEntry per valid <profile>/<hash>.json file.
-
-        Silently skips:
-          - Entries in `self.root` that aren't directories.
-          - Directories whose names don't match `_PROFILE_RE`.
-          - Files whose stems don't match `_HASH_RE` or whose suffix isn't `.json`.
-        """
         if not self.root.exists():
             return []
         entries: list[CacheEntry] = []
@@ -222,7 +210,6 @@ invocations (no profile in config). The prune logic must never delete it."""
 
 
 def _find_orphan_dirs(entries: list[CacheEntry], profile_names: set[str]) -> list[Path]:
-    """Type A: return one Path per profile directory not in config (adhoc excluded)."""
     orphan_dirs: list[Path] = []
     seen_dirs: set[Path] = set()
     for entry in entries:
@@ -240,7 +227,6 @@ def _find_stale_files(
     config: Config,
     fetch_live_hash: Callable[[Profile], str],
 ) -> list[Path]:
-    """Type B: return files whose hash doesn't match the live hash; skip on fetcher error."""
     stale_files: list[Path] = []
     for name in config.profiles:
         try:
@@ -258,7 +244,6 @@ def _find_aged_files(
     orphan_dirs: list[Path],
     cutoff: float,
 ) -> list[Path]:
-    """Type C: return files older than `cutoff`, excluding those inside orphan dirs."""
     orphan_paths = set(orphan_dirs)
     aged: list[Path] = []
     for entry in entries:
@@ -321,12 +306,7 @@ def compute_prune_plan(
 
 
 def prune_orphans(plan: PrunePlan) -> PruneResult:
-    """Delete every path in the plan; tolerant of paths deleted out-of-band.
-
-    Returns counts + freed bytes for output rendering. Bytes are measured
-    BEFORE deletion using `Path.stat()`; if a file vanished between
-    classification and apply, it contributes 0 bytes and 0 deletions.
-    """
+    """Bytes measured before deletion; a file gone between plan and apply contributes 0."""
     deleted_dirs = 0
     deleted_files = 0
     freed = 0

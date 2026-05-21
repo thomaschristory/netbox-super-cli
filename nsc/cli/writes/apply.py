@@ -155,15 +155,13 @@ def _cast_bool(value: Any) -> Any:
     return value
 
 
-_OTHER_SENSITIVE_HEADERS = SENSITIVE_HEADERS - {"authorization"}
-
-
 def _redact(headers: dict[str, str]) -> dict[str, str]:
     out: dict[str, str] = {}
     for k, v in headers.items():
-        if k.lower() == "authorization":
+        lowered = k.lower()
+        if lowered == "authorization":
             out[k] = _REDACTED_AUTH
-        elif k.lower() in _OTHER_SENSITIVE_HEADERS:
+        elif lowered in SENSITIVE_HEADERS:
             out[k] = "<redacted>"
         else:
             out[k] = v

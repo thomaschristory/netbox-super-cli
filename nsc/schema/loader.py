@@ -46,7 +46,7 @@ def load_schema(source: str, *, verify_ssl: bool = True, timeout: float = 30.0) 
         raise SchemaLoadError(f"{source}: not valid JSON ({exc})") from exc
     try:
         doc = OpenAPIDocument.model_validate_json(body)
-    except Exception as exc:  # pydantic.ValidationError
+    except Exception as exc:
         raise SchemaLoadError(f"{source}: schema does not match expected shape: {exc}") from exc
     return LoadedSchema(source=source, body=body, hash=h, document=doc)
 

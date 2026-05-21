@@ -61,6 +61,10 @@ from nsc.output.render import render
 _STATUS_NOT_FOUND_DELETE = 404
 
 
+def _out(stream: TextIO | None) -> TextIO:
+    return stream if stream is not None else sys.stdout
+
+
 def parse_filters(raw: list[str]) -> dict[str, str]:
     out: dict[str, str] = {}
     for item in raw:
@@ -96,7 +100,7 @@ def handle_list(
             rows,
             format=ctx.output_format,
             columns=ctx.resolve_columns(op_tag, op_resource, operation),
-            stream=stream if stream is not None else sys.stdout,
+            stream=_out(stream),
             compact=ctx.compact,
             color=ctx.color,
         )
@@ -122,7 +126,7 @@ def handle_get(
             obj,
             format=ctx.output_format,
             columns=ctx.resolve_columns(op_tag, op_resource, operation),
-            stream=stream if stream is not None else sys.stdout,
+            stream=_out(stream),
             compact=ctx.compact,
             color=ctx.color,
         )
@@ -234,7 +238,7 @@ def _handle_write(
     stream: TextIO | None,
     require_id: bool,
 ) -> None:
-    out = stream if stream is not None else sys.stdout
+    out = _out(stream)
     try:
         if ctx.fetch_all:
             refuse_all_on_writes(operation_id=operation.operation_id)
@@ -398,7 +402,6 @@ def _decide_routing(
         )
     except UnsupportedBulkError as exc:
         refuse_unsupported_bulk(exc, operation_id=operation.operation_id)
-        raise  # unreachable; refuse_unsupported_bulk always raises
     if capability is BulkCapability.AMBIGUOUS:
         print(
             f"warning: bulk capability for {operation.operation_id} is ambiguous; "

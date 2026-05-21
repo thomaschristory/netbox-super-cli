@@ -1,8 +1,8 @@
 """Pydantic models for ~/.nsc/config.yaml.
 
-Phase 2 is read-only; these models describe the on-disk shape. The runtime view
-(`ResolvedProfile`) lives in `nsc/cli/runtime.py` and is built by overlaying
-flags + env vars on top of a selected `Profile`.
+These models describe the on-disk shape. The runtime view (`ResolvedProfile`)
+lives in `nsc/cli/runtime.py` and is built by overlaying flags + env vars on
+top of a selected `Profile`.
 """
 
 from __future__ import annotations

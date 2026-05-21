@@ -11,18 +11,24 @@ Two paths to your first command:
 nsc init
 ```
 
-The wizard prompts for:
+The wizard prompts, in order, for:
 
-- A **profile name** (e.g., `prod`, `lab`).
+- A **profile name** (default `default`; e.g., `prod`, `lab`).
 - The NetBox URL.
-- A token (stored verbatim in `~/.nsc/config.yaml` by default; can be `!env NAME` indirection — see [Managing profiles](../guides/managing-profiles.md)).
-- Whether to verify SSL.
+- **Verify SSL certificates?** (default yes).
+- **Token storage** — `plaintext` or `env` (default `plaintext`).
+- Then either an **environment variable name** (if you chose `env` storage — written as
+  an `!env NAME` indirection) or the **token** itself (hidden input, stored verbatim in
+  `~/.nsc/config.yaml`). See [Managing profiles](../guides/managing-profiles.md).
 
-It writes `~/.nsc/config.yaml`, fetches the schema once to warm the cache, and
-exits. You can re-run with `nsc login --new --profile <name>` to add more later.
+`nsc init` is offline-safe: it does not contact NetBox. On success it writes
+`~/.nsc/config.yaml` with the profile, prints the path, and suggests
+`nsc login --profile <name>` as the next step. It does **not** fetch the
+schema — run `nsc login` afterwards to verify the token and prime the schema
+cache (see below).
 
-`nsc init` refuses to overwrite an existing config — use `nsc login --new`
-to add more profiles non-interactively.
+`nsc init` refuses to overwrite an existing config — use
+`nsc login --new --profile <name> --url <url>` to add more profiles.
 
 ## Env-var only
 
@@ -45,11 +51,21 @@ nsc login                          # verify the default profile
 nsc login --profile lab            # verify a specific profile
 nsc login --new --profile staging --url https://netbox-staging.example.com
 nsc login --rotate --profile prod  # rotate the token
+nsc login --fetch-schema           # verify, then fetch & cache the live schema
 ```
 
-`nsc login` calls `GET /api/users/tokens/?limit=1` and prints
-`✓ authenticated as <user>, NetBox <version>` on success. On failure it emits
-the standard `auth_error` envelope (exit 8).
+`nsc login` probes `GET /api/status/` and `GET /api/users/tokens/?limit=1`
+(both must succeed) and prints `✓ authenticated as <user>, NetBox <version>`
+on success. On failure it emits the standard auth error envelope
+(`type: auth`, exit 8).
+
+`--new` requires both `--profile` and `--url`, prompts for the token
+(hidden input), verifies it before writing, and persists the profile. After a
+successful `--new` it also asks **"Fetch and cache the live schema now?"**
+(default **yes**) — accepting primes the schema cache so your first real
+command skips the bootstrap fetch. Pass `--fetch-schema` to any `nsc login`
+(or `--new`) to fetch the schema unconditionally without the prompt;
+`--rotate` neither prompts for nor fetches the schema.
 
 ## Your first read
 

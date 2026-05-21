@@ -144,11 +144,17 @@ JSON output, error envelope, audit log).
 ```sh
 nsc skill install --target claude-code            # dry-run; prints the destination
 nsc skill install --target claude-code --apply    # actually copies
+
+# Or export to an arbitrary directory (e.g. CI or a shared-skill repo).
+nsc skill export ./skills                          # dry-run; prints the would-write path
+nsc skill export ./skills --apply                  # writes ./skills/netbox-super-cli/SKILL.md
 ```
 
-Targets: `claude-code`, `codex`, `gemini`, `copilot`. Where a target has no
-documented programmatic install path, the helper prints actionable manual
-instructions instead of guessing.
+`skill install` targets: `claude-code`, `codex`, `gemini`, `copilot`. Where a
+target has no documented programmatic install path, the helper prints actionable
+manual instructions instead of guessing. `skill export <dir>` always writes to
+`<dir>/netbox-super-cli/SKILL.md` and, like `install`, is dry-run unless you
+pass `--apply`.
 
 ## License
 

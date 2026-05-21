@@ -94,8 +94,8 @@ def collect(
         used_file = True
 
     field_overlay = _parse_fields(fields)
-
     records = _merge(file_records, field_overlay, used_file=used_file)
+
     source: Literal["file", "stdin", "fields_only", "file_plus_fields"]
     if used_stdin:
         source = "stdin"
@@ -232,9 +232,7 @@ def _classify_brace_start(stripped: str) -> str:
             if depth == 0:
                 rest = stripped[i + 1 :]
                 if rest.strip():
-                    # Any non-whitespace after the first object → NDJSON.
                     return "ndjson"
-                # Nothing follows → single object.
                 return "json_or_yaml"
     # Buffer ended mid-object; default to JSON-or-YAML.
     return "json_or_yaml"
@@ -254,13 +252,11 @@ def _parse_text(text: str, *, hint: str | None) -> tuple[list[dict[str, Any]], b
     if hint == "ndjson":
         return _parse_ndjson(text), True
     if hint == ".json":
-        # File-extension was .json; require strict JSON, no YAML fallback.
         try:
             parsed = json.loads(text)
         except json.JSONDecodeError as exc:
             raise InputError(f"could not parse JSON input: {exc}") from exc
     elif hint == "json_or_yaml" or (hint is None and text.lstrip().startswith(("{", "["))):
-        # Stdin sniffer hint OR legacy fallback: try JSON first, then YAML.
         try:
             parsed = json.loads(text)
         except json.JSONDecodeError:

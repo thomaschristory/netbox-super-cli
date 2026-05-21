@@ -9,7 +9,7 @@ correctly without trial-and-error.
 | Feature | Mechanism |
 |---|---|
 | Predictable command shape | `nsc <tag> <resource> <verb>` — derived from the OpenAPI schema, no hand-curation |
-| Self-describing | `nsc commands --output json` dumps the full command-model; `nsc describe <tag> <resource>` dumps a resource's fields/filters/operations |
+| Self-describing | `nsc commands --schema <path-or-url> --output json` dumps the full command-model (tags → resources → operations) |
 | Stable machine output | `--output json` everywhere; data on stdout, errors as JSON on stderr (or stdout when `--output json`), non-zero exit on failure |
 | Stable error envelope | `{error, type, endpoint, method, status_code, operation_id, details}` — locked schema, see [Exit codes](../reference/exit-codes.md) |
 | Safe by default | Writes preview as dry-runs; `--apply` is the only path to mutation |
@@ -18,15 +18,26 @@ correctly without trial-and-error.
 ## Bundled portable Skill
 
 `nsc` ships a portable Skill bundle at `skills/netbox-super-cli/SKILL.md`
-(installed inside the wheel). Install it into your agent harness with:
+(installed inside the wheel). Install it into a known agent harness with:
 
 ```sh
 nsc skill install --target claude-code            # dry-run; prints the destination
 nsc skill install --target claude-code --apply    # actually copies
 ```
 
+Or export the bundled `SKILL.md` to an arbitrary directory:
+
+```sh
+nsc skill export ./my-skills                      # dry-run; prints the would-write path
+nsc skill export ./my-skills --apply              # actually copies
+```
+
+`nsc skill export <dir>` always writes to `<dir>/netbox-super-cli/SKILL.md` —
+the `netbox-super-cli/` subdirectory is inserted for you. Both `skill install`
+and `skill export` are **dry-run unless `--apply`** is passed.
+
 Use `--output json` for programmatic consumers; the dry-run envelope contains
-the resolved `destination` path.
+the resolved destination path.
 
 ### Per-target resolved paths
 
@@ -54,9 +65,9 @@ When briefing an agent to use `nsc`, include:
    read command.
 2. **The output format.** "Use `--output json` for everything. Errors are JSON
    envelopes — read `.type` for the category, the exit code for control flow."
-3. **Discovery commands.** "Run `nsc commands --output json` to see the whole
-   surface. Run `nsc describe <tag> <resource>` for a specific resource's
-   fields." This prevents the agent from guessing endpoints.
+3. **Discovery commands.** "Run `nsc commands --schema <path-or-url> --output
+   json` to see the whole surface (tags → resources → operations)." This
+   prevents the agent from guessing endpoints.
 4. **The audit log.** "If a command fails unexpectedly, check
    `~/.nsc/logs/audit.jsonl` — it has the exact request and response." This
    replaces guesswork with evidence.
@@ -66,6 +77,6 @@ When briefing an agent to use `nsc`, include:
 - **Asking the agent to skip dry-run.** Just don't. The dry-run is the agent's
   one chance to surface an objection.
 - **Hand-curated endpoint lists in the prompt.** They go stale on every NetBox
-  upgrade. Use `nsc commands --output json` instead.
+  upgrade. Use `nsc commands --schema <path-or-url> --output json` instead.
 - **Authenticating per-command.** Configure a profile (or env vars) once at
   session start.

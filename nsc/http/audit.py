@@ -1,4 +1,4 @@
-"""Audit log writers (Phase 3a).
+"""Audit log writers.
 
 Two files under `~/.nsc/logs/`:
   - `last-request.json`  — single-exchange ephemeral, overwritten on every call.
