@@ -2,6 +2,25 @@
 
 All notable changes to netbox-super-cli are tracked here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) loosely. From v1.0.0 onward, releases follow [Semantic Versioning](https://semver.org/) and the version in `pyproject.toml` matches the git tag. Pre-1.0 milestones (Phase 1-5) were pinned by tag while `pyproject.toml` stayed at `0.0.1`.
 
+## v1.0.5 — 2026-05-21
+
+Adds opt-in semantic terminal coloring (issue #24). No config migration is
+needed — `color_mode` defaults to `auto`, which colors a stream only when it
+is a TTY, so piped and redirected output is byte-for-byte unchanged.
+
+### Added
+
+- **Semantic terminal coloring** (issue #24, PR #72). A new `defaults.color_mode`
+  config field — `auto` (default), `on`, or `off` — controls colored output.
+  Table cells are colored by meaning: status values (`active`/`enabled`/`online`
+  green, `planned`/`staged` yellow, `failed`/`disabled`/`offline` red), booleans,
+  and empty cells. `nsc explain` traces and Rich error panels are colored too.
+  stdout and stderr are gated independently by each stream's own TTY, so
+  `nsc … | jq` and `nsc … 2>err.log` no longer mis-color one stream or leak
+  ANSI into the other. Structured formats (`json`, `jsonl`, `yaml`, `csv`) are
+  never colored. All server- and user-sourced text is escaped before Rich
+  markup parsing, so stray `[`/`]` in API responses cannot garble output.
+
 ## v1.0.4 — 2026-05-16
 
 Maintenance release: a codebase-wide internal simplification pass (no behavioural change), a full documentation parity audit, and a dependency bump. There are no CLI, config, or output-contract changes — upgrading from v1.0.3 is transparent.
