@@ -31,11 +31,18 @@ class SchemaRefresh(StrEnum):
     WEEKLY = "weekly"
 
 
+class ColorMode(StrEnum):
+    AUTO = "auto"
+    ON = "on"
+    OFF = "off"
+
+
 class Defaults(_Frozen):
     output: OutputFormat = OutputFormat.TABLE
     page_size: int = 50
     timeout: float = 30.0
     schema_refresh: SchemaRefresh = SchemaRefresh.DAILY
+    color_mode: ColorMode = ColorMode.AUTO
 
 
 class Profile(_Frozen):

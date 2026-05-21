@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import io
 import json
+import re
 
 from pydantic import HttpUrl
 
@@ -39,6 +40,10 @@ class _Profile:
     timeout = 5.0
 
 
+def strip_ansi(s: str) -> str:
+    return re.sub(r"\x1b\[[0-9;]*m", "", s)
+
+
 def _ctx(output_format: OutputFormat) -> RuntimeContext:
     profile = ResolvedProfile(
         name="test",
@@ -54,6 +59,25 @@ def _ctx(output_format: OutputFormat) -> RuntimeContext:
         command_model=CommandModel(info_title="t", info_version="v", schema_hash="x"),
         client=NetBoxClient(_Profile()),
         output_format=output_format,
+    )
+
+
+def _ctx_color(output_format: OutputFormat, *, color: bool) -> RuntimeContext:
+    profile = ResolvedProfile(
+        name="test",
+        url=HttpUrl("https://nb.example"),
+        token="t0ken",
+        verify_ssl=True,
+        timeout=5.0,
+        schema_url=None,
+    )
+    return RuntimeContext(
+        resolved_profile=profile,
+        config=Config(),
+        command_model=CommandModel(info_title="t", info_version="v", schema_hash="x"),
+        client=NetBoxClient(_Profile()),
+        output_format=output_format,
+        color=color,
     )
 
 
@@ -95,6 +119,34 @@ def test_render_delete_already_absent_table_text() -> None:
     buf = io.StringIO()
     _render_delete_already_absent(_ctx(OutputFormat.TABLE), stream=buf)
     assert "absent" in buf.getvalue().lower()
+
+
+def test_render_delete_ok_table_color_false_plain() -> None:
+    buf = io.StringIO()
+    _render_delete_ok(_ctx_color(OutputFormat.TABLE, color=False), stream=buf)
+    assert buf.getvalue() == "deleted\n"
+
+
+def test_render_delete_ok_table_color_true_has_ansi() -> None:
+    buf = io.StringIO()
+    _render_delete_ok(_ctx_color(OutputFormat.TABLE, color=True), stream=buf)
+    out = buf.getvalue()
+    assert "\x1b[" in out
+    assert "deleted" in strip_ansi(out)
+
+
+def test_render_delete_already_absent_color_false_plain() -> None:
+    buf = io.StringIO()
+    _render_delete_already_absent(_ctx_color(OutputFormat.TABLE, color=False), stream=buf)
+    assert buf.getvalue() == "already absent (no change)\n"
+
+
+def test_render_delete_already_absent_color_true_has_ansi() -> None:
+    buf = io.StringIO()
+    _render_delete_already_absent(_ctx_color(OutputFormat.TABLE, color=True), stream=buf)
+    out = buf.getvalue()
+    assert "\x1b[" in out
+    assert "already absent" in strip_ansi(out)
 
 
 def test_preflight_envelope_shape() -> None:

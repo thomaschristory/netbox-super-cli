@@ -43,6 +43,9 @@ def test_login_new_creates_profile_against_live_netbox(
     nsc_token: str,
     tmp_nsc_home: Path,
 ) -> None:
+    # Second input line answers the post-login "Fetch and cache the live
+    # schema now?" confirm (added in #44); decline to keep the test focused
+    # on profile creation.
     result = run_nsc(
         "login",
         "--new",
@@ -52,7 +55,7 @@ def test_login_new_creates_profile_against_live_netbox(
         nsc_url,
         "--store",
         "plaintext",
-        input=f"{nsc_token}\n",
+        input=f"{nsc_token}\nn\n",
     )
     assert result.returncode == 0, result.stdout + result.stderr  # type: ignore[attr-defined]
     body = (tmp_nsc_home / "config.yaml").read_text(encoding="utf-8")

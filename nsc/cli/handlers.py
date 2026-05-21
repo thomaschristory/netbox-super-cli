@@ -38,6 +38,7 @@ from nsc.config.settings import default_paths
 from nsc.http.audit import AuditEntry, append_audit_jsonl
 from nsc.http.errors import NetBoxAPIError, NetBoxClientError
 from nsc.model.command_model import HttpMethod, Operation, ParameterLocation
+from nsc.output._console import make_console
 from nsc.output.errors import (
     ClientError,
     ErrorEnvelope,
@@ -101,10 +102,11 @@ def handle_list(
             columns=ctx.resolve_columns(op_tag, op_resource, operation),
             stream=_out(stream),
             compact=ctx.compact,
+            color=ctx.color,
         )
     except (NetBoxAPIError, NetBoxClientError) as exc:
         env = map_error(exc, operation_id=operation.operation_id)
-        code = emit_envelope(env, output_format=ctx.output_format)
+        code = emit_envelope(env, output_format=ctx.output_format, color=ctx.color_stderr)
         raise typer.Exit(code) from exc
 
 
@@ -126,10 +128,11 @@ def handle_get(
             columns=ctx.resolve_columns(op_tag, op_resource, operation),
             stream=_out(stream),
             compact=ctx.compact,
+            color=ctx.color,
         )
     except (NetBoxAPIError, NetBoxClientError) as exc:
         env = map_error(exc, operation_id=operation.operation_id)
-        code = emit_envelope(env, output_format=ctx.output_format)
+        code = emit_envelope(env, output_format=ctx.output_format, color=ctx.color_stderr)
         raise typer.Exit(code) from exc
 
 
@@ -316,7 +319,7 @@ def _handle_write(
             is_delete=is_delete,
         )
     except ClientError as exc:
-        code = emit_envelope(exc.envelope, output_format=ctx.output_format)
+        code = emit_envelope(exc.envelope, output_format=ctx.output_format, color=ctx.color_stderr)
         raise typer.Exit(code) from exc
     except NDJSONParseError as exc:
         env = input_error_envelope(
@@ -324,11 +327,11 @@ def _handle_write(
             bad_lines=exc.bad_lines,
             operation_id=operation.operation_id,
         )
-        code = emit_envelope(env, output_format=ctx.output_format)
+        code = emit_envelope(env, output_format=ctx.output_format, color=ctx.color_stderr)
         raise typer.Exit(code) from exc
     except InputError as exc:
         env = client_envelope(str(exc), operation_id=operation.operation_id)
-        code = emit_envelope(env, output_format=ctx.output_format)
+        code = emit_envelope(env, output_format=ctx.output_format, color=ctx.color_stderr)
         raise typer.Exit(code) from exc
     except (NetBoxAPIError, NetBoxClientError) as exc:
         if (
@@ -340,7 +343,7 @@ def _handle_write(
             _render_delete_already_absent(ctx, stream=out)
             return
         env = map_error(exc, operation_id=operation.operation_id)
-        code = emit_envelope(env, output_format=ctx.output_format)
+        code = emit_envelope(env, output_format=ctx.output_format, color=ctx.color_stderr)
         raise typer.Exit(code) from exc
 
 
@@ -364,13 +367,13 @@ def _handle_dry_run_or_preflight(
         _render_explain_or_dry_run(trace, ctx, stream=out)
         if not preflight.ok:
             env = _preflight_envelope(operation, preflight, applied=False)
-            code = emit_envelope(env, output_format=ctx.output_format)
+            code = emit_envelope(env, output_format=ctx.output_format, color=ctx.color_stderr)
             raise typer.Exit(code)
         return True
     if not preflight.ok:
         _emit_dry_run_audit(operation, resolved, preflight, ctx, preflight_blocked=True)
         env = _preflight_envelope(operation, preflight, applied=False)
-        code = emit_envelope(env, output_format=ctx.output_format)
+        code = emit_envelope(env, output_format=ctx.output_format, color=ctx.color_stderr)
         raise typer.Exit(code)
     return False
 
@@ -480,7 +483,7 @@ def _execute_loop(
         operation_id=operation.operation_id,
         total_records=total_records,
     )
-    code = emit_envelope(env, output_format=ctx.output_format)
+    code = emit_envelope(env, output_format=ctx.output_format, color=ctx.color_stderr)
     raise typer.Exit(code)
 
 
@@ -539,7 +542,7 @@ def _render_explain_or_dry_run(trace: ExplainTrace, ctx: RuntimeContext, *, stre
     if ctx.output_format is OutputFormat.JSON:
         print(render_explain_json(trace), file=stream)
     elif ctx.output_format is OutputFormat.TABLE:
-        render_explain_rich(trace, stream=stream)
+        render_explain_rich(trace, stream=stream, color=ctx.color)
     else:
         # CSV/YAML/JSONL on dry-run → JSON to stdout (the formatters expect rows,
         # not a structured trace). Consistent with spec §4.2.3 fallback rules.
@@ -607,6 +610,7 @@ def _render_response(
         columns=ctx.resolve_columns(op_tag, op_resource, operation),
         stream=stream,
         compact=ctx.compact,
+        color=ctx.color,
     )
 
 
@@ -614,6 +618,8 @@ def _render_delete_ok(ctx: RuntimeContext, *, stream: TextIO) -> None:
     payload = {"deleted": True}
     if ctx.output_format is OutputFormat.JSON:
         print(_json.dumps(payload), file=stream)
+    elif ctx.output_format is OutputFormat.TABLE and ctx.color:
+        make_console(stream, color=True).print("[yellow]deleted[/]")
     else:
         print("deleted", file=stream)
 
@@ -622,6 +628,8 @@ def _render_delete_already_absent(ctx: RuntimeContext, *, stream: TextIO) -> Non
     payload = {"deleted": False, "reason": "already_absent"}
     if ctx.output_format is OutputFormat.JSON:
         print(_json.dumps(payload), file=stream)
+    elif ctx.output_format is OutputFormat.TABLE and ctx.color:
+        make_console(stream, color=True).print("[dim]already absent (no change)[/]")
     else:
         print("already absent (no change)", file=stream)
 

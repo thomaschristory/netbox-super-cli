@@ -10,11 +10,12 @@ from enum import Enum, StrEnum
 from typing import Any, Literal, TextIO
 
 from pydantic import BaseModel, ConfigDict, Field
-from rich.console import Console
+from rich.markup import escape
 from rich.panel import Panel
 
 from nsc.config.models import OutputFormat
 from nsc.model.command_model import HttpMethod
+from nsc.output._console import make_console
 
 
 class ErrorType(StrEnum):
@@ -97,25 +98,27 @@ def select_render_target(*, output_format: OutputFormat, stdout_is_tty: bool) ->
     return RenderTarget.JSON_STDERR
 
 
-def render_to_rich_stderr(env: ErrorEnvelope, *, stream: TextIO) -> None:
-    console = Console(file=stream, soft_wrap=True, force_terminal=False)
+def render_to_rich_stderr(env: ErrorEnvelope, *, stream: TextIO, color: bool = False) -> None:
+    console = make_console(stream, color=color, soft_wrap=True)
+    # env.error/endpoint/operation_id/audit_log_path/details carry server- and
+    # user-sourced text; escape it so stray [..] is not parsed as Rich markup.
     body_lines = [
-        f"[bold red]{env.type.value}[/]: {env.error}",
+        f"[bold red]{env.type.value}[/]: {escape(env.error)}",
     ]
     if env.endpoint:
-        body_lines.append(f"endpoint: {env.endpoint}")
+        body_lines.append(f"endpoint: {escape(env.endpoint)}")
     if env.method is not None:
         body_lines.append(f"method:   {env.method.value}")
     if env.status_code is not None:
         body_lines.append(f"status:   {env.status_code}")
     if env.operation_id:
-        body_lines.append(f"op:       {env.operation_id}")
+        body_lines.append(f"op:       {escape(env.operation_id)}")
     if env.attempt_n is not None:
         body_lines.append(f"attempt:  {env.attempt_n}")
     if env.audit_log_path:
-        body_lines.append(f"audit:    {env.audit_log_path}")
+        body_lines.append(f"audit:    {escape(env.audit_log_path)}")
     if env.details:
-        body_lines.append(f"details:  {env.details}")
+        body_lines.append(f"details:  {escape(str(env.details))}")
     console.print(Panel("\n".join(body_lines), title="nsc error", border_style="red"))
 
 
