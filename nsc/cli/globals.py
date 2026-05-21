@@ -52,6 +52,7 @@ def build_runtime_context(state: GlobalState) -> RuntimeContext:
         debug=state.debug,
         page_size=state.config.defaults.page_size,
         color=resolve_color(state.config.defaults.color_mode, is_tty=sys.stdout.isatty()),
+        color_stderr=resolve_color(state.config.defaults.color_mode, is_tty=sys.stderr.isatty()),
     )
 
 

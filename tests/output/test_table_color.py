@@ -95,6 +95,22 @@ def test_render_empty_no_records_message() -> None:
     assert "no records" in buf.getvalue()
 
 
+def test_render_color_escapes_markup_in_values() -> None:
+    """A cell value containing valid Rich tags must render literally, not be
+    consumed as markup."""
+    buf = io.StringIO()
+    render([{"name": "host [dim]x[/dim]"}], stream=buf, color=True)
+    out = strip_ansi(buf.getvalue())
+    assert "[dim]" in out
+
+
+def test_render_no_color_escapes_markup_in_values() -> None:
+    buf = io.StringIO()
+    render([{"name": "host [dim]x[/dim]"}], stream=buf, color=False)
+    out = buf.getvalue()
+    assert "[dim]" in out
+
+
 # --- render_dispatch (the main entry point) ---
 
 

@@ -207,6 +207,7 @@ class RuntimeContext(BaseModel):
     fetch_all: bool = False
     compact: bool = False
     color: bool = False
+    color_stderr: bool = False
     apply: bool = False
     explain: bool = False
     strict: bool = False

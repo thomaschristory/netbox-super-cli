@@ -106,7 +106,7 @@ def handle_list(
         )
     except (NetBoxAPIError, NetBoxClientError) as exc:
         env = map_error(exc, operation_id=operation.operation_id)
-        code = emit_envelope(env, output_format=ctx.output_format, color=ctx.color)
+        code = emit_envelope(env, output_format=ctx.output_format, color=ctx.color_stderr)
         raise typer.Exit(code) from exc
 
 
@@ -132,7 +132,7 @@ def handle_get(
         )
     except (NetBoxAPIError, NetBoxClientError) as exc:
         env = map_error(exc, operation_id=operation.operation_id)
-        code = emit_envelope(env, output_format=ctx.output_format, color=ctx.color)
+        code = emit_envelope(env, output_format=ctx.output_format, color=ctx.color_stderr)
         raise typer.Exit(code) from exc
 
 
@@ -319,7 +319,7 @@ def _handle_write(
             is_delete=is_delete,
         )
     except ClientError as exc:
-        code = emit_envelope(exc.envelope, output_format=ctx.output_format, color=ctx.color)
+        code = emit_envelope(exc.envelope, output_format=ctx.output_format, color=ctx.color_stderr)
         raise typer.Exit(code) from exc
     except NDJSONParseError as exc:
         env = input_error_envelope(
@@ -327,11 +327,11 @@ def _handle_write(
             bad_lines=exc.bad_lines,
             operation_id=operation.operation_id,
         )
-        code = emit_envelope(env, output_format=ctx.output_format, color=ctx.color)
+        code = emit_envelope(env, output_format=ctx.output_format, color=ctx.color_stderr)
         raise typer.Exit(code) from exc
     except InputError as exc:
         env = client_envelope(str(exc), operation_id=operation.operation_id)
-        code = emit_envelope(env, output_format=ctx.output_format, color=ctx.color)
+        code = emit_envelope(env, output_format=ctx.output_format, color=ctx.color_stderr)
         raise typer.Exit(code) from exc
     except (NetBoxAPIError, NetBoxClientError) as exc:
         if (
@@ -343,7 +343,7 @@ def _handle_write(
             _render_delete_already_absent(ctx, stream=out)
             return
         env = map_error(exc, operation_id=operation.operation_id)
-        code = emit_envelope(env, output_format=ctx.output_format, color=ctx.color)
+        code = emit_envelope(env, output_format=ctx.output_format, color=ctx.color_stderr)
         raise typer.Exit(code) from exc
 
 
@@ -367,13 +367,13 @@ def _handle_dry_run_or_preflight(
         _render_explain_or_dry_run(trace, ctx, stream=out)
         if not preflight.ok:
             env = _preflight_envelope(operation, preflight, applied=False)
-            code = emit_envelope(env, output_format=ctx.output_format, color=ctx.color)
+            code = emit_envelope(env, output_format=ctx.output_format, color=ctx.color_stderr)
             raise typer.Exit(code)
         return True
     if not preflight.ok:
         _emit_dry_run_audit(operation, resolved, preflight, ctx, preflight_blocked=True)
         env = _preflight_envelope(operation, preflight, applied=False)
-        code = emit_envelope(env, output_format=ctx.output_format, color=ctx.color)
+        code = emit_envelope(env, output_format=ctx.output_format, color=ctx.color_stderr)
         raise typer.Exit(code)
     return False
 
@@ -483,7 +483,7 @@ def _execute_loop(
         operation_id=operation.operation_id,
         total_records=total_records,
     )
-    code = emit_envelope(env, output_format=ctx.output_format, color=ctx.color)
+    code = emit_envelope(env, output_format=ctx.output_format, color=ctx.color_stderr)
     raise typer.Exit(code)
 
 

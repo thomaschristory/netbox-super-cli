@@ -5,6 +5,7 @@ from __future__ import annotations
 import sys
 from typing import Any, TextIO
 
+from rich.markup import escape
 from rich.table import Table
 
 from nsc.output._console import make_console
@@ -67,13 +68,15 @@ def _format_cell(value: Any, *, color: bool = False) -> str:
     else:
         text = str(value)
 
+    # Rich parses markup in table cells regardless of the no-color setting, so
+    # arbitrary cell values must be escaped on every return path.
     if not color:
-        return text
+        return escape(text)
 
     if not text:
         return "[dim]-[/]"
 
     style = _STATUS_COLORS.get(text.lower())
     if style:
-        return f"[{style}]{text}[/]"
-    return text
+        return f"[{style}]{escape(text)}[/]"
+    return escape(text)
