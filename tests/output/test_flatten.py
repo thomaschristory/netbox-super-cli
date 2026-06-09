@@ -62,3 +62,27 @@ def test_flatten_pick_empty_list_renders_blank() -> None:
 
 def test_flatten_pick_null_foreign_key_renders_none() -> None:
     assert flatten({"platform": None}, columns=["platform"]) == {"platform": None}
+
+
+def test_flatten_pick_dotted_path_through_null_renders_blank() -> None:
+    assert flatten({"site": None}, columns=["site.name"]) == {"site.name": ""}
+
+
+def test_flatten_pick_dotted_path_landing_on_list_joins() -> None:
+    record = {"config": {"tags": ["a", "b"]}}
+    assert flatten(record, columns=["config.tags"]) == {"config.tags": "a, b"}
+
+
+def test_flatten_pick_list_of_objects_without_display_uses_json() -> None:
+    record = {"items": [{"a": 1}, {"b": 2}]}
+    assert flatten(record, columns=["items"]) == {"items": '{"a":1}, {"b":2}'}
+
+
+def test_flatten_pick_list_with_none_renders_empty_token() -> None:
+    assert flatten({"vals": ["x", None, "y"]}, columns=["vals"]) == {"vals": "x, , y"}
+
+
+def test_flatten_pick_dotted_path_is_traversal_not_literal_key() -> None:
+    # The dotted column resolves by traversing nested dicts, matching the
+    # documented "drills in" semantics — it does not match a literal dotted key.
+    assert flatten({"a": {"b": 5}}, columns=["a.b"]) == {"a.b": 5}
