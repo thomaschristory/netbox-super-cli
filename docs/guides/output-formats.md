@@ -43,6 +43,20 @@ columns:
 Unknown column names are silently ignored, so the same config remains valid
 across NetBox versions and plugin changes.
 
+### Nested objects and lists in columns
+
+A column may name a nested field directly or drill in with a dotted path:
+
+- A dotted path selects the leaf scalar: `status.value`, `site.name`.
+- A bare nested object (`site`, `role`, `tenant`, `status`) collapses to its
+  `display` label — `role` renders `Router`, not an empty cell. An object with
+  no `display` field falls back to compact JSON.
+- A list of objects renders as its members' labels joined with `, ` (e.g.
+  `tags` → `prod, edge`); an empty list renders blank.
+
+This applies to both `table` and `csv`. The `json`, `jsonl`, and `yaml` formats
+always keep the full nested structure untouched.
+
 ## Compact JSON
 
 ```sh

@@ -50,3 +50,26 @@ def test_csv_uses_record_keys_when_no_columns_given() -> None:
     render_csv([{"id": 1, "name": "a"}], stream=buf, columns=None)
     rows = list(csv.reader(io.StringIO(buf.getvalue())))
     assert set(rows[0]) == {"id", "name"}
+
+
+def test_csv_nested_object_column_renders_display() -> None:
+    buf = io.StringIO()
+    render_csv(
+        [{"id": 1, "role": {"display": "Router", "name": "Router"}}],
+        stream=buf,
+        columns=["id", "role"],
+    )
+    rows = list(csv.reader(io.StringIO(buf.getvalue())))
+    assert rows[1] == ["1", "Router"]
+
+
+def test_csv_quotes_joined_list_cell_containing_comma() -> None:
+    buf = io.StringIO()
+    render_csv(
+        [{"id": 1, "tags": [{"display": "edge, dc1"}, {"display": "prod"}]}],
+        stream=buf,
+        columns=["id", "tags"],
+    )
+    # The joined cell ("edge, dc1, prod") survives a CSV round-trip as one field.
+    rows = list(csv.reader(io.StringIO(buf.getvalue())))
+    assert rows[1] == ["1", "edge, dc1, prod"]
