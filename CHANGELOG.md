@@ -2,6 +2,23 @@
 
 All notable changes to netbox-super-cli are tracked here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) loosely. From v1.0.0 onward, releases follow [Semantic Versioning](https://semver.org/) and the version in `pyproject.toml` matches the git tag. Pre-1.0 milestones (Phase 1-5) were pinned by tag while `pyproject.toml` stayed at `0.0.1`.
 
+## v1.0.6 — 2026-06-09
+
+Patch release. Fixes table/CSV column rendering for fields that are nested
+objects or lists of objects (issue #78).
+
+### Fixed
+
+- **Nested-object and list columns now render in `table`/`csv`** (issue #78).
+  A `--columns` (or `columns:` config) entry pointing to a nested object — a
+  NetBox brief FK such as `role`, `site`, `tenant`, `device_type` — rendered as
+  an empty cell; an entry pointing to a list of objects (e.g. `tags`) rendered
+  as a raw JSON blob. Such columns now collapse to the object's `display` label
+  (compact-JSON fallback for objects without one), and list columns render their
+  members' labels joined with `, ` (empty list → blank). Scalars, nulls, and
+  dotted leaf paths (`status.value`, `role.name`) are unchanged, as is the full
+  output of the `json`, `jsonl`, and `yaml` formats.
+
 ## v1.0.5 — 2026-05-21
 
 Adds opt-in semantic terminal coloring (issue #24). No config migration is
