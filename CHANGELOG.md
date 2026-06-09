@@ -2,6 +2,24 @@
 
 All notable changes to netbox-super-cli are tracked here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) loosely. From v1.0.0 onward, releases follow [Semantic Versioning](https://semver.org/) and the version in `pyproject.toml` matches the git tag. Pre-1.0 milestones (Phase 1-5) were pinned by tag while `pyproject.toml` stayed at `0.0.1`.
 
+## v1.0.7 — 2026-06-09
+
+Patch release. Fixes a hard crash on fresh installs caused by an undeclared
+`click` dependency (issue #81).
+
+### Fixed
+
+- **`nsc` no longer crashes with `ModuleNotFoundError: No module named 'click'`
+  on fresh installs** (issue #81). `nsc` imports the standalone `click` package
+  directly, but it was never declared as a dependency — it was only pulled in
+  transitively by `typer`. typer 0.26 vendored click (as `typer._click`) and
+  dropped its public `click` dependency, so a fresh `uv tool install` / `pip
+  install` resolving `typer>=0.12` got typer 0.26.x with no `click`, and the
+  first `import click` aborted every command. `click>=8.1` is now an explicit
+  dependency, and `typer` is pinned `>=0.12,<0.26` — the last line that uses the
+  standalone `click` that nsc's `TyperGroup` overrides are written against.
+  Adopting typer 0.26's vendored click is tracked in #82.
+
 ## v1.0.6 — 2026-06-09
 
 Patch release. Fixes table/CSV column rendering for fields that are nested
