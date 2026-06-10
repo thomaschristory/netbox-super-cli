@@ -39,9 +39,9 @@ def _displayify(value: Any) -> Any:
     if isinstance(value, dict):
         # FK objects carry `display`; choice fields carry `label` (status, etc.).
         for key in ("display", "label"):
-            label = value.get(key)
-            if isinstance(label, str):
-                return label
+            candidate = value.get(key)
+            if isinstance(candidate, str):
+                return candidate
         return json.dumps(value, separators=(",", ":"))
     if isinstance(value, list):
         return ", ".join(_as_cell(v) for v in value)

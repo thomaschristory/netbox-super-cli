@@ -63,6 +63,15 @@ def test_flatten_pick_joins_list_of_choice_fields_via_label() -> None:
     assert flatten(record, columns=["vals"]) == {"vals": "A, B"}
 
 
+def test_flatten_pick_non_string_label_falls_back_to_json() -> None:
+    assert flatten({"x": {"label": 7}}, columns=["x"]) == {"x": '{"label":7}'}
+
+
+def test_flatten_pick_joins_mixed_display_and_label_list() -> None:
+    record = {"items": [{"display": "D1"}, {"label": "L1"}]}
+    assert flatten(record, columns=["items"]) == {"items": "D1, L1"}
+
+
 def test_flatten_pick_resolves_dotted_path_into_nested_object() -> None:
     assert flatten({"role": {"name": "Router"}}, columns=["role.name"]) == {"role.name": "Router"}
 
