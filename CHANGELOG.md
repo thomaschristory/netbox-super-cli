@@ -2,6 +2,22 @@
 
 All notable changes to netbox-super-cli are tracked here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) loosely. From v1.0.0 onward, releases follow [Semantic Versioning](https://semver.org/) and the version in `pyproject.toml` matches the git tag. Pre-1.0 milestones (Phase 1-5) were pinned by tag while `pyproject.toml` stayed at `0.0.1`.
 
+## v1.0.8 — 2026-06-10
+
+Patch release. Table/CSV columns for choice fields now show their human label
+(issue #85).
+
+### Changed
+
+- **Choice-field columns render their `label`** (issue #85). A `--columns` (or
+  `columns:` config) entry pointing to a NetBox choice field — `status` and
+  other `{value, label}` dicts — previously showed raw JSON in `table`/`csv`
+  because choice fields carry no `display`. The nested-object collapse now uses
+  the precedence `display` → `label` → compact JSON, so `status` renders
+  `Active` (FK objects like `role` still use `display`). The machine value stays
+  reachable via the dotted path `status.value` → `active`, and `json`/`jsonl`/
+  `yaml` keep the full structure.
+
 ## v1.0.7 — 2026-06-09
 
 Patch release. Fixes a hard crash on fresh installs caused by an undeclared
