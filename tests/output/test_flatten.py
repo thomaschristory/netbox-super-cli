@@ -43,6 +43,35 @@ def test_flatten_pick_nested_object_without_display_falls_back_to_json() -> None
     assert flatten({"obj": {"a": 1}}, columns=["obj"]) == {"obj": '{"a":1}'}
 
 
+def test_flatten_pick_choice_field_renders_label() -> None:
+    record = {"status": {"value": "active", "label": "Active"}}
+    assert flatten(record, columns=["status"]) == {"status": "Active"}
+
+
+def test_flatten_pick_display_takes_precedence_over_label() -> None:
+    record = {"x": {"display": "Disp", "label": "Lab"}}
+    assert flatten(record, columns=["x"]) == {"x": "Disp"}
+
+
+def test_flatten_pick_choice_field_value_still_available_via_dotted_path() -> None:
+    record = {"status": {"value": "active", "label": "Active"}}
+    assert flatten(record, columns=["status.value"]) == {"status.value": "active"}
+
+
+def test_flatten_pick_joins_list_of_choice_fields_via_label() -> None:
+    record = {"vals": [{"label": "A"}, {"label": "B"}]}
+    assert flatten(record, columns=["vals"]) == {"vals": "A, B"}
+
+
+def test_flatten_pick_non_string_label_falls_back_to_json() -> None:
+    assert flatten({"x": {"label": 7}}, columns=["x"]) == {"x": '{"label":7}'}
+
+
+def test_flatten_pick_joins_mixed_display_and_label_list() -> None:
+    record = {"items": [{"display": "D1"}, {"label": "L1"}]}
+    assert flatten(record, columns=["items"]) == {"items": "D1, L1"}
+
+
 def test_flatten_pick_resolves_dotted_path_into_nested_object() -> None:
     assert flatten({"role": {"name": "Router"}}, columns=["role.name"]) == {"role.name": "Router"}
 

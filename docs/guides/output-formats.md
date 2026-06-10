@@ -48,9 +48,12 @@ across NetBox versions and plugin changes.
 A column may name a nested field directly or drill in with a dotted path:
 
 - A dotted path selects the leaf scalar: `status.value`, `site.name`.
-- A bare nested object (`site`, `role`, `tenant`, `status`) collapses to its
-  `display` label — `role` renders `Router`, not an empty cell. An object with
-  no `display` field falls back to compact JSON.
+- A bare nested object collapses to its human label: FK objects (`site`, `role`,
+  `tenant`) use their `display` field — `role` renders `Router`, not an empty
+  cell — and choice fields (`status`, …) use their `label` — `status` renders
+  `Active`. The precedence is `display` → `label` → compact JSON for objects with
+  neither. The machine value of a choice stays reachable via the dotted path
+  (`status.value` → `active`).
 - A list of objects renders as its members' labels joined with `, ` (e.g.
   `tags` → `prod, edge`); an empty list renders blank.
 

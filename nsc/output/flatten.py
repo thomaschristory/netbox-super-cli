@@ -37,8 +37,12 @@ def _select(record: dict[str, Any], path: str) -> Any:
 
 def _displayify(value: Any) -> Any:
     if isinstance(value, dict):
-        display = value.get("display")
-        return display if isinstance(display, str) else json.dumps(value, separators=(",", ":"))
+        # FK objects carry `display`; choice fields carry `label` (status, etc.).
+        for key in ("display", "label"):
+            candidate = value.get(key)
+            if isinstance(candidate, str):
+                return candidate
+        return json.dumps(value, separators=(",", ":"))
     if isinstance(value, list):
         return ", ".join(_as_cell(v) for v in value)
     return value
