@@ -58,9 +58,4 @@ def test_bundle_path_works_inside_built_wheel(tmp_path: Path) -> None:
     assert wheels, f"no wheel built; uv stderr: {proc.stderr}"
     with zipfile.ZipFile(wheels[0]) as zf:
         names = zf.namelist()
-    # NOTE: until T6 extends the wheel force-include, this assertion will FAIL.
-    # T3 ships this test in a "skip-on-fail" mode by checking the assertion only
-    # when the file is in the wheel; otherwise xfail-skip with a clear note.
-    if "skills/netbox-super-cli/SKILL.md" not in names:
-        pytest.skip("wheel does not yet ship skills/ — T6 will extend force-include")
-    assert "skills/netbox-super-cli/SKILL.md" in names
+    assert "skills/netbox-super-cli/SKILL.md" in names, names

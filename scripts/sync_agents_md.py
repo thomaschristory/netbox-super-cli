@@ -9,6 +9,7 @@ aider, …). Run this script when CLAUDE.md changes; CI runs it with
 from __future__ import annotations
 
 import argparse
+import difflib
 import sys
 from pathlib import Path
 
@@ -39,6 +40,11 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Fail with non-zero exit if AGENTS.md does not match the generated output.",
     )
+    parser.add_argument(
+        "--no-diff",
+        action="store_true",
+        help="On --check drift, print only the summary line (no unified diff).",
+    )
     args = parser.parse_args(argv)
 
     rendered = render()
@@ -54,6 +60,15 @@ def main(argv: list[str] | None = None) -> int:
             return 1
         existing = DEST.read_text(encoding="utf-8")
         if existing != rendered:
+            if not args.no_diff:
+                diff = difflib.unified_diff(
+                    existing.splitlines(keepends=True),
+                    rendered.splitlines(keepends=True),
+                    fromfile="AGENTS.md (on disk)",
+                    tofile="AGENTS.md (expected)",
+                )
+                sys.stderr.writelines(diff)
+                print(file=sys.stderr)
             print(
                 f"AGENTS.md is out of date; run `uv run python {script_path}` "
                 "and commit the result.",

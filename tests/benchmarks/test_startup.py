@@ -1,7 +1,13 @@
 """Cold-start benchmark for `nsc --help`.
 
 Gated by the NSC_BENCH=1 env var so it doesn't run in normal `pytest` invocations.
-Threshold: median of three runs ≤ 250 ms on the CI runner against the bundled schema.
+Threshold: median of three runs ≤ 300 ms against the bundled schema.
+
+The 300 ms threshold is a re-baseline (issue #13): the prior 250 ms aspirational
+value was never met across seven releases (medians ~256-267 ms on CI, higher on
+slower dev machines) and the soft-skip became uninformative folklore. Aligning the
+internal threshold with the documented 300 ms project target makes a healthy run
+*pass* on both CI and a typical dev box while still firing on a real regression.
 """
 
 from __future__ import annotations
@@ -15,7 +21,7 @@ from pathlib import Path
 
 import pytest
 
-THRESHOLD_SECONDS = 0.25
+THRESHOLD_SECONDS = 0.30
 RUNS = 3
 
 

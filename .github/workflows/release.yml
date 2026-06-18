@@ -76,6 +76,9 @@ jobs:
         run: |
           set -euo pipefail
           tag_version="${GITHUB_REF_NAME#v}"
+          # Derive the version once and export it for the later steps (wheel
+          # filename, changelog, GitHub Release) instead of re-deriving it.
+          echo "TAG_VERSION=${tag_version}" >> "$GITHUB_ENV"
           pkg_version="$(uv run python -c 'from nsc._version import __version__; print(__version__)')"
           if [ "$tag_version" != "$pkg_version" ]; then
             echo "Tag $GITHUB_REF_NAME -> version $tag_version does not match nsc/_version.py $pkg_version" >&2
@@ -87,19 +90,21 @@ jobs:
         run: |
           rm -rf dist
           uv build --out-dir dist
+          # Breadcrumb: leave the artifact listing in the success log so a
+          # future post-mortem can confirm exactly what was built (the
+          # verify-filename step below already lists dist/ on failure).
           ls -la dist/
 
       - name: Verify wheel filename matches tag
         run: |
           set -euo pipefail
-          tag_version="${GITHUB_REF_NAME#v}"
-          if ! ls "dist/netbox_super_cli-${tag_version}-py3-none-any.whl" >/dev/null 2>&1; then
-            echo "Wheel for ${tag_version} not found in dist/" >&2
+          if ! ls "dist/netbox_super_cli-${TAG_VERSION}-py3-none-any.whl" >/dev/null 2>&1; then
+            echo "Wheel for ${TAG_VERSION} not found in dist/" >&2
             ls dist/ >&2
             exit 1
           fi
-          if ! ls "dist/netbox_super_cli-${tag_version}.tar.gz" >/dev/null 2>&1; then
-            echo "Sdist for ${tag_version} not found in dist/" >&2
+          if ! ls "dist/netbox_super_cli-${TAG_VERSION}.tar.gz" >/dev/null 2>&1; then
+            echo "Sdist for ${TAG_VERSION} not found in dist/" >&2
             ls dist/ >&2
             exit 1
           fi
@@ -130,18 +135,17 @@ jobs:
         id: notes
         run: |
           set -euo pipefail
-          tag_version="${GITHUB_REF_NAME#v}"
           # Match `## v<ver><space>...` and capture until the next `## `
           # heading. The trailing space after <ver> in the regex is what
           # disambiguates `v1.0` from `v1.0.1`; what follows (typically an
           # em-dash, date, sub-phase name) is intentionally unconstrained.
-          awk -v ver="$tag_version" '
+          awk -v ver="$TAG_VERSION" '
             $0 ~ "^## v" ver " " { capture=1; print; next }
             capture && /^## / { exit }
             capture { print }
           ' CHANGELOG.md > /tmp/release-notes.md
           if [ ! -s /tmp/release-notes.md ]; then
-            echo "Release notes for v${tag_version} not found in CHANGELOG.md" >&2
+            echo "Release notes for v${TAG_VERSION} not found in CHANGELOG.md" >&2
             exit 1
           fi
           echo "Extracted $(wc -l < /tmp/release-notes.md) lines of release notes."
@@ -151,7 +155,6 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          tag_version="${GITHUB_REF_NAME#v}"
           # Use exact filenames (the verify-wheel-filename step proved both
           # exist) rather than glob-expanding `dist/*.whl dist/*.tar.gz` —
           # that glob would silently attach any stray artifact a future
@@ -159,5 +162,5 @@ jobs:
           gh release create "$GITHUB_REF_NAME" \
             --title "$GITHUB_REF_NAME" \
             --notes-file /tmp/release-notes.md \
-            "dist/netbox_super_cli-${tag_version}-py3-none-any.whl" \
-            "dist/netbox_super_cli-${tag_version}.tar.gz"
+            "dist/netbox_super_cli-${TAG_VERSION}-py3-none-any.whl" \
+            "dist/netbox_super_cli-${TAG_VERSION}.tar.gz"
