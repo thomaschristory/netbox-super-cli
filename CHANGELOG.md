@@ -2,6 +2,48 @@
 
 All notable changes to netbox-super-cli are tracked here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) loosely. From v1.0.0 onward, releases follow [Semantic Versioning](https://semver.org/) and the version in `pyproject.toml` matches the git tag. Pre-1.0 milestones (Phase 1-5) were pinned by tag while `pyproject.toml` stayed at `0.0.1`.
 
+## v1.1.0 — 2026-06-18
+
+Minor release. Hardens the audit log and schema loader against the security
+audit (#88), adopts typer 0.26's vendored click (#82), and lands a batch of
+CI/workflow cleanups.
+
+### Security
+
+- **Audit logs are owner-only** (#88, M4/L1). `~/.nsc/logs/audit.jsonl` is now
+  created `0600` and its directory `0700` (a pre-existing world-readable log is
+  clamped back on the next append; the rotated `.1` inherits `0600`), mirroring
+  the `0600` treatment of `config.yaml`. Response headers are now redacted like
+  request headers, and `set-cookie` joins the sensitive-header set, so NetBox
+  session cookies no longer land in the log in cleartext.
+- **Bounded schema fetch and decompression** (#88, L2). The schema loader caps
+  both the fetched HTTP body and any gzip-decompressed output at 64 MB. It reads
+  raw wire bytes under that cap and requests `Accept-Encoding: identity` so a
+  `Content-Encoding` bomb can't be inflated to gigabytes before the check, and
+  it rejects truncated or multi-member gzip streams.
+- **Dependency bumps** (#88, M1/M2): `idna` 3.13 → 3.18 (CVE-2026-45409) and the
+  docs-build-only `pymdown-extensions` 10.21.2 → 10.21.3 (CVE-2026-46338).
+- **`@claude` workflow author gating** (#88, L3): the secret-bearing Claude Code
+  workflow now requires an `OWNER`/`MEMBER`/`COLLABORATOR` author association in
+  addition to the `@claude` mention, so drive-by comments can't invoke it.
+
+### Changed
+
+- **typer 0.26+ vendored click** (#82). typer 0.26 vendored click as
+  `typer._click`; nsc's `TyperGroup` overrides are now decoupled from a specific
+  click (`Any`-typed) and the choice param type comes from typer's vendored
+  `TyperChoice`. The `typer<0.26` stopgap cap from v1.0.7 is lifted and the
+  dependency is pinned `typer>=0.26,<0.27`. Runtime behavior (dynamic command
+  tree, choice validation, error envelopes) is unchanged.
+
+### Internal
+
+- CI/workflow cleanups: drop the duplicate `agents-md-sync` workflow now that
+  `lint`'s `agents-md-fresh` job covers it (#19), DRY the release `TAG_VERSION`
+  derivation (#14), assert (rather than skip) the wheel `SKILL.md` layout (#20),
+  print a `difflib` unified diff from the drift-check scripts on `--check`
+  failure (#11), and doc-comment the `ls -la dist/` release breadcrumb (#15).
+
 ## v1.0.8 — 2026-06-10
 
 Patch release. Table/CSV columns for choice fields now show their human label
