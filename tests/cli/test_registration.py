@@ -5,10 +5,11 @@ from typing import Any
 from unittest.mock import MagicMock
 
 import typer
+from typer._types import TyperChoice
 from typer.testing import CliRunner
 
 from nsc.builder.build import build_command_model
-from nsc.cli.registration import _custom_action_verb, register_dynamic_commands
+from nsc.cli.registration import ChoiceType, _custom_action_verb, register_dynamic_commands
 from nsc.cli.runtime import ResolvedProfile, RuntimeContext
 from nsc.config.models import Config, OutputFormat
 from nsc.model.command_model import (
@@ -207,6 +208,16 @@ def test_enum_param_becomes_choice() -> None:
     assert bad.exit_code != 0
     good = CliRunner().invoke(app, ["dcim", "devices", "list", "--status", "active"])
     assert good.exit_code == 0
+
+
+def test_choice_type_is_typers_vendored_choice() -> None:
+    """Pin the choice ParamType to typer's vendored TyperChoice (issue #82).
+
+    `typer.Option(click_type=...)` on the vendored-click line rejects a standalone
+    `click.Choice`; if a future typer renames/removes `typer._types.TyperChoice`
+    this fails loudly instead of silently passing the wrong type.
+    """
+    assert ChoiceType is TyperChoice
 
 
 def test_array_param_becomes_repeatable_option() -> None:

@@ -7,7 +7,11 @@ from collections.abc import Callable
 from typing import Any
 
 import typer
-from click import Choice
+
+# typer >= 0.26 vendored click; TyperChoice is the vendored `ParamType` that
+# `typer.Option(click_type=...)` expects (a standalone `click.Choice` is a
+# different, rejected type on the vendored-click line). See issue #82.
+from typer._types import TyperChoice as ChoiceType
 
 from nsc.cli.handlers import (
     handle_create,
@@ -243,7 +247,7 @@ def _to_typed_option(p: Parameter) -> inspect.Parameter:
             None,
             flag_name,
             help=p.description or "",
-            click_type=Choice(p.enum, case_sensitive=True),
+            click_type=ChoiceType(p.enum, case_sensitive=True),
         )
         py_type = str | None
     elif p.primitive is PrimitiveType.BOOLEAN:
