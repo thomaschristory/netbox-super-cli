@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import contextlib
 import gzip
 import json
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
@@ -19,6 +21,28 @@ def _bundled_schema() -> Path:
     candidates = sorted(bundled.glob("netbox-*.json.gz"))
     assert candidates
     return candidates[-1]
+
+
+def _install_fake_stream(
+    monkeypatch: pytest.MonkeyPatch, captured: dict[str, Any], body: bytes
+) -> None:
+    """Patch `httpx.stream` (used by the schema loader) to record kwargs and replay `body`."""
+
+    class _Stream(httpx.SyncByteStream):
+        def __iter__(self) -> Iterator[bytes]:
+            yield body
+
+        def close(self) -> None:
+            pass
+
+    @contextlib.contextmanager
+    def fake_stream(method: str, url: str, **kwargs: Any) -> Iterator[httpx.Response]:
+        captured["url"] = url
+        captured["verify"] = kwargs.get("verify")
+        captured["timeout"] = kwargs.get("timeout")
+        yield httpx.Response(200, stream=_Stream())
+
+    monkeypatch.setattr("nsc.schema.loader.httpx.stream", fake_stream)
 
 
 def test_dumps_command_model_as_json() -> None:
@@ -58,14 +82,7 @@ def test_insecure_flag_propagates_to_schema_fetch(
     """
     captured: dict[str, Any] = {}
     schema_body = gzip.decompress(_bundled_schema().read_bytes())
-
-    def fake_get(url: str, **kwargs: Any) -> httpx.Response:
-        captured["url"] = url
-        captured["verify"] = kwargs.get("verify")
-        captured["timeout"] = kwargs.get("timeout")
-        return httpx.Response(200, content=schema_body)
-
-    monkeypatch.setattr("nsc.schema.loader.httpx.get", fake_get)
+    _install_fake_stream(monkeypatch, captured, schema_body)
     monkeypatch.delenv("NSC_INSECURE", raising=False)
 
     runner = CliRunner()
@@ -82,12 +99,7 @@ def test_nsc_insecure_env_propagates_to_schema_fetch(
 ) -> None:
     captured: dict[str, Any] = {}
     schema_body = gzip.decompress(_bundled_schema().read_bytes())
-
-    def fake_get(url: str, **kwargs: Any) -> httpx.Response:
-        captured["verify"] = kwargs.get("verify")
-        return httpx.Response(200, content=schema_body)
-
-    monkeypatch.setattr("nsc.schema.loader.httpx.get", fake_get)
+    _install_fake_stream(monkeypatch, captured, schema_body)
     monkeypatch.setenv("NSC_INSECURE", "1")
 
     runner = CliRunner()
@@ -104,12 +116,7 @@ def test_default_keeps_ssl_verification_on(
 ) -> None:
     captured: dict[str, Any] = {}
     schema_body = gzip.decompress(_bundled_schema().read_bytes())
-
-    def fake_get(url: str, **kwargs: Any) -> httpx.Response:
-        captured["verify"] = kwargs.get("verify")
-        return httpx.Response(200, content=schema_body)
-
-    monkeypatch.setattr("nsc.schema.loader.httpx.get", fake_get)
+    _install_fake_stream(monkeypatch, captured, schema_body)
     monkeypatch.delenv("NSC_INSECURE", raising=False)
 
     runner = CliRunner()

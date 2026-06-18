@@ -38,3 +38,4 @@ site/
 
 # git worktrees
 .worktrees/
+.claude/

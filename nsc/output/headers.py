@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 SENSITIVE_HEADERS: frozenset[str] = frozenset(
-    {"authorization", "cookie", "x-api-key", "proxy-authorization"}
+    {"authorization", "cookie", "set-cookie", "x-api-key", "proxy-authorization"}
 )
 
 __all__ = ["SENSITIVE_HEADERS"]

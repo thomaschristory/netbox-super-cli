@@ -13,6 +13,7 @@ from __future__ import annotations
 import copy
 import json
 import os
+import stat
 import sys
 import tempfile
 from collections.abc import Sequence
@@ -27,6 +28,11 @@ from nsc.output.headers import SENSITIVE_HEADERS
 DEFAULT_BODY_CAP_BYTES = 256 * 1024
 DEFAULT_ROTATE_BYTES = 10 * 1024 * 1024
 SCHEMA_VERSION = 1
+
+# Audit logs hold request/response bodies verbatim; keep them owner-only,
+# mirroring the 0600 treatment of config.yaml in nsc/config/writer.py.
+_DIR_MODE = 0o700
+_FILE_MODE = 0o600
 
 
 class _Frozen(BaseModel):
@@ -129,7 +135,7 @@ def _to_dict(entry: AuditEntry) -> dict[str, Any]:
             if entry.response_status_code is None
             else {
                 "status_code": entry.response_status_code,
-                "headers": dict(entry.response_headers),
+                "headers": redact_headers(entry.response_headers),
                 "body": resp_body,
                 "body_truncated": resp_trunc,
             }
@@ -150,15 +156,29 @@ def _warn(msg: str) -> None:
     print(f"warning: {msg}", file=sys.stderr)
 
 
+def _ensure_private_dir(directory: Path) -> None:
+    """Ensure `directory` exists and is owner-only.
+
+    Tightens an existing world/group-accessible dir too (e.g. a `~/.nsc/logs`
+    left 0755 by an older nsc version or a permissive umask), but leaves an
+    already-restrictive dir alone so a deliberately read-only dir still surfaces
+    a write failure rather than being silently reopened.
+    """
+    directory.mkdir(parents=True, exist_ok=True)
+    if stat.S_IMODE(directory.stat().st_mode) & 0o077:
+        os.chmod(directory, _DIR_MODE)
+
+
 def write_last_request(entry: AuditEntry, *, path: Path) -> None:
     """Atomically overwrite `path` with the entry. Failures emit a stderr warning."""
     try:
-        path.parent.mkdir(parents=True, exist_ok=True)
+        _ensure_private_dir(path.parent)
         with tempfile.NamedTemporaryFile(
             "w", encoding="utf-8", dir=path.parent, delete=False
         ) as tmp:
             json.dump(_to_dict(entry), tmp)
             tmp_path = Path(tmp.name)
+        os.chmod(tmp_path, _FILE_MODE)
         os.replace(tmp_path, path)
     except OSError as exc:
         _warn(f"could not write audit log {path}: {exc}")
@@ -172,11 +192,18 @@ def append_audit_jsonl(
 ) -> None:
     """Append the entry as a single line. Rotate to `path.1` when over the threshold."""
     try:
-        path.parent.mkdir(parents=True, exist_ok=True)
+        _ensure_private_dir(path.parent)
         if path.exists() and path.stat().st_size > rotate_bytes:
             rolled = path.with_suffix(path.suffix + ".1")
             os.replace(path, rolled)
-        with path.open("a", encoding="utf-8") as fh:
+            # os.replace keeps the source mode; force 0600 so a pre-existing
+            # world-readable log does not carry that mode onto the rotated copy.
+            os.chmod(rolled, _FILE_MODE)
+        # os.open with _FILE_MODE sets owner-only perms at creation (umask can
+        # only clear bits, never widen 0600); chmod fixes any pre-existing file.
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, _FILE_MODE)
+        with os.fdopen(fd, "a", encoding="utf-8") as fh:
+            os.chmod(path, _FILE_MODE)
             fh.write(json.dumps(_to_dict(entry)))
             fh.write("\n")
     except OSError as exc:
