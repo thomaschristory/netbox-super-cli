@@ -684,7 +684,7 @@ requires-dist = [
     { name = "rich", specifier = ">=13.7" },
     { name = "ruamel-yaml", specifier = ">=0.18" },
     { name = "structlog", specifier = ">=24.1" },
-    { name = "typer", specifier = ">=0.12" },
+    { name = "typer", specifier = ">=0.26,<0.27" },
 ]
 
 [package.metadata.requires-dev]
