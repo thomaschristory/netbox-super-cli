@@ -79,3 +79,20 @@ def test_invalid_gzip_raises(tmp_path: Path) -> None:
     p.write_bytes(b"not really gzipped")
     with pytest.raises(SchemaLoadError, match="not valid gzip"):
         load_schema(str(p))
+
+
+def test_gzip_bomb_local_file_rejected(tmp_path: Path) -> None:
+    """Security audit L2: decompressed schema bigger than the cap is rejected."""
+    p = tmp_path / "bomb.json.gz"
+    p.write_bytes(_gzip.compress(b"\x00" * (200 * 1024 * 1024)))
+    with pytest.raises(SchemaLoadError, match="exceeds"):
+        load_schema(str(p))
+
+
+@respx.mock
+def test_oversized_http_body_rejected() -> None:
+    """Security audit L2: an over-cap HTTP response body is rejected, not buffered whole."""
+    url = "https://netbox.example.com/api/schema/?format=json"
+    respx.get(url).mock(return_value=httpx.Response(200, content=b"{" + b" " * (200 * 1024 * 1024)))
+    with pytest.raises(SchemaLoadError, match="exceeds"):
+        load_schema(url)

@@ -108,3 +108,22 @@ def test_audit_entry_default_sensitive_paths_is_empty() -> None:
         request_body=None,
     )
     assert entry.sensitive_paths == ()
+
+
+def test_response_headers_are_redacted(tmp_path: Path) -> None:
+    """Security audit L1: response headers must be redacted like request headers."""
+    p = tmp_path / "audit.jsonl"
+    entry = AuditEntry(
+        timestamp="2026-06-18T00:00:00Z",
+        method=HttpMethod.POST,
+        url="https://nb/api/dcim/devices/",
+        request_headers={"Authorization": "Token abc"},
+        response_status_code=201,
+        response_headers={"Set-Cookie": "sessionid=secret", "Content-Type": "application/json"},
+        response_body={"id": 1},
+    )
+    append_audit_jsonl(entry, path=p)
+    line = json.loads(p.read_text().splitlines()[0])
+    assert line["response"]["headers"]["Set-Cookie"] == "<redacted>"
+    assert line["response"]["headers"]["Content-Type"] == "application/json"
+    assert line["request"]["headers"]["Authorization"] == "<redacted>"
