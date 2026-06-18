@@ -8,6 +8,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import difflib
 import sys
 from collections.abc import Callable
 from pathlib import Path
@@ -230,7 +231,27 @@ _PAGES: dict[str, Callable[[], str]] = {
 }
 
 
-def main(*, check: bool = False) -> int:
+# Per-file diff line cap so a generator change that rewrites a whole page
+# doesn't flood CI logs; the count of suppressed lines is still reported.
+_DIFF_LINE_CAP = 40
+
+
+def _print_capped_diff(filename: str, old: str, new: str) -> None:
+    diff = list(
+        difflib.unified_diff(
+            old.splitlines(keepends=True),
+            new.splitlines(keepends=True),
+            fromfile=f"{filename} (on disk)",
+            tofile=f"{filename} (expected)",
+        )
+    )
+    sys.stderr.writelines(diff[:_DIFF_LINE_CAP])
+    if len(diff) > _DIFF_LINE_CAP:
+        print(f"... {len(diff) - _DIFF_LINE_CAP} more diff lines suppressed", file=sys.stderr)
+    print(file=sys.stderr)
+
+
+def main(*, check: bool = False, show_diff: bool = True) -> int:
     """Generate (or check) all four reference pages. Returns an exit code."""
     DOCS_REFERENCE_DIR.mkdir(parents=True, exist_ok=True)
     drifted: list[str] = []
@@ -241,6 +262,8 @@ def main(*, check: bool = False) -> int:
             old_content = target.read_text() if target.exists() else ""
             if old_content != new_content:
                 drifted.append(filename)
+                if show_diff:
+                    _print_capped_diff(filename, old_content, new_content)
         else:
             target.write_text(new_content)
     if check and drifted:
@@ -259,8 +282,13 @@ def _cli() -> int:
         action="store_true",
         help="Exit non-zero if any generated page differs from the working tree.",
     )
+    parser.add_argument(
+        "--no-diff",
+        action="store_true",
+        help="On --check drift, print only the drifted-file summary (no unified diff).",
+    )
     args = parser.parse_args()
-    return main(check=args.check)
+    return main(check=args.check, show_diff=not args.no_diff)
 
 
 if __name__ == "__main__":

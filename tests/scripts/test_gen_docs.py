@@ -7,6 +7,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
 import yaml
 
 from nsc.output.errors import ErrorType
@@ -78,6 +79,38 @@ def test_check_flag_fails_when_a_page_drifts() -> None:
         target.write_text(original + "\n# DRIFT MARKER\n")
         rc = g.main(check=True)
         assert rc != 0
+    finally:
+        target.write_text(original)
+
+
+def test_check_prints_unified_diff_on_drift(capsys: pytest.CaptureFixture[str]) -> None:
+    """On drift, --check prints a unified diff (issue #11) so CI logs show what changed."""
+    g = _import_module()
+    target = REPO_ROOT / "docs" / "reference" / "exit-codes.md"
+    original = target.read_text()
+    try:
+        target.write_text(original + "\n# DRIFT MARKER\n")
+        rc = g.main(check=True)
+        assert rc != 0
+        err = capsys.readouterr().err
+        assert "@@" in err  # unified-diff hunk header
+        assert "DRIFT MARKER" in err
+    finally:
+        target.write_text(original)
+
+
+def test_check_no_diff_suppresses_unified_diff(capsys: pytest.CaptureFixture[str]) -> None:
+    """show_diff=False (the --no-diff flag) prints only the summary, no diff."""
+    g = _import_module()
+    target = REPO_ROOT / "docs" / "reference" / "exit-codes.md"
+    original = target.read_text()
+    try:
+        target.write_text(original + "\n# DRIFT MARKER\n")
+        rc = g.main(check=True, show_diff=False)
+        assert rc != 0
+        err = capsys.readouterr().err
+        assert "@@" not in err
+        assert "drifted" in err
     finally:
         target.write_text(original)
 

@@ -9,12 +9,16 @@ aider, …). Run this script when CLAUDE.md changes; CI runs it with
 from __future__ import annotations
 
 import argparse
+import difflib
 import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SOURCE = REPO_ROOT / "CLAUDE.md"
 DEST = REPO_ROOT / "AGENTS.md"
+
+# Cap the --check unified diff so a full-file rewrite doesn't flood CI logs.
+_DIFF_LINE_CAP = 40
 
 _HEADER = """\
 <!--
@@ -39,6 +43,11 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Fail with non-zero exit if AGENTS.md does not match the generated output.",
     )
+    parser.add_argument(
+        "--no-diff",
+        action="store_true",
+        help="On --check drift, print only the summary line (no unified diff).",
+    )
     args = parser.parse_args(argv)
 
     rendered = render()
@@ -54,6 +63,24 @@ def main(argv: list[str] | None = None) -> int:
             return 1
         existing = DEST.read_text(encoding="utf-8")
         if existing != rendered:
+            if not args.no_diff:
+                # Cap the diff (parity with scripts/gen_docs.py) so a full-file
+                # rewrite doesn't flood the CI log; the suppressed count is shown.
+                diff = list(
+                    difflib.unified_diff(
+                        existing.splitlines(keepends=True),
+                        rendered.splitlines(keepends=True),
+                        fromfile="AGENTS.md (on disk)",
+                        tofile="AGENTS.md (expected)",
+                    )
+                )
+                sys.stderr.writelines(diff[:_DIFF_LINE_CAP])
+                if len(diff) > _DIFF_LINE_CAP:
+                    print(
+                        f"... {len(diff) - _DIFF_LINE_CAP} more diff lines suppressed",
+                        file=sys.stderr,
+                    )
+                print(file=sys.stderr)
             print(
                 f"AGENTS.md is out of date; run `uv run python {script_path}` "
                 "and commit the result.",
