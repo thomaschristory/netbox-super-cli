@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from typing import Annotated, Any
 
-import click
 import typer
 from typer.core import TyperGroup
 from typer.main import get_group, get_group_from_info
@@ -120,15 +119,20 @@ class _BootstrappingGroup(TyperGroup):
 
     Overrides `make_context` (called once per invocation, before `resolve_command`)
     so dynamic Typer commands are visible to Click's command resolver.
+
+    The `ctx`/`parent`/`Command` types are annotated `Any` rather than tied to a
+    specific click: typer >= 0.26 vendors click as `typer._click`, so binding to
+    the standalone `click.Context`/`Command` here is a Liskov mismatch. `Any`
+    decouples the overrides from whichever click backs `TyperGroup`. See #82.
     """
 
     def make_context(
         self,
         info_name: str | None,
         args: list[str],
-        parent: click.Context | None = None,
+        parent: Any = None,
         **extra: Any,
-    ) -> click.Context:
+    ) -> Any:
         _invocation["runtime"] = None
         _invocation["error"] = None
 
@@ -180,9 +184,7 @@ class _BootstrappingGroup(TyperGroup):
 
         return super().make_context(info_name, args, parent, **extra)
 
-    def resolve_command(
-        self, ctx: click.Context, args: list[str]
-    ) -> tuple[str | None, click.Command | None, list[str]]:
+    def resolve_command(self, ctx: Any, args: list[str]) -> tuple[str | None, Any, list[str]]:
         # Surface a bootstrap error when the requested command was not registered
         # (because bootstrap failed). SchemaSourceError exits 3 per spec; all
         # other bootstrap errors are usage errors (exit 2).

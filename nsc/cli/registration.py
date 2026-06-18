@@ -7,7 +7,13 @@ from collections.abc import Callable
 from typing import Any
 
 import typer
-from click import Choice
+
+try:
+    # typer >= 0.26 vendored click; its TyperChoice is the vendored ParamType
+    # that `typer.Option(click_type=...)` expects.
+    from typer._types import TyperChoice as ChoiceType
+except ImportError:  # pragma: no cover - typer < 0.26 uses standalone click
+    from click import Choice as ChoiceType  # type: ignore[assignment]
 
 from nsc.cli.handlers import (
     handle_create,
@@ -243,7 +249,7 @@ def _to_typed_option(p: Parameter) -> inspect.Parameter:
             None,
             flag_name,
             help=p.description or "",
-            click_type=Choice(p.enum, case_sensitive=True),
+            click_type=ChoiceType(p.enum, case_sensitive=True),
         )
         py_type = str | None
     elif p.primitive is PrimitiveType.BOOLEAN:
