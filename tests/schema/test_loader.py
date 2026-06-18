@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import gzip as _gzip
 import json
+from collections.abc import Iterator
 from pathlib import Path
 
 import httpx
@@ -89,10 +90,78 @@ def test_gzip_bomb_local_file_rejected(tmp_path: Path) -> None:
         load_schema(str(p))
 
 
+class _CountingStream(httpx.SyncByteStream):
+    """A lazy byte stream that records how many chunks were actually pulled."""
+
+    def __init__(self, chunk: bytes, count: int) -> None:
+        self._chunk = chunk
+        self._count = count
+        self.pulled = 0
+
+    def __iter__(self) -> Iterator[bytes]:
+        for _ in range(self._count):
+            self.pulled += 1
+            yield self._chunk
+
+    def close(self) -> None:
+        pass
+
+
 @respx.mock
-def test_oversized_http_body_rejected() -> None:
-    """Security audit L2: an over-cap HTTP response body is rejected, not buffered whole."""
+def test_oversized_http_body_aborts_mid_stream() -> None:
+    """Security audit L2: an over-cap HTTP body is rejected before the whole body is read."""
     url = "https://netbox.example.com/api/schema/?format=json"
-    respx.get(url).mock(return_value=httpx.Response(200, content=b"{" + b" " * (200 * 1024 * 1024)))
+    stream = _CountingStream(b"\x00" * (8 * 1024 * 1024), count=32)  # 256 MB if fully drained
+    respx.get(url).mock(return_value=httpx.Response(200, stream=stream))
     with pytest.raises(SchemaLoadError, match="exceeds"):
         load_schema(url)
+    assert stream.pulled < 32  # aborted early, did not buffer the full body
+
+
+@respx.mock
+def test_content_encoding_gzip_bomb_rejected() -> None:
+    """Security audit L2: a Content-Encoding: gzip bomb is bounded, not inflated whole."""
+    url = "https://netbox.example.com/api/schema/?format=json"
+    bomb = _gzip.compress(b"\x00" * (200 * 1024 * 1024))
+    respx.get(url).mock(
+        return_value=httpx.Response(200, headers={"Content-Encoding": "gzip"}, content=bomb)
+    )
+    with pytest.raises(SchemaLoadError, match="exceeds"):
+        load_schema(url)
+
+
+@respx.mock
+def test_gzip_bomb_http_url_rejected() -> None:
+    """Security audit L2: a .gz URL whose body decompresses past the cap is rejected."""
+    url = "https://netbox.example.com/api/schema.json.gz"
+    bomb = _gzip.compress(b"\x00" * (200 * 1024 * 1024))
+    respx.get(url).mock(return_value=httpx.Response(200, content=bomb))
+    with pytest.raises(SchemaLoadError, match="exceeds"):
+        load_schema(url)
+
+
+@respx.mock
+def test_unsupported_content_encoding_rejected() -> None:
+    url = "https://netbox.example.com/api/schema/?format=json"
+    respx.get(url).mock(
+        return_value=httpx.Response(200, headers={"Content-Encoding": "br"}, content=b"{}")
+    )
+    with pytest.raises(SchemaLoadError, match="unsupported Content-Encoding"):
+        load_schema(url)
+
+
+def test_truncated_gzip_rejected(tmp_path: Path) -> None:
+    """Security audit L2: a truncated gzip stream errors instead of partial-decoding."""
+    full = _gzip.compress(json.dumps(MINIMAL).encode("utf-8"))
+    p = tmp_path / "trunc.json.gz"
+    p.write_bytes(full[: len(full) // 2])
+    with pytest.raises(SchemaLoadError, match="gzip"):
+        load_schema(str(p))
+
+
+def test_multimember_gzip_trailing_data_rejected(tmp_path: Path) -> None:
+    """A multi-member .gz would silently drop members; reject the trailing data instead."""
+    p = tmp_path / "multi.json.gz"
+    p.write_bytes(_gzip.compress(b'{"a": 1}') + _gzip.compress(b'{"b": 2}'))
+    with pytest.raises(SchemaLoadError, match="trailing"):
+        load_schema(str(p))

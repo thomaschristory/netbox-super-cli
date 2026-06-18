@@ -28,12 +28,19 @@ def _install_fake_stream(
 ) -> None:
     """Patch `httpx.stream` (used by the schema loader) to record kwargs and replay `body`."""
 
+    class _Stream(httpx.SyncByteStream):
+        def __iter__(self) -> Iterator[bytes]:
+            yield body
+
+        def close(self) -> None:
+            pass
+
     @contextlib.contextmanager
     def fake_stream(method: str, url: str, **kwargs: Any) -> Iterator[httpx.Response]:
         captured["url"] = url
         captured["verify"] = kwargs.get("verify")
         captured["timeout"] = kwargs.get("timeout")
-        yield httpx.Response(200, content=body)
+        yield httpx.Response(200, stream=_Stream())
 
     monkeypatch.setattr("nsc.schema.loader.httpx.stream", fake_stream)
 

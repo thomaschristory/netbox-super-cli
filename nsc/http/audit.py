@@ -13,6 +13,7 @@ from __future__ import annotations
 import copy
 import json
 import os
+import stat
 import sys
 import tempfile
 from collections.abc import Sequence
@@ -156,11 +157,16 @@ def _warn(msg: str) -> None:
 
 
 def _ensure_private_dir(directory: Path) -> None:
-    """Create `directory` owner-only when missing; leave an existing dir untouched."""
-    if directory.exists():
-        return
+    """Ensure `directory` exists and is owner-only.
+
+    Tightens an existing world/group-accessible dir too (e.g. a `~/.nsc/logs`
+    left 0755 by an older nsc version or a permissive umask), but leaves an
+    already-restrictive dir alone so a deliberately read-only dir still surfaces
+    a write failure rather than being silently reopened.
+    """
     directory.mkdir(parents=True, exist_ok=True)
-    os.chmod(directory, _DIR_MODE)
+    if stat.S_IMODE(directory.stat().st_mode) & 0o077:
+        os.chmod(directory, _DIR_MODE)
 
 
 def write_last_request(entry: AuditEntry, *, path: Path) -> None:
@@ -190,6 +196,9 @@ def append_audit_jsonl(
         if path.exists() and path.stat().st_size > rotate_bytes:
             rolled = path.with_suffix(path.suffix + ".1")
             os.replace(path, rolled)
+            # os.replace keeps the source mode; force 0600 so a pre-existing
+            # world-readable log does not carry that mode onto the rotated copy.
+            os.chmod(rolled, _FILE_MODE)
         # os.open with _FILE_MODE sets owner-only perms at creation (umask can
         # only clear bits, never widen 0600); chmod fixes any pre-existing file.
         fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, _FILE_MODE)

@@ -6,9 +6,13 @@ world-readable on shared hosts, mirroring the 0600 treatment of config.yaml.
 
 from __future__ import annotations
 
+import os
 import stat
 from pathlib import Path
 
+import pytest
+
+from nsc.http import audit
 from nsc.http.audit import AuditEntry, append_audit_jsonl, write_last_request
 from nsc.model.command_model import HttpMethod
 
@@ -49,3 +53,27 @@ def test_last_request_dir_0700(tmp_path: Path) -> None:
     write_last_request(_entry(), path=path)
     assert stat.S_IMODE(path.stat().st_mode) == 0o600
     assert stat.S_IMODE(log_dir.stat().st_mode) == 0o700
+
+
+def test_append_tightens_preexisting_world_readable_dir(tmp_path: Path) -> None:
+    """A logs dir left 0755 by an older version / permissive umask is clamped to 0700."""
+    log_dir = tmp_path / "logs"
+    log_dir.mkdir()
+    log_dir.chmod(0o755)
+    append_audit_jsonl(_entry(), path=log_dir / "audit.jsonl")
+    assert stat.S_IMODE(log_dir.stat().st_mode) == 0o700
+
+
+def test_file_created_0600_by_open_mode_not_just_chmod(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """With the post-create chmod neutralized and a permissive umask, the os.open
+    mode alone must still yield 0600 — proving no world-readable TOCTOU window."""
+    monkeypatch.setattr(audit.os, "chmod", lambda *a, **k: None)
+    old_umask = os.umask(0o000)
+    try:
+        path = tmp_path / "logs" / "audit.jsonl"
+        append_audit_jsonl(_entry(), path=path)
+        assert stat.S_IMODE(path.stat().st_mode) == 0o600
+    finally:
+        os.umask(old_umask)
