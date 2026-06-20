@@ -81,12 +81,20 @@ Both top-level and nested fields are redacted; arrays of objects are redacted
 per-element. Failed writes do NOT unredact — the audit record stays
 sanitized regardless of what happened on the wire.
 
+Sensitive **headers** are masked on **both** the request and the response: the
+values of `Authorization`, `Cookie`, `Set-Cookie`, `X-API-Key`, and
+`Proxy-Authorization` are rewritten to `<redacted>` (the key stays, the value is
+masked), so session cookies and tokens never land in the log in cleartext.
+
+The log file is created owner-only (`0600`) inside a `0700` directory, mirroring
+`config.yaml`, so a co-located user on a shared host cannot read your mutations.
+
 ### What is NOT redacted
 
 - The endpoint URL (no query parameters from the body).
 - Response bodies (NetBox's response is recorded as-is — if it echoes back a
   password, that's NetBox's bug to fix).
-- Headers other than `Authorization` (which never enters the audit file).
+- Non-sensitive headers (anything outside the set above) are recorded verbatim.
 
 ## Error envelope and exit codes
 
