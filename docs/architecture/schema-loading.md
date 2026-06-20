@@ -17,7 +17,11 @@ and an optional `--refresh-schema` override:
 3. Live fetch from the active profile's `schema_url` (explicit) or
    `{profile.url}/api/schema/?format=json`. The fetched body is hashed;
    if a cache file already exists at that hash it's loaded directly,
-   otherwise the command-model is rebuilt and saved.
+   otherwise the command-model is rebuilt and saved. The fetch is bounded:
+   the loader streams raw wire bytes under a 64 MB cap, requests
+   `Accept-Encoding: identity`, and any `.gz`/`Content-Encoding` body is
+   decompressed incrementally to the same cap — so an oversized or
+   decompression-bomb schema is rejected rather than exhausting memory.
 4. On fetch failure: the newest valid cached entry for the profile
    (warns once on stderr), sorted by mtime.
 5. Bundled snapshot — the **last (newest) entry** in

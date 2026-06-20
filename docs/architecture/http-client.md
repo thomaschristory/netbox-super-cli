@@ -42,19 +42,22 @@ Each line of `audit.jsonl` is a JSON object with:
 
 - `schema_version`, `timestamp` (UTC ISO8601, `…Z`)
 - `operation_id`, `method`, `url`
-- `request.headers` (sensitive headers, incl. `Authorization`, rewritten
-  to `"<redacted>"` — the key stays, the value is masked)
+- `request.headers` (sensitive headers — `Authorization`, `Cookie`,
+  `Set-Cookie`, `X-API-Key`, `Proxy-Authorization` — rewritten to
+  `"<redacted>"`; the key stays, the value is masked)
 - `request.query`, `request.body` (sensitive `sensitive_paths` fields
   rewritten to `"<redacted>"`); bodies over 256 KB collapse to
   `{"_truncated": true, "_size_bytes": N}` with `request.body_truncated`
-- `response.status_code`, `response.headers`, `response.body` (same
+- `response.status_code`, `response.headers` (redacted with the same
+  sensitive-header set as the request side), `response.body` (same
   256 KB truncation via `response.body_truncated`); `response` is `null`
   on a transport failure
 - `duration_ms`, `attempt_n`, `final_attempt`, `error_kind`
 - `dry_run`, `preflight_blocked`, `record_indices`, `applied`, `explain`
 
-The audit file is append-only and rotates to `audit.jsonl.1` at 10 MB;
-failed writes do NOT unredact. See
+The audit file is append-only and rotates to `audit.jsonl.1` at 10 MB; it is
+created owner-only (`0600`) inside a `0700` logs directory, and failed writes do
+NOT unredact. See
 [Writes and safety](../guides/writes-and-safety.md) for the full redaction
 contract.
 
