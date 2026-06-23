@@ -35,6 +35,15 @@ class _Client(Protocol):
         sensitive_paths: tuple[str, ...] = (),
     ) -> dict[str, Any]: ...
 
+    def post(
+        self,
+        path: str,
+        *,
+        json: Any | None = None,
+        operation_id: str | None = None,
+        sensitive_paths: tuple[str, ...] = (),
+    ) -> dict[str, Any]: ...
+
 
 def _detail_path(list_path: str, record_id: object) -> str:
     if "{id}" in list_path:
@@ -71,7 +80,11 @@ class EditForm(Screen[None]):
         self._record = record
         self._specs: dict[str, WidgetSpec] = {}
         self.staged: dict[str, Any] = {}
-        self.title = f"Edit {resource_name} #{record.get('id', '?')}"
+        self._create_mode = operation.http_method.upper() == "POST"
+        if self._create_mode:
+            self.title = f"Create {resource_name}"
+        else:
+            self.title = f"Edit {resource_name} #{record.get('id', '?')}"
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -201,14 +214,22 @@ class EditForm(Screen[None]):
         self.app.push_screen(DiffModal(diff_rows(self._record, patch, sensitive)), _on_confirm)
 
     def _apply_patch(self, patch: dict[str, Any], sensitive_paths: tuple[str, ...]) -> None:
-        detail_path = _detail_path(self._op.path, self._record.get("id"))
-        self._client.patch(
-            detail_path,
-            json=patch,
-            operation_id=self._op.operation_id,
-            sensitive_paths=sensitive_paths,
-        )
-        self.app.pop_screen()
+        if self._create_mode:
+            self._client.post(
+                self._op.path,
+                json=patch,
+                operation_id=self._op.operation_id,
+                sensitive_paths=sensitive_paths,
+            )
+        else:
+            detail_path = _detail_path(self._op.path, self._record.get("id"))
+            self._client.patch(
+                detail_path,
+                json=patch,
+                operation_id=self._op.operation_id,
+                sensitive_paths=sensitive_paths,
+            )
+        self.dismiss()
 
     def action_go_back(self) -> None:
-        self.app.pop_screen()
+        self.dismiss()

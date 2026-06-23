@@ -21,6 +21,24 @@ class _Client(Protocol):
 
     def get(self, path: str, params: dict[str, Any] | None = None) -> dict[str, Any]: ...
 
+    def patch(
+        self,
+        path: str,
+        *,
+        json: Any | None = None,
+        operation_id: str | None = None,
+        sensitive_paths: tuple[str, ...] = (),
+    ) -> dict[str, Any]: ...
+
+    def post(
+        self,
+        path: str,
+        *,
+        json: Any | None = None,
+        operation_id: str | None = None,
+        sensitive_paths: tuple[str, ...] = (),
+    ) -> dict[str, Any]: ...
+
 
 def _parse_filter(text: str) -> dict[str, str]:
     out: dict[str, str] = {}
@@ -140,4 +158,23 @@ class ListScreen(Screen[None]):
         self.app.pop_screen()
 
     def action_create_record(self) -> None:
-        pass
+        resource = self._model.tags[self._tag].resources[self._resource_name]
+        create_op = resource.create_op
+        if create_op is None:
+            return
+        from nsc.tui.screens.edit_form import EditForm  # noqa: PLC0415
+
+        def _after(_: None) -> None:
+            self.reload()
+
+        self.app.push_screen(
+            EditForm(
+                self._model,
+                self._client,
+                self._tag,
+                self._resource_name,
+                create_op,
+                {},
+            ),
+            _after,
+        )
