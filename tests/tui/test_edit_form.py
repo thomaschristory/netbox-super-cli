@@ -18,13 +18,14 @@ from nsc.model.command_model import (
 from nsc.tui.forms import SET_NULL
 from nsc.tui.screens.edit_form import EditForm
 from nsc.tui.screens.record_picker import RecordPicker
+from nsc.tui.widgets.diff import DiffModal
 
 
 class _SpyClient:
     def __init__(self, records: list[dict[str, Any]]) -> None:
         self._records = records
-        self.patch_calls: list[tuple[str, dict[str, Any]]] = []
-        self.post_calls: list[tuple[str, dict[str, Any]]] = []
+        self.patch_calls: list[dict[str, Any]] = []
+        self.post_calls: list[dict[str, Any]] = []
         self.paginate_calls: list[tuple[str, dict[str, Any] | None]] = []
 
     def paginate(
@@ -33,12 +34,33 @@ class _SpyClient:
         self.paginate_calls.append((path, params))
         yield from self._records
 
-    def patch(self, path: str, body: dict[str, Any]) -> dict[str, Any]:
-        self.patch_calls.append((path, body))
+    def patch(
+        self,
+        path: str,
+        *,
+        json: Any | None = None,
+        operation_id: str | None = None,
+        sensitive_paths: tuple[str, ...] = (),
+    ) -> dict[str, Any]:
+        self.patch_calls.append(
+            {
+                "path": path,
+                "json": json,
+                "operation_id": operation_id,
+                "sensitive_paths": sensitive_paths,
+            }
+        )
         return {}
 
-    def post(self, path: str, body: dict[str, Any]) -> dict[str, Any]:
-        self.post_calls.append((path, body))
+    def post(
+        self,
+        path: str,
+        *,
+        json: Any | None = None,
+        operation_id: str | None = None,
+        sensitive_paths: tuple[str, ...] = (),
+    ) -> dict[str, Any]:
+        self.post_calls.append({"path": path, "json": json})
         return {}
 
 
@@ -197,3 +219,98 @@ async def test_fk_control_opens_record_picker() -> None:
         screen.query_one("#fk-site", Button).press()
         await pilot.pause()
         assert isinstance(app.screen, RecordPicker)
+
+
+@pytest.mark.asyncio
+async def test_save_pushes_diff_modal_with_only_changed_field() -> None:
+
+    client = _SpyClient([])
+    app = _EditApp(client)
+    async with app.run_test(size=(120, 60)) as pilot:
+        await pilot.pause()
+        screen = _screen(app)
+        screen.query_one("#field-name", Input).value = "sw2"
+        await pilot.pause()
+        screen.action_save()
+        await pilot.pause()
+        assert isinstance(app.screen, DiffModal)
+        fields = [row.field for row in app.screen._rows]
+        assert fields == ["name"]
+        assert client.patch_calls == []
+
+
+@pytest.mark.asyncio
+async def test_save_confirm_calls_patch_with_minimal_body() -> None:
+    client = _SpyClient([])
+    app = _EditApp(client)
+    async with app.run_test(size=(120, 60)) as pilot:
+        await pilot.pause()
+        screen = _screen(app)
+        screen.query_one("#field-name", Input).value = "sw2"
+        await pilot.pause()
+        screen.action_save()
+        await pilot.pause()
+        await pilot.press("y")
+        await pilot.pause()
+        assert len(client.patch_calls) == 1
+        call = client.patch_calls[0]
+        assert call["path"] == "/api/dcim/devices/5/"
+        assert call["json"] == {"name": "sw2"}
+        assert call["operation_id"] == "dcim_devices_partial_update"
+        assert call["sensitive_paths"] == ("auth_key",)
+
+
+@pytest.mark.asyncio
+async def test_save_set_null_sends_none() -> None:
+    client = _SpyClient([])
+    app = _EditApp(client)
+    async with app.run_test(size=(120, 60)) as pilot:
+        await pilot.pause()
+        screen = _screen(app)
+        screen.query_one("#setnull-weight", Button).press()
+        await pilot.pause()
+        screen.action_save()
+        await pilot.pause()
+        await pilot.press("y")
+        await pilot.pause()
+        assert len(client.patch_calls) == 1
+        assert client.patch_calls[0]["json"] == {"weight": None}
+
+
+@pytest.mark.asyncio
+async def test_save_cancel_does_not_call_patch() -> None:
+    client = _SpyClient([])
+    app = _EditApp(client)
+    async with app.run_test(size=(120, 60)) as pilot:
+        await pilot.pause()
+        screen = _screen(app)
+        screen.query_one("#field-name", Input).value = "sw2"
+        await pilot.pause()
+        screen.action_save()
+        await pilot.pause()
+        await pilot.press("n")
+        await pilot.pause()
+        assert client.patch_calls == []
+
+
+@pytest.mark.asyncio
+async def test_save_with_no_changes_notifies_and_skips_patch() -> None:
+
+    client = _SpyClient([])
+    app = _EditApp(client)
+    notifications: list[str] = []
+    async with app.run_test(size=(120, 60)) as pilot:
+        await pilot.pause()
+        screen = _screen(app)
+        original_notify = screen.notify
+
+        def _capture(message: str, *args: Any, **kwargs: Any) -> None:
+            notifications.append(message)
+            original_notify(message, *args, **kwargs)
+
+        screen.notify = _capture  # type: ignore[method-assign]
+        screen.action_save()
+        await pilot.pause()
+        assert not isinstance(app.screen, DiffModal)
+        assert client.patch_calls == []
+        assert any("no change" in m.lower() for m in notifications)

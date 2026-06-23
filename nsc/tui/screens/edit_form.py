@@ -18,13 +18,29 @@ from textual.widgets import Button, Footer, Header, Input, Label, Select, Switch
 from nsc.model.command_model import CommandModel, Operation
 from nsc.tui._bindings import textual_bindings
 from nsc.tui.fk import resolve_fk_target
-from nsc.tui.forms import SET_NULL, WidgetSpec, field_to_widget
+from nsc.tui.forms import SET_NULL, WidgetSpec, compute_patch, diff_rows, field_to_widget
 
 
 class _Client(Protocol):
     def paginate(
         self, path: str, params: dict[str, Any] | None = None, *, limit: int | None = None
     ) -> Any: ...
+
+    def patch(
+        self,
+        path: str,
+        *,
+        json: Any | None = None,
+        operation_id: str | None = None,
+        sensitive_paths: tuple[str, ...] = (),
+    ) -> dict[str, Any]: ...
+
+
+def _detail_path(list_path: str, record_id: object) -> str:
+    if "{id}" in list_path:
+        return list_path.replace("{id}", str(record_id))
+    base = list_path if list_path.endswith("/") else f"{list_path}/"
+    return f"{base}{record_id}/"
 
 
 def _record_value(record: dict[str, Any], name: str) -> Any:
@@ -67,6 +83,7 @@ class EditForm(Screen[None]):
                 spec = field_to_widget(name, field, sensitive)
                 self._specs[name] = spec
                 yield from self._compose_field(name, spec)
+            yield Button("Save", id="save", classes="edit-save")
         yield Footer()
 
     def _compose_field(self, name: str, spec: WidgetSpec) -> ComposeResult:
@@ -112,7 +129,23 @@ class EditForm(Screen[None]):
         ident = event.input.id
         if ident is None or not ident.startswith("field-"):
             return
-        self.staged[ident.removeprefix("field-")] = event.value
+        name = ident.removeprefix("field-")
+        self.staged[name] = self._coerce_input(name, event.value)
+
+    def _coerce_input(self, name: str, raw: str) -> Any:
+        spec = self._specs.get(name)
+        numeric = (spec is not None and spec.kind == "number") or self._is_fk_field(name, spec)
+        if not numeric:
+            return raw
+        if raw == "":
+            return None
+        try:
+            return float(raw) if spec is not None and spec.is_float else int(raw)
+        except ValueError:
+            return raw
+
+    def _is_fk_field(self, name: str, spec: WidgetSpec | None) -> bool:
+        return spec is not None and self._is_fk(name, spec)
 
     def on_switch_changed(self, event: Switch.Changed) -> None:
         ident = event.switch.id
@@ -131,6 +164,9 @@ class EditForm(Screen[None]):
         ident = event.button.id
         if ident is None:
             return
+        if ident == "save":
+            self.action_save()
+            return
         if ident.startswith("setnull-"):
             self.staged[ident.removeprefix("setnull-")] = SET_NULL
             return
@@ -148,6 +184,31 @@ class EditForm(Screen[None]):
                 self.staged[name] = result[0]
 
         self.app.push_screen(RecordPicker(self._client, target.list_op, target.current_id), _stage)
+
+    def action_save(self) -> None:
+        patch = compute_patch(self._record, self.staged)
+        if not patch:
+            self.notify("No changes to save.")
+            return
+        body = self._op.request_body
+        sensitive = body.sensitive_paths if body is not None else ()
+        from nsc.tui.widgets.diff import DiffModal  # noqa: PLC0415
+
+        def _on_confirm(confirmed: bool | None) -> None:
+            if confirmed:
+                self._apply_patch(patch, sensitive)
+
+        self.app.push_screen(DiffModal(diff_rows(self._record, patch, sensitive)), _on_confirm)
+
+    def _apply_patch(self, patch: dict[str, Any], sensitive_paths: tuple[str, ...]) -> None:
+        detail_path = _detail_path(self._op.path, self._record.get("id"))
+        self._client.patch(
+            detail_path,
+            json=patch,
+            operation_id=self._op.operation_id,
+            sensitive_paths=sensitive_paths,
+        )
+        self.app.pop_screen()
 
     def action_go_back(self) -> None:
         self.app.pop_screen()
