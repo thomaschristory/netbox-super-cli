@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
+from typing import Any
+
+from nsc.model.command_model import CommandModel
+
 __all__ = ["run_tui"]
 
 
-def run_tui(*args: object, **kwargs: object) -> None:
+def run_tui(model: CommandModel, client: Any, *, initial_resource: str | None = None) -> None:
     """Lazy entrypoint so importing `nsc.tui` never imports Textual eagerly."""
     from nsc.tui.app import run_tui as _run  # noqa: PLC0415  # deferred: keeps Textual lazy.
 
-    _run(*args, **kwargs)
+    _run(model, client, initial_resource=initial_resource)
