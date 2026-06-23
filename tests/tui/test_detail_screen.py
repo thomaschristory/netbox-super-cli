@@ -8,13 +8,17 @@ from textual.widgets import DataTable, Static, Tab, Tabs
 
 from nsc.model.command_model import (
     CommandModel,
+    FieldShape,
     Operation,
     Parameter,
     ParameterLocation,
+    PrimitiveType,
+    RequestBodyShape,
     Resource,
     Tag,
 )
 from nsc.tui.screens.detail import DetailScreen
+from nsc.tui.screens.edit_form import EditForm
 from nsc.tui.screens.list import ListScreen
 
 
@@ -30,6 +34,15 @@ def _model() -> CommandModel:
         name="devices",
         list_op=Operation(operation_id="d_list", http_method="GET", path="/api/dcim/devices/"),
         get_op=Operation(operation_id="d_get", http_method="GET", path="/api/dcim/devices/{id}/"),
+        update_op=Operation(
+            operation_id="d_update",
+            http_method="PATCH",
+            path="/api/dcim/devices/{id}/",
+            request_body=RequestBodyShape(
+                top_level="object",
+                fields={"name": FieldShape(primitive=PrimitiveType.STRING)},
+            ),
+        ),
     )
     interfaces = Resource(
         name="interfaces",
@@ -120,3 +133,54 @@ async def test_tab_and_shift_tab_cycle_active_tab() -> None:
         await pilot.press("shift+tab")
         await pilot.pause()
         assert tabs.active == first
+
+
+@pytest.mark.asyncio
+async def test_action_edit_record_pushes_edit_form() -> None:
+    app = _DetailApp()
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        screen = app.screen
+        assert isinstance(screen, DetailScreen)
+        screen.action_edit_record()
+        await pilot.pause()
+        pushed = app.screen
+        assert isinstance(pushed, EditForm)
+        assert pushed._op.operation_id == "d_update"
+        assert pushed._record == {"id": 7, "name": "sw1", "site": {"display": "HQ"}}
+
+
+@pytest.mark.asyncio
+async def test_pressing_e_pushes_edit_form() -> None:
+    app = _DetailApp()
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await pilot.press("e")
+        await pilot.pause()
+        assert isinstance(app.screen, EditForm)
+
+
+class _NoUpdateApp(App[None]):
+    def compose(self) -> ComposeResult:
+        yield Static("")
+
+    async def on_mount(self) -> None:
+        model = _model()
+        devices = model.tags["dcim"].resources["devices"]
+        resource = devices.model_copy(update={"update_op": None})
+        record = {"id": 7, "name": "sw1"}
+        await self.push_screen(
+            DetailScreen(model, _FakeClient(), "dcim", "devices", resource, record)
+        )
+
+
+@pytest.mark.asyncio
+async def test_action_edit_record_is_noop_without_update_op() -> None:
+    app = _NoUpdateApp()
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        screen = app.screen
+        assert isinstance(screen, DetailScreen)
+        screen.action_edit_record()
+        await pilot.pause()
+        assert app.screen is screen

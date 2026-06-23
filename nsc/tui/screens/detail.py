@@ -94,7 +94,21 @@ class DetailScreen(Screen[None]):
         self._tabs.action_previous_tab()
 
     def action_edit_record(self) -> None:
-        pass
+        update_op = self._resource.update_op
+        if update_op is None:
+            return
+        from nsc.tui.screens.edit_form import EditForm  # noqa: PLC0415
+
+        self.app.push_screen(
+            EditForm(
+                self._model,
+                self._client,
+                self._tag,
+                self._resource_name,
+                update_op,
+                self._record,
+            )
+        )
 
     def action_delete_record(self) -> None:
         pass
