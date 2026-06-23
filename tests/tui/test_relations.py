@@ -45,6 +45,38 @@ def test_singularize_common_cases() -> None:
     assert singularize("vlans") == "vlan"
 
 
+def test_singularize_es_class_plurals() -> None:
+    assert singularize("prefixes") == "prefix"
+    assert singularize("boxes") == "box"
+    assert singularize("suffixes") == "suffix"
+    assert singularize("batches") == "batch"
+    assert singularize("dishes") == "dish"
+    assert singularize("statuses") == "status"
+    assert singularize("classes") == "class"
+
+
+def test_related_views_matches_hyphenated_es_plural() -> None:
+    consumers = Resource(
+        name="prefix-consumers",
+        list_op=Operation(
+            operation_id="x_list",
+            http_method="GET",
+            path="/api/x/prefix-consumers/",
+            parameters=[_qp("prefix_id")],
+        ),
+    )
+    prefixes = Resource(
+        name="prefixes",
+        list_op=Operation(operation_id="p_list", http_method="GET", path="/api/ipam/prefixes/"),
+    )
+    tag = Tag(name="ipam", resources={"prefixes": prefixes, "prefix-consumers": consumers})
+    model = CommandModel(info_title="t", info_version="1", schema_hash="h", tags={"ipam": tag})
+    views = related_views(model, "prefixes")
+    assert len(views) == 1
+    assert views[0].filter_param == "prefix_id"
+    assert views[0].resource_name == "prefix-consumers"
+
+
 def test_related_views_finds_resources_filtering_on_this_resource() -> None:
     views = related_views(_model(), "devices")
     assert len(views) == 1

@@ -24,7 +24,7 @@ class RelatedView:
 def singularize(name: str) -> str:
     if name.endswith("ies"):
         return name[:-3] + "y"
-    if name.endswith("sses") or name.endswith("ses"):
+    if name.endswith(("sses", "ses", "xes", "zes", "ches", "shes")):
         return name[:-2]
     if name.endswith("s"):
         return name[:-1]

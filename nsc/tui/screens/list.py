@@ -65,8 +65,11 @@ class ListScreen(Screen[None]):
         yield Footer()
 
     def on_mount(self) -> None:
-        self.query_one("#rows", DataTable).cursor_type = "row"
+        table = self.query_one("#rows", DataTable)
+        table.cursor_type = "row"
         self.reload()
+        # Land on the table so vim/global keys fire; the filter is reachable via `/`.
+        table.focus()
 
     def _params(self) -> dict[str, str]:
         return {**self._base_filters, **self._extra_filters}
@@ -110,11 +113,16 @@ class ListScreen(Screen[None]):
         table = self.query_one("#rows", DataTable)
         table.move_cursor(row=max(table.row_count - 1, 0))
 
+    def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
+        self._open_detail(event.cursor_row)
+
     def action_open_detail(self) -> None:
-        table = self.query_one("#rows", DataTable)
-        if not self._records:
+        self._open_detail(self.query_one("#rows", DataTable).cursor_row)
+
+    def _open_detail(self, row: int) -> None:
+        if not self._records or not (0 <= row < len(self._records)):
             return
-        record = self._records[table.cursor_row]
+        record = self._records[row]
         from nsc.tui.screens.detail import DetailScreen  # noqa: PLC0415
 
         resource = self._model.tags[self._tag].resources[self._resource_name]

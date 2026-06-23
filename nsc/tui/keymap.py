@@ -10,6 +10,15 @@ from dataclasses import dataclass
 
 Context = str  # "global" | "list" | "detail"
 
+# Textual key identifiers have no printable form; map them to the glyph the
+# user actually presses so footer and help do not show raw tokens.
+_KEY_GLYPHS = {
+    "question_mark": "?",
+    "slash": "/",
+    "escape": "Esc",
+    "backspace": "⌫",
+}
+
 
 @dataclass(frozen=True)
 class KeyBinding:
@@ -21,7 +30,7 @@ class KeyBinding:
 
     @property
     def display_keys(self) -> str:
-        return " / ".join(self.keys)
+        return " / ".join(_KEY_GLYPHS.get(k, k) for k in self.keys)
 
 
 def _b(keys: str, action: str, description: str, context: Context, show: bool = True) -> KeyBinding:
@@ -31,8 +40,8 @@ def _b(keys: str, action: str, description: str, context: Context, show: bool = 
 KEYMAP: tuple[KeyBinding, ...] = (
     _b("q", "quit_tui", "Quit", "global"),
     _b("question_mark", "request_help", "Help", "global"),
-    _b("ctrl+p p", "open_palette", "Find resource", "global"),
-    _b("escape backspace", "go_back", "Back", "global"),
+    _b("ctrl+p", "open_palette", "Find resource", "global"),
+    _b("escape", "go_back", "Back", "global"),
     _b("j down", "cursor_down", "Down", "list"),
     _b("k up", "cursor_up", "Up", "list"),
     _b("g", "cursor_top", "Top", "list"),
@@ -40,7 +49,6 @@ KEYMAP: tuple[KeyBinding, ...] = (
     _b("enter", "open_detail", "Open", "list"),
     _b("slash", "focus_filter", "Filter", "list"),
     _b("r", "refresh_list", "Refresh", "list"),
-    _b("tab", "next_relation", "Relations", "list", show=False),
     _b("b", "go_back", "Back", "detail"),
     _b("tab", "next_tab", "Next tab", "detail"),
     _b("shift+tab", "prev_tab", "Prev tab", "detail"),

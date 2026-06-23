@@ -18,6 +18,8 @@ from nsc.tui.widgets.help import HelpOverlay
 class NscTuiApp(App[None]):
     BINDINGS: ClassVar[list[BindingType]] = textual_bindings("global")
     TITLE = "nsc"
+    # Free up ctrl+p for our own resource picker; Textual binds it by default.
+    ENABLE_COMMAND_PALETTE = False
 
     def __init__(
         self, model: CommandModel, client: Any, *, initial_resource: str | None = None

@@ -53,3 +53,34 @@ async def test_help_action_pushes_overlay() -> None:
         await app.action_request_help()
         await pilot.pause()
         assert isinstance(app.screen, HelpOverlay)
+
+
+@pytest.mark.asyncio
+async def test_ctrl_p_opens_resource_picker_not_command_palette() -> None:
+    app = NscTuiApp(_model(), _FakeClient(), initial_resource="devices")
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await pilot.press("ctrl+p")
+        await pilot.pause()
+        assert isinstance(app.screen, ResourcePicker)
+
+
+@pytest.mark.asyncio
+async def test_bare_p_does_not_open_picker() -> None:
+    app = NscTuiApp(_model(), _FakeClient(), initial_resource="devices")
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await pilot.press("p")
+        await pilot.pause()
+        assert isinstance(app.screen, ListScreen)
+
+
+@pytest.mark.asyncio
+async def test_q_quits_from_focused_list() -> None:
+    app = NscTuiApp(_model(), _FakeClient(), initial_resource="devices")
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        assert isinstance(app.screen, ListScreen)
+        await pilot.press("q")
+        await pilot.pause()
+    assert app.return_code is not None

@@ -15,6 +15,7 @@ from nsc.model.command_model import (
     Tag,
 )
 from nsc.tui.screens.detail import DetailScreen
+from nsc.tui.screens.list import ListScreen
 
 
 class _FakeClient:
@@ -39,7 +40,19 @@ def _model() -> CommandModel:
             parameters=[Parameter(name="device_id", location=ParameterLocation.QUERY)],
         ),
     )
-    tag = Tag(name="dcim", resources={"devices": devices, "interfaces": interfaces})
+    bays = Resource(
+        name="device-bays",
+        list_op=Operation(
+            operation_id="b_list",
+            http_method="GET",
+            path="/api/dcim/device-bays/",
+            parameters=[Parameter(name="device_id", location=ParameterLocation.QUERY)],
+        ),
+    )
+    tag = Tag(
+        name="dcim",
+        resources={"devices": devices, "interfaces": interfaces, "device-bays": bays},
+    )
     return CommandModel(info_title="t", info_version="1", schema_hash="h", tags={"dcim": tag})
 
 
@@ -66,3 +79,44 @@ async def test_detail_shows_fields_and_relationship_tab() -> None:
         tabs = app.screen.query_one(Tabs)
         labels = [str(t.label) for t in tabs.query(Tab)]
         assert any("interfaces" in label for label in labels)
+
+
+@pytest.mark.asyncio
+async def test_drill_relation_pushes_prefiltered_list() -> None:
+    app = _DetailApp()
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        screen = app.screen
+        assert isinstance(screen, DetailScreen)
+        screen.action_drill_relation()
+        await pilot.pause()
+        pushed = app.screen
+        assert isinstance(pushed, ListScreen)
+        assert pushed._base_filters == {"device_id": "7"}
+
+
+@pytest.mark.asyncio
+async def test_enter_drills_into_related_list() -> None:
+    app = _DetailApp()
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await pilot.press("enter")
+        await pilot.pause()
+        assert isinstance(app.screen, ListScreen)
+        assert app.screen._base_filters == {"device_id": "7"}
+
+
+@pytest.mark.asyncio
+async def test_tab_and_shift_tab_cycle_active_tab() -> None:
+    app = _DetailApp()
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        tabs = app.screen.query_one(Tabs)
+        first = tabs.active
+        await pilot.press("tab")
+        await pilot.pause()
+        second = tabs.active
+        assert second != first
+        await pilot.press("shift+tab")
+        await pilot.pause()
+        assert tabs.active == first

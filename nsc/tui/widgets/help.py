@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import ClassVar
 
+from textual import events
 from textual.app import ComposeResult
 from textual.binding import BindingType
 from textual.containers import VerticalScroll
@@ -22,8 +23,11 @@ def _help_text() -> str:
         for b in bindings:
             lines.append(f"  {b.display_keys:<16} {b.description}")
         lines.append("")
-    lines.append("[dim]Press any key to close[/dim]")
+    lines.append("[dim]Press Esc, q, or Enter to close[/dim]")
     return "\n".join(lines)
+
+
+_DISMISS_KEYS = {"escape", "q", "enter", "question_mark"}
 
 
 class HelpOverlay(ModalScreen[None]):
@@ -36,5 +40,8 @@ class HelpOverlay(ModalScreen[None]):
         with VerticalScroll(id="help-body"):
             yield Static(self.render_text(), markup=True)
 
-    def on_key(self) -> None:
-        self.dismiss(None)
+    def on_key(self, event: events.Key) -> None:
+        # Dismiss only on explicit close keys so arrow/page keys can scroll the body.
+        if event.key in _DISMISS_KEYS:
+            event.stop()
+            self.dismiss(None)

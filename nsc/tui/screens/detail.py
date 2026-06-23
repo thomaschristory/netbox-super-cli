@@ -49,6 +49,12 @@ class DetailScreen(Screen[None]):
         table.add_columns("field", "value")
         for key, value in flatten(self._record).items():
             table.add_row(key, "" if value is None else str(value))
+        # Focus the Tabs (not the fields table) so `enter` reaches the screen's
+        # drill_relation binding; DataTable would otherwise swallow `enter`.
+        if self._relations:
+            self.query_one(Tabs).focus()
+        else:
+            table.focus()
 
     def action_go_back(self) -> None:
         self.app.pop_screen()
