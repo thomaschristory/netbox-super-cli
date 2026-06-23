@@ -291,6 +291,51 @@ class _NoDeleteApp(App[None]):
         )
 
 
+class _CountingClient(_SpyClient):
+    def __init__(self) -> None:
+        super().__init__()
+        self.paginate_count = 0
+
+    def paginate(
+        self, path: str, params: dict[str, Any] | None = None, *, limit: int | None = None
+    ) -> Any:
+        self.paginate_count += 1
+        return iter([])
+
+
+class _DeleteOverListApp(App[None]):
+    def __init__(self) -> None:
+        super().__init__()
+        self.client = _CountingClient()
+
+    def compose(self) -> ComposeResult:
+        yield Static("")
+
+    async def on_mount(self) -> None:
+        model = _model()
+        resource = model.tags["dcim"].resources["devices"]
+        assert resource.list_op is not None
+        await self.push_screen(ListScreen(model, self.client, "dcim", "devices", resource.list_op))
+        record = {"id": 7, "name": "sw1", "site": {"display": "HQ"}}
+        await self.push_screen(
+            DetailScreen(model, self.client, "dcim", "devices", resource, record)
+        )
+
+
+@pytest.mark.asyncio
+async def test_delete_reloads_underlying_list() -> None:
+    app = _DeleteOverListApp()
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        before = app.client.paginate_count
+        await pilot.press("d")
+        await pilot.pause()
+        await pilot.press("y")
+        await pilot.pause()
+        assert isinstance(app.screen, ListScreen)
+        assert app.client.paginate_count == before + 1
+
+
 @pytest.mark.asyncio
 async def test_action_delete_record_is_noop_without_delete_op() -> None:
     app = _NoDeleteApp()

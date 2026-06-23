@@ -29,6 +29,10 @@ def _rows() -> list[DiffRow]:
     ]
 
 
+def test_diff_modal_empty_rows_renders_no_changes() -> None:
+    assert "No changes." in DiffModal([]).render_text()
+
+
 async def test_diff_modal_renders_each_field_old_new() -> None:
     app = _DiffApp(_rows())
     async with app.run_test() as pilot:

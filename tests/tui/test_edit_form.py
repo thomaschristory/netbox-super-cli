@@ -4,7 +4,7 @@ from typing import Any
 
 import pytest
 from textual.app import App, ComposeResult
-from textual.widgets import Button, Input, Select, Static, Switch
+from textual.widgets import Button, Input, ListView, Select, Static, Switch
 
 from nsc.model.command_model import (
     CommandModel,
@@ -15,7 +15,7 @@ from nsc.model.command_model import (
     Resource,
     Tag,
 )
-from nsc.tui.forms import SET_NULL
+from nsc.tui.forms import SET_NULL, compute_patch
 from nsc.tui.screens.edit_form import EditForm
 from nsc.tui.screens.record_picker import RecordPicker
 from nsc.tui.widgets.diff import DiffModal
@@ -75,14 +75,22 @@ def _model() -> CommandModel:
                 "status": FieldShape(primitive=PrimitiveType.STRING, enum=["active", "offline"]),
                 "enabled": FieldShape(primitive=PrimitiveType.BOOLEAN),
                 "weight": FieldShape(primitive=PrimitiveType.INTEGER, nullable=True),
+                "ratio": FieldShape(primitive=PrimitiveType.NUMBER),
                 "name": FieldShape(primitive=PrimitiveType.STRING),
                 "auth_key": FieldShape(primitive=PrimitiveType.STRING),
                 "site": FieldShape(primitive=PrimitiveType.INTEGER),
+                "gizmo_id": FieldShape(primitive=PrimitiveType.INTEGER),
             },
             sensitive_paths=("auth_key",),
         ),
     )
-    devices = Resource(name="devices", update_op=update_op)
+    create_op = Operation(
+        operation_id="dcim_devices_create",
+        http_method="POST",
+        path="/api/dcim/devices/",
+        request_body=update_op.request_body,
+    )
+    devices = Resource(name="devices", update_op=update_op, create_op=create_op)
     sites_list = Operation(
         operation_id="dcim_sites_list",
         http_method="GET",
@@ -106,9 +114,17 @@ def _record() -> dict[str, Any]:
 
 
 class _EditApp(App[None]):
-    def __init__(self, client: _SpyClient) -> None:
+    def __init__(
+        self,
+        client: _SpyClient,
+        *,
+        create: bool = False,
+        record: dict[str, Any] | None = None,
+    ) -> None:
         super().__init__()
         self._client = client
+        self._create = create
+        self._record = record
 
     def compose(self) -> ComposeResult:
         yield Static("")
@@ -116,9 +132,10 @@ class _EditApp(App[None]):
     async def on_mount(self) -> None:
         model = _model()
         resource = model.tags["dcim"].resources["devices"]
-        op = resource.update_op
+        op = resource.create_op if self._create else resource.update_op
         assert op is not None
-        await self.push_screen(EditForm(model, self._client, "dcim", "devices", op, _record()))
+        record = self._record if self._record is not None else ({} if self._create else _record())
+        await self.push_screen(EditForm(model, self._client, "dcim", "devices", op, record))
 
 
 def _screen(app: _EditApp) -> EditForm:
@@ -314,3 +331,191 @@ async def test_save_with_no_changes_notifies_and_skips_patch() -> None:
         assert not isinstance(app.screen, DiffModal)
         assert client.patch_calls == []
         assert any("no change" in m.lower() for m in notifications)
+
+
+@pytest.mark.asyncio
+async def test_create_mode_mounts_with_blank_enum() -> None:
+    client = _SpyClient([])
+    app = _EditApp(client, create=True)
+    async with app.run_test(size=(120, 60)) as pilot:
+        await pilot.pause()
+        screen = _screen(app)
+        select = screen.query_one("#field-status", Select)
+        assert select.value is Select.NULL
+
+
+@pytest.mark.asyncio
+async def test_edit_mounts_when_enum_value_not_in_choices() -> None:
+    record = {**_record(), "status": "staged"}
+    client = _SpyClient([])
+    app = _EditApp(client, record=record)
+    async with app.run_test(size=(120, 60)) as pilot:
+        await pilot.pause()
+        screen = _screen(app)
+        assert screen.query_one("#field-status", Select).value is Select.NULL
+
+
+@pytest.mark.asyncio
+async def test_select_change_stages_enum_choice() -> None:
+    client = _SpyClient([])
+    app = _EditApp(client)
+    async with app.run_test(size=(120, 60)) as pilot:
+        await pilot.pause()
+        screen = _screen(app)
+        screen.query_one("#field-status", Select).value = "offline"
+        await pilot.pause()
+        assert screen.staged.get("status") == "offline"
+        assert client.patch_calls == []
+
+
+@pytest.mark.asyncio
+async def test_clearing_select_stages_none() -> None:
+    client = _SpyClient([])
+    app = _EditApp(client)
+    async with app.run_test(size=(120, 60)) as pilot:
+        await pilot.pause()
+        screen = _screen(app)
+        screen.query_one("#field-status", Select).value = Select.NULL
+        await pilot.pause()
+        assert screen.staged.get("status") is None
+
+
+@pytest.mark.asyncio
+async def test_float_field_stages_as_float() -> None:
+    client = _SpyClient([])
+    app = _EditApp(client)
+    async with app.run_test(size=(120, 60)) as pilot:
+        await pilot.pause()
+        screen = _screen(app)
+        screen.query_one("#field-ratio", Input).value = "1.5"
+        await pilot.pause()
+        assert screen.staged.get("ratio") == 1.5
+        assert isinstance(screen.staged["ratio"], float)
+
+
+@pytest.mark.asyncio
+async def test_clearing_numeric_input_stages_none() -> None:
+    client = _SpyClient([])
+    app = _EditApp(client)
+    async with app.run_test(size=(120, 60)) as pilot:
+        await pilot.pause()
+        screen = _screen(app)
+        weight = screen.query_one("#field-weight", Input)
+        weight.value = ""
+        await pilot.pause()
+        assert screen.staged.get("weight") is None
+
+
+@pytest.mark.asyncio
+async def test_non_numeric_input_in_number_field_stays_string() -> None:
+    client = _SpyClient([])
+    app = _EditApp(client)
+    async with app.run_test(size=(120, 60)) as pilot:
+        await pilot.pause()
+        screen = _screen(app)
+        ratio = screen.query_one("#field-ratio", Input)
+        ratio.value = "abc"
+        await pilot.pause()
+        assert screen.staged.get("ratio") == "abc"
+
+
+@pytest.mark.asyncio
+async def test_unresolvable_fk_renders_raw_id_input_and_stages_int() -> None:
+    client = _SpyClient([])
+    app = _EditApp(client)
+    async with app.run_test(size=(120, 60)) as pilot:
+        await pilot.pause()
+        screen = _screen(app)
+        widget = screen.query_one("#field-gizmo_id")
+        assert isinstance(widget, Input)
+        assert not isinstance(widget, Button)
+        assert len(screen.query(".edit-fk-hint")) >= 1
+        widget.value = "42"
+        await pilot.pause()
+        assert screen.staged.get("gizmo_id") == 42
+        assert isinstance(screen.staged["gizmo_id"], int)
+
+
+@pytest.mark.asyncio
+async def test_non_numeric_raw_fk_stays_string() -> None:
+    client = _SpyClient([])
+    app = _EditApp(client)
+    async with app.run_test(size=(120, 60)) as pilot:
+        await pilot.pause()
+        screen = _screen(app)
+        widget = screen.query_one("#field-gizmo_id", Input)
+        widget.value = "nope"
+        await pilot.pause()
+        assert screen.staged.get("gizmo_id") == "nope"
+
+
+@pytest.mark.asyncio
+async def test_fk_pick_stages_id_and_patches_then_omits_when_same() -> None:
+    client = _SpyClient([{"id": 3, "display": "HQ"}, {"id": 4, "display": "Branch"}])
+    app = _EditApp(client)
+    async with app.run_test(size=(120, 60)) as pilot:
+        await pilot.pause()
+        screen = _screen(app)
+        screen.query_one("#fk-site", Button).press()
+        await pilot.pause()
+        picker = app.screen
+        assert isinstance(picker, RecordPicker)
+        lv = picker.query_one(ListView)
+        lv.index = 1
+        await pilot.pause()
+        await pilot.press("enter")
+        await pilot.pause()
+        assert screen.staged.get("site") == 4
+        screen.action_save()
+        await pilot.pause()
+        await pilot.press("y")
+        await pilot.pause()
+        assert len(client.patch_calls) == 1
+        assert client.patch_calls[0]["json"] == {"site": 4}
+
+
+@pytest.mark.asyncio
+async def test_fk_repick_same_id_yields_no_patch_key() -> None:
+    client = _SpyClient([{"id": 3, "display": "HQ"}, {"id": 4, "display": "Branch"}])
+    app = _EditApp(client)
+    async with app.run_test(size=(120, 60)) as pilot:
+        await pilot.pause()
+        screen = _screen(app)
+        screen.query_one("#fk-site", Button).press()
+        await pilot.pause()
+        picker = app.screen
+        assert isinstance(picker, RecordPicker)
+        picker.query_one(ListView).index = 0
+        await pilot.pause()
+        await pilot.press("enter")
+        await pilot.pause()
+        assert screen.staged.get("site") == 3
+        assert "site" not in compute_patch(_record(), screen.staged)
+
+
+@pytest.mark.asyncio
+async def test_go_back_with_staged_changes_prompts_confirm() -> None:
+    client = _SpyClient([])
+    app = _EditApp(client)
+    async with app.run_test(size=(120, 60)) as pilot:
+        await pilot.pause()
+        screen = _screen(app)
+        screen.query_one("#field-name", Input).value = "sw2"
+        await pilot.pause()
+        screen.action_go_back()
+        await pilot.pause()
+        assert app.screen is not screen
+        assert isinstance(screen, EditForm)
+        assert app.screen.__class__.__name__ == "ConfirmModal"
+
+
+@pytest.mark.asyncio
+async def test_go_back_without_changes_dismisses_immediately() -> None:
+    client = _SpyClient([])
+    app = _EditApp(client)
+    async with app.run_test(size=(120, 60)) as pilot:
+        await pilot.pause()
+        screen = _screen(app)
+        screen.action_go_back()
+        await pilot.pause()
+        assert app.screen is not screen

@@ -60,7 +60,7 @@ def _record_value(record: dict[str, Any], name: str) -> Any:
 
 
 class EditForm(Screen[None]):
-    BINDINGS: ClassVar[list[BindingType]] = textual_bindings("detail")
+    BINDINGS: ClassVar[list[BindingType]] = textual_bindings("edit")
 
     def __init__(
         self,
@@ -113,7 +113,7 @@ class EditForm(Screen[None]):
             return
         if spec.kind == "select":
             options = [(choice, choice) for choice in spec.choices]
-            select_value = value if value in spec.choices else Select.BLANK
+            select_value = value if value in spec.choices else Select.NULL
             yield Select(options, value=select_value, id=f"field-{name}", allow_blank=True)
             return
         if spec.kind == "switch":
@@ -170,7 +170,7 @@ class EditForm(Screen[None]):
         ident = event.select.id
         if ident is None or not ident.startswith("field-"):
             return
-        value = None if event.value is Select.BLANK else event.value
+        value = None if event.value is Select.NULL else event.value
         self.staged[ident.removeprefix("field-")] = value
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
@@ -195,6 +195,7 @@ class EditForm(Screen[None]):
         def _stage(result: tuple[int, str] | None) -> None:
             if result is not None:
                 self.staged[name] = result[0]
+                self.query_one(f"#fk-{name}", Button).label = f"{name}: {result[1]}"
 
         self.app.push_screen(RecordPicker(self._client, target.list_op, target.current_id), _stage)
 
@@ -232,4 +233,13 @@ class EditForm(Screen[None]):
         self.dismiss()
 
     def action_go_back(self) -> None:
-        self.dismiss()
+        if not compute_patch(self._record, self.staged):
+            self.dismiss()
+            return
+        from nsc.tui.widgets.confirm import ConfirmModal  # noqa: PLC0415
+
+        def _on_confirm(confirmed: bool | None) -> None:
+            if confirmed:
+                self.dismiss()
+
+        self.app.push_screen(ConfirmModal("Discard unsaved changes?"), _on_confirm)

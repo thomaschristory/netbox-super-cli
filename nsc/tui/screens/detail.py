@@ -138,5 +138,12 @@ class DetailScreen(Screen[None]):
             if confirmed:
                 self._client.delete(path, operation_id=delete_op.operation_id)
                 self.app.pop_screen()
+                self._reload_underlying_list()
 
         self.app.push_screen(ConfirmModal(message), _on_confirm)
+
+    def _reload_underlying_list(self) -> None:
+        from nsc.tui.screens.list import ListScreen  # noqa: PLC0415
+
+        if isinstance(self.app.screen, ListScreen):
+            self.app.screen.reload()

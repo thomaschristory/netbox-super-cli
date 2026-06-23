@@ -35,9 +35,10 @@ def _op() -> Operation:
 
 
 class _PickerApp(App[None]):
-    def __init__(self, client: _FakeClient) -> None:
+    def __init__(self, client: _FakeClient, *, current_id: int | None = None) -> None:
         super().__init__()
         self._client = client
+        self._current_id = current_id
         self.chosen: tuple[int, str] | None = None
         self.dismissed = False
 
@@ -49,7 +50,7 @@ class _PickerApp(App[None]):
             self.dismissed = True
             self.chosen = result
 
-        await self.push_screen(RecordPicker(self._client, _op()), _record)
+        await self.push_screen(RecordPicker(self._client, _op(), self._current_id), _record)
 
 
 def _records() -> list[dict[str, Any]]:
@@ -111,3 +112,27 @@ async def test_escape_dismisses_with_none() -> None:
         await pilot.pause()
     assert app.dismissed is True
     assert app.chosen is None
+
+
+@pytest.mark.asyncio
+async def test_empty_result_set_enter_is_noop() -> None:
+    client = _FakeClient([])
+    app = _PickerApp(client)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        assert len(app.screen.query_one(ListView)) == 0
+        app.screen.query_one(Input).focus()
+        await pilot.pause()
+        await pilot.press("enter")
+        await pilot.pause()
+        assert app.dismissed is False
+        assert app.chosen is None
+
+
+@pytest.mark.asyncio
+async def test_current_id_highlights_matching_row() -> None:
+    client = _FakeClient(_records())
+    app = _PickerApp(client, current_id=2)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        assert app.screen.query_one(ListView).index == 1

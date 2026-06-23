@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-Context = str  # "global" | "list" | "detail"
+Context = str  # "global" | "list" | "detail" | "edit"
 
 # Textual key identifiers have no printable form; map them to the glyph the
 # user actually presses so footer and help do not show raw tokens.
@@ -56,6 +56,8 @@ KEYMAP: tuple[KeyBinding, ...] = (
     _b("enter", "drill_relation", "Open related", "detail"),
     _b("e", "edit_record", "Edit", "detail"),
     _b("d", "delete_record", "Delete", "detail"),
+    _b("s", "save", "Save", "edit"),
+    _b("b", "go_back", "Back", "edit"),
 )
 
 
@@ -66,7 +68,12 @@ def bindings_for(context: Context) -> list[KeyBinding]:
 
 def help_groups() -> dict[Context, list[KeyBinding]]:
     """All bindings grouped by context, for the help overlay."""
-    groups: dict[Context, list[KeyBinding]] = {"global": [], "list": [], "detail": []}
+    groups: dict[Context, list[KeyBinding]] = {
+        "global": [],
+        "list": [],
+        "detail": [],
+        "edit": [],
+    }
     for b in KEYMAP:
         groups[b.context].append(b)
     return groups

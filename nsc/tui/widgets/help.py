@@ -13,7 +13,12 @@ from textual.widgets import Static
 
 from nsc.tui.keymap import help_groups
 
-_TITLES = {"global": "Global", "list": "List view", "detail": "Detail view"}
+_TITLES = {
+    "global": "Global",
+    "list": "List view",
+    "detail": "Detail view",
+    "edit": "Edit form",
+}
 _DISMISS_KEYS = {"escape", "q", "enter", "question_mark"}
 
 

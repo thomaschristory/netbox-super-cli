@@ -63,7 +63,7 @@ async def test_help_overlay_lists_edit_create_delete_descriptions() -> None:
 
 
 def _section_for(text: str, title: str) -> str:
-    titles = ("Global", "List view", "Detail view")
+    titles = ("Global", "List view", "Detail view", "Edit form")
     start = text.index(title)
     rest = text[start + len(title) :]
     ends = [rest.index(t) for t in titles if t in rest]

@@ -5,6 +5,7 @@ import pytest
 from nsc.tui.app import NscTuiApp
 from nsc.tui.keymap import KEYMAP, KeyBinding, bindings_for, help_groups
 from nsc.tui.screens.detail import DetailScreen
+from nsc.tui.screens.edit_form import EditForm
 from nsc.tui.screens.list import ListScreen
 
 
@@ -13,7 +14,7 @@ def test_every_binding_has_required_fields() -> None:
         assert b.keys, "binding must declare at least one key"
         assert b.action
         assert b.description
-        assert b.context in {"global", "list", "detail"}
+        assert b.context in {"global", "list", "detail", "edit"}
 
 
 def test_bindings_for_filters_by_context_and_includes_global() -> None:
@@ -27,7 +28,7 @@ def test_bindings_for_filters_by_context_and_includes_global() -> None:
 
 def test_help_groups_are_keyed_by_context_and_nonempty() -> None:
     groups = help_groups()
-    assert set(groups) == {"global", "list", "detail"}
+    assert set(groups) == {"global", "list", "detail", "edit"}
     assert all(len(v) >= 1 for v in groups.values())
 
 
@@ -44,10 +45,11 @@ _OWNER_FOR_CONTEXT = {
     "global": (NscTuiApp,),
     "list": (NscTuiApp, ListScreen),
     "detail": (NscTuiApp, DetailScreen),
+    "edit": (NscTuiApp, EditForm),
 }
 
 
-@pytest.mark.parametrize("context", ["global", "list", "detail"])
+@pytest.mark.parametrize("context", ["global", "list", "detail", "edit"])
 def test_every_action_resolves_to_a_method(context: str) -> None:
     owners = _OWNER_FOR_CONTEXT[context]
     for b in bindings_for(context):
@@ -57,7 +59,7 @@ def test_every_action_resolves_to_a_method(context: str) -> None:
         )
 
 
-@pytest.mark.parametrize("context", ["global", "list", "detail"])
+@pytest.mark.parametrize("context", ["global", "list", "detail", "edit"])
 def test_no_key_maps_to_two_actions_in_a_context(context: str) -> None:
     seen: dict[str, str] = {}
     for b in bindings_for(context):
@@ -113,6 +115,14 @@ def test_detail_footer_bindings_surface_edit_and_delete() -> None:
     actions = {b.action for b in bindings_for("detail")}
     assert "edit_record" in actions
     assert "delete_record" in actions
+
+
+def test_edit_context_has_no_dead_detail_keys() -> None:
+    edit_actions = {b.action for b in bindings_for("edit")}
+    for dead in ("edit_record", "delete_record", "drill_relation", "next_tab", "prev_tab"):
+        assert dead not in edit_actions
+    assert "save" in edit_actions
+    assert "go_back" in edit_actions
 
 
 def test_display_keys_renders_pressable_glyphs() -> None:
