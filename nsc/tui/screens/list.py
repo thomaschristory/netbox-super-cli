@@ -64,8 +64,12 @@ class ListScreen(Screen[None]):
         yield DataTable(id="rows")
         yield Footer()
 
+    @property
+    def _table(self) -> DataTable[str]:
+        return self.query_one("#rows", DataTable)
+
     def on_mount(self) -> None:
-        table = self.query_one("#rows", DataTable)
+        table = self._table
         table.cursor_type = "row"
         self.reload()
         # Land on the table so vim/global keys fire; the filter is reachable via `/`.
@@ -76,7 +80,7 @@ class ListScreen(Screen[None]):
 
     def reload(self) -> None:
         records = list(self._client.paginate(self._op.path, self._params(), limit=200))
-        table = self.query_one("#rows", DataTable)
+        table = self._table
         table.clear(columns=True)
         sample = records[0] if records else None
         columns = choose_columns(self._op, self._columns_config, sample)
@@ -95,29 +99,29 @@ class ListScreen(Screen[None]):
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
         self.apply_filter(event.value)
-        self.query_one("#rows", DataTable).focus()
+        self._table.focus()
 
     def action_refresh_list(self) -> None:
         self.reload()
 
     def action_cursor_down(self) -> None:
-        self.query_one("#rows", DataTable).action_cursor_down()
+        self._table.action_cursor_down()
 
     def action_cursor_up(self) -> None:
-        self.query_one("#rows", DataTable).action_cursor_up()
+        self._table.action_cursor_up()
 
     def action_cursor_top(self) -> None:
-        self.query_one("#rows", DataTable).move_cursor(row=0)
+        self._table.move_cursor(row=0)
 
     def action_cursor_bottom(self) -> None:
-        table = self.query_one("#rows", DataTable)
+        table = self._table
         table.move_cursor(row=max(table.row_count - 1, 0))
 
     def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
         self._open_detail(event.cursor_row)
 
     def action_open_detail(self) -> None:
-        self._open_detail(self.query_one("#rows", DataTable).cursor_row)
+        self._open_detail(self._table.cursor_row)
 
     def _open_detail(self, row: int) -> None:
         if not self._records or not (0 <= row < len(self._records)):

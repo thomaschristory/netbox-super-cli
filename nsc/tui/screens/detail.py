@@ -44,6 +44,10 @@ class DetailScreen(Screen[None]):
         yield Tabs(*tabs)
         yield Footer()
 
+    @property
+    def _tabs(self) -> Tabs:
+        return self.query_one(Tabs)
+
     def on_mount(self) -> None:
         table = self.query_one("#fields", DataTable)
         table.add_columns("field", "value")
@@ -52,7 +56,7 @@ class DetailScreen(Screen[None]):
         # Focus the Tabs (not the fields table) so `enter` reaches the screen's
         # drill_relation binding; DataTable would otherwise swallow `enter`.
         if self._relations:
-            self.query_one(Tabs).focus()
+            self._tabs.focus()
         else:
             table.focus()
 
@@ -62,8 +66,7 @@ class DetailScreen(Screen[None]):
     def action_drill_relation(self) -> None:
         if not self._relations:
             return
-        tabs = self.query_one(Tabs)
-        active = tabs.active
+        active = self._tabs.active
         if not active:
             return
         index = int(active.removeprefix("rel-"))
@@ -85,7 +88,7 @@ class DetailScreen(Screen[None]):
         )
 
     def action_next_tab(self) -> None:
-        self.query_one(Tabs).action_next_tab()
+        self._tabs.action_next_tab()
 
     def action_prev_tab(self) -> None:
-        self.query_one(Tabs).action_previous_tab()
+        self._tabs.action_previous_tab()

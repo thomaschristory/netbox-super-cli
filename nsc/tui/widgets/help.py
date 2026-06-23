@@ -14,19 +14,6 @@ from textual.widgets import Static
 from nsc.tui.keymap import help_groups
 
 _TITLES = {"global": "Global", "list": "List view", "detail": "Detail view"}
-
-
-def _help_text() -> str:
-    lines: list[str] = []
-    for context, bindings in help_groups().items():
-        lines.append(f"[b]{_TITLES[context]}[/b]")
-        for b in bindings:
-            lines.append(f"  {b.display_keys:<16} {b.description}")
-        lines.append("")
-    lines.append("[dim]Press Esc, q, or Enter to close[/dim]")
-    return "\n".join(lines)
-
-
 _DISMISS_KEYS = {"escape", "q", "enter", "question_mark"}
 
 
@@ -34,7 +21,14 @@ class HelpOverlay(ModalScreen[None]):
     BINDINGS: ClassVar[list[BindingType]] = [("escape", "dismiss", "Close")]
 
     def render_text(self) -> str:
-        return _help_text()
+        lines: list[str] = []
+        for context, bindings in help_groups().items():
+            lines.append(f"[b]{_TITLES[context]}[/b]")
+            for b in bindings:
+                lines.append(f"  {b.display_keys:<16} {b.description}")
+            lines.append("")
+        lines.append("[dim]Press Esc, q, or Enter to close[/dim]")
+        return "\n".join(lines)
 
     def compose(self) -> ComposeResult:
         with VerticalScroll(id="help-body"):

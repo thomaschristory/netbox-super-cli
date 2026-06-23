@@ -44,16 +44,12 @@ class ResourcePicker(ModalScreen[ResourceRef]):
         self._populate(filter_resources(self._refs, event.value))
 
     def on_input_submitted(self, _: Input.Submitted) -> None:
-        self._choose_highlighted()
+        self._dismiss_with(self.query_one("#picker-list", ListView).highlighted_child)
 
     def on_list_view_selected(self, event: ListView.Selected) -> None:
-        ref = getattr(event.item, "data", None)
-        if isinstance(ref, ResourceRef):
-            self.dismiss(ref)
+        self._dismiss_with(event.item)
 
-    def _choose_highlighted(self) -> None:
-        lv = self.query_one("#picker-list", ListView)
-        item = lv.highlighted_child
+    def _dismiss_with(self, item: ListItem | None) -> None:
         ref = getattr(item, "data", None)
         if isinstance(ref, ResourceRef):
             self.dismiss(ref)
