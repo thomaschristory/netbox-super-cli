@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from textual.binding import Binding
+from textual.binding import Binding, BindingType
 
 from nsc.tui.keymap import bindings_for
 
 
-def textual_bindings(context: str) -> list[Binding]:
-    bindings: list[Binding] = []
+def textual_bindings(context: str) -> list[BindingType]:
+    bindings: list[BindingType] = []
     for b in bindings_for(context):
         for key in b.keys:
             bindings.append(
