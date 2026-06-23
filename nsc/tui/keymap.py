@@ -49,10 +49,13 @@ KEYMAP: tuple[KeyBinding, ...] = (
     _b("enter", "open_detail", "Open", "list"),
     _b("slash", "focus_filter", "Filter", "list"),
     _b("r", "refresh_list", "Refresh", "list"),
+    _b("c", "create_record", "Create", "list"),
     _b("b", "go_back", "Back", "detail"),
     _b("tab", "next_tab", "Next tab", "detail"),
     _b("shift+tab", "prev_tab", "Prev tab", "detail"),
     _b("enter", "drill_relation", "Open related", "detail"),
+    _b("e", "edit_record", "Edit", "detail"),
+    _b("d", "delete_record", "Delete", "detail"),
 )
 
 

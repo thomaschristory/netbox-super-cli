@@ -69,6 +69,24 @@ def test_no_key_maps_to_two_actions_in_a_context(context: str) -> None:
             seen[key] = b.action
 
 
+def test_edit_record_is_a_detail_binding_on_e() -> None:
+    edit = next(b for b in KEYMAP if b.action == "edit_record")
+    assert edit.context == "detail"
+    assert edit.keys == ("e",)
+
+
+def test_create_record_is_a_list_binding_on_a_or_c() -> None:
+    create = next(b for b in KEYMAP if b.action == "create_record")
+    assert create.context == "list"
+    assert create.keys in (("a",), ("c",))
+
+
+def test_delete_record_is_a_detail_binding_on_d() -> None:
+    delete = next(b for b in KEYMAP if b.action == "delete_record")
+    assert delete.context == "detail"
+    assert delete.keys == ("d",)
+
+
 def test_no_accidental_bare_letter_palette_key() -> None:
     palette = next(b for b in KEYMAP if b.action == "open_palette")
     assert palette.keys == ("ctrl+p",)

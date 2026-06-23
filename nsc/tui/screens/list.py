@@ -138,3 +138,6 @@ class ListScreen(Screen[None]):
 
     def action_go_back(self) -> None:
         self.app.pop_screen()
+
+    def action_create_record(self) -> None:
+        pass

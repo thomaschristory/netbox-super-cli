@@ -92,3 +92,9 @@ class DetailScreen(Screen[None]):
 
     def action_prev_tab(self) -> None:
         self._tabs.action_previous_tab()
+
+    def action_edit_record(self) -> None:
+        pass
+
+    def action_delete_record(self) -> None:
+        pass
