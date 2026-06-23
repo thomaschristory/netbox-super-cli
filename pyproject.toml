@@ -63,6 +63,7 @@ packages = ["nsc"]
 [dependency-groups]
 dev = [
     "pytest>=8.2",
+    "pytest-asyncio>=0.23",
     "pytest-cov>=5.0",
     "respx>=0.21",
     "mypy>=1.20",
@@ -112,3 +113,4 @@ pretty = true
 [tool.pytest.ini_options]
 addopts = "-ra --strict-markers --strict-config --ignore=tests/e2e"
 testpaths = ["tests"]
+asyncio_mode = "auto"
