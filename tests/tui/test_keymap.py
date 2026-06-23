@@ -92,6 +92,29 @@ def test_no_accidental_bare_letter_palette_key() -> None:
     assert palette.keys == ("ctrl+p",)
 
 
+def test_help_groups_place_edit_create_delete_in_their_contexts() -> None:
+    groups = help_groups()
+    list_actions = {b.action for b in groups["list"]}
+    detail_actions = {b.action for b in groups["detail"]}
+    assert "create_record" in list_actions
+    assert "edit_record" in detail_actions
+    assert "delete_record" in detail_actions
+    assert "edit_record" not in list_actions
+    assert "delete_record" not in list_actions
+    assert "create_record" not in detail_actions
+
+
+def test_list_footer_bindings_surface_create() -> None:
+    actions = {b.action for b in bindings_for("list")}
+    assert "create_record" in actions
+
+
+def test_detail_footer_bindings_surface_edit_and_delete() -> None:
+    actions = {b.action for b in bindings_for("detail")}
+    assert "edit_record" in actions
+    assert "delete_record" in actions
+
+
 def test_display_keys_renders_pressable_glyphs() -> None:
     help_binding = next(b for b in KEYMAP if b.action == "request_help")
     filter_binding = next(b for b in KEYMAP if b.action == "focus_filter")

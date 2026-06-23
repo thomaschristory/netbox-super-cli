@@ -50,3 +50,38 @@ async def test_help_overlay_lists_every_action_description() -> None:
         assert "question_mark" not in text
         assert "slash" not in text
         await pilot.pause()
+
+
+async def test_help_overlay_lists_edit_create_delete_descriptions() -> None:
+    app = _HelpApp()
+    async with app.run_test() as pilot:
+        text = app.screen.query_one(HelpOverlay).render_text()
+        assert "Create" in text
+        assert "Edit" in text
+        assert "Delete" in text
+        await pilot.pause()
+
+
+def _section_for(text: str, title: str) -> str:
+    titles = ("Global", "List view", "Detail view")
+    start = text.index(title)
+    rest = text[start + len(title) :]
+    ends = [rest.index(t) for t in titles if t in rest]
+    return rest if not ends else rest[: min(ends)]
+
+
+async def test_help_overlay_groups_edit_create_delete_under_their_context() -> None:
+    """The overlay reads KEYMAP, so the edit/create/delete bindings land under
+    the same context the keymap assigns and cannot drift from it."""
+    app = _HelpApp()
+    async with app.run_test() as pilot:
+        text = app.screen.query_one(HelpOverlay).render_text()
+        list_section = _section_for(text, "List view")
+        detail_section = _section_for(text, "Detail view")
+        assert "Create" in list_section
+        assert "Edit" in detail_section
+        assert "Delete" in detail_section
+        assert "Create" not in detail_section
+        assert "Edit" not in list_section
+        assert "Delete" not in list_section
+        await pilot.pause()
