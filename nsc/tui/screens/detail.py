@@ -110,5 +110,33 @@ class DetailScreen(Screen[None]):
             )
         )
 
+    def _detail_path(self) -> str | None:
+        record_id = self._record.get("id")
+        if record_id is None:
+            return None
+        op = self._resource.get_op or self._resource.list_op
+        if op is None:
+            return None
+        base = op.path
+        if "{id}" in base:
+            return base.replace("{id}", str(record_id))
+        base = base if base.endswith("/") else f"{base}/"
+        return f"{base}{record_id}/"
+
     def action_delete_record(self) -> None:
-        pass
+        delete_op = self._resource.delete_op
+        if delete_op is None:
+            return
+        path = self._detail_path()
+        if path is None:
+            return
+        from nsc.tui.widgets.confirm import ConfirmModal  # noqa: PLC0415
+
+        message = f"Delete {self._resource_name} #{self._record.get('id')}?"
+
+        def _on_confirm(confirmed: bool | None) -> None:
+            if confirmed:
+                self._client.delete(path, operation_id=delete_op.operation_id)
+                self.app.pop_screen()
+
+        self.app.push_screen(ConfirmModal(message), _on_confirm)
