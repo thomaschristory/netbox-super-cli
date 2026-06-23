@@ -8,8 +8,9 @@ break parsing.
 from __future__ import annotations
 
 from enum import StrEnum
+from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class _Tolerant(BaseModel):
@@ -38,7 +39,24 @@ class SchemaObject(_Tolerant):
     properties: dict[str, SchemaObject] | None = None
     required: list[str] | None = None
     description: str | None = None
+    nullable: bool = False
     ref: str | None = Field(default=None, alias="$ref")
+
+    @model_validator(mode="before")
+    @classmethod
+    def _normalize_nullable(cls, data: Any) -> Any:
+        # OpenAPI 3.1 expresses nullability as a "null" entry in a list-typed
+        # "type" (e.g. ["string", "null"]); collapse it to a scalar type plus
+        # the nullable flag so the rest of the codebase sees one shape.
+        if not isinstance(data, dict):
+            return data
+        raw_type = data.get("type")
+        if isinstance(raw_type, list):
+            non_null = [t for t in raw_type if t != "null"]
+            if len(raw_type) != len(non_null):
+                data = {**data, "nullable": True}
+            data["type"] = non_null[0] if non_null else None
+        return data
 
 
 class MediaType(_Tolerant):

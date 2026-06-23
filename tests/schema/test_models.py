@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 
-from nsc.schema.models import OpenAPIDocument, ParameterIn
+from nsc.schema.models import OpenAPIDocument, ParameterIn, SchemaObject
 
 MINIMAL_DOC = {
     "openapi": "3.0.3",
@@ -64,3 +64,26 @@ def test_round_trip_to_json_is_stable() -> None:
     blob = doc.model_dump_json()
     again = OpenAPIDocument.model_validate(json.loads(blob))
     assert again.info.title == "NetBox"
+
+
+def test_schema_object_nullable_defaults_false() -> None:
+    obj = SchemaObject.model_validate({"type": "string"})
+    assert obj.nullable is False
+
+
+def test_schema_object_openapi_30_nullable_flag() -> None:
+    obj = SchemaObject.model_validate({"type": "string", "nullable": True})
+    assert obj.nullable is True
+    assert obj.type == "string"
+
+
+def test_schema_object_openapi_31_type_list_with_null() -> None:
+    obj = SchemaObject.model_validate({"type": ["string", "null"]})
+    assert obj.nullable is True
+    assert obj.type == "string"
+
+
+def test_schema_object_openapi_31_type_list_without_null() -> None:
+    obj = SchemaObject.model_validate({"type": ["string"]})
+    assert obj.nullable is False
+    assert obj.type == "string"
