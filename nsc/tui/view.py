@@ -24,6 +24,14 @@ def choose_columns(
     return list(_FALLBACK)
 
 
+def detail_path(list_path: str, record_id: object) -> str:
+    """Build a single-record detail path from a list endpoint path and an id."""
+    if "{id}" in list_path:
+        return list_path.replace("{id}", str(record_id))
+    base = list_path if list_path.endswith("/") else f"{list_path}/"
+    return f"{base}{record_id}/"
+
+
 def build_rows(records: list[dict[str, Any]], columns: list[str]) -> list[list[str]]:
     rows: list[list[str]] = []
     for record in records:

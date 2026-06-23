@@ -13,6 +13,7 @@ from nsc.model.command_model import CommandModel, Resource
 from nsc.output.flatten import flatten
 from nsc.tui._bindings import textual_bindings
 from nsc.tui.relations import RelatedView, related_views
+from nsc.tui.view import detail_path
 
 
 class DetailScreen(Screen[None]):
@@ -117,11 +118,7 @@ class DetailScreen(Screen[None]):
         op = self._resource.get_op or self._resource.list_op
         if op is None:
             return None
-        base = op.path
-        if "{id}" in base:
-            return base.replace("{id}", str(record_id))
-        base = base if base.endswith("/") else f"{base}/"
-        return f"{base}{record_id}/"
+        return detail_path(op.path, record_id)
 
     def action_delete_record(self) -> None:
         delete_op = self._resource.delete_op

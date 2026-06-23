@@ -19,6 +19,7 @@ from nsc.model.command_model import CommandModel, Operation
 from nsc.tui._bindings import textual_bindings
 from nsc.tui.fk import resolve_fk_target
 from nsc.tui.forms import SET_NULL, WidgetSpec, compute_patch, diff_rows, field_to_widget
+from nsc.tui.view import detail_path
 
 
 class _Client(Protocol):
@@ -43,13 +44,6 @@ class _Client(Protocol):
         operation_id: str | None = None,
         sensitive_paths: tuple[str, ...] = (),
     ) -> dict[str, Any]: ...
-
-
-def _detail_path(list_path: str, record_id: object) -> str:
-    if "{id}" in list_path:
-        return list_path.replace("{id}", str(record_id))
-    base = list_path if list_path.endswith("/") else f"{list_path}/"
-    return f"{base}{record_id}/"
 
 
 def _record_value(record: dict[str, Any], name: str) -> Any:
@@ -138,11 +132,16 @@ class EditForm(Screen[None]):
         current = "" if value is None else str(value)
         yield Button(f"{name}: {current}", id=f"fk-{name}", classes="edit-fk")
 
-    def on_input_changed(self, event: Input.Changed) -> None:
-        ident = event.input.id
+    @staticmethod
+    def _field_name(ident: str | None) -> str | None:
         if ident is None or not ident.startswith("field-"):
+            return None
+        return ident.removeprefix("field-")
+
+    def on_input_changed(self, event: Input.Changed) -> None:
+        name = self._field_name(event.input.id)
+        if name is None:
             return
-        name = ident.removeprefix("field-")
         self.staged[name] = self._coerce_input(name, event.value)
 
     def _coerce_input(self, name: str, raw: str) -> Any:
@@ -161,17 +160,16 @@ class EditForm(Screen[None]):
         return spec is not None and self._is_fk(name, spec)
 
     def on_switch_changed(self, event: Switch.Changed) -> None:
-        ident = event.switch.id
-        if ident is None or not ident.startswith("field-"):
+        name = self._field_name(event.switch.id)
+        if name is None:
             return
-        self.staged[ident.removeprefix("field-")] = event.value
+        self.staged[name] = event.value
 
     def on_select_changed(self, event: Select.Changed) -> None:
-        ident = event.select.id
-        if ident is None or not ident.startswith("field-"):
+        name = self._field_name(event.select.id)
+        if name is None:
             return
-        value = None if event.value is Select.NULL else event.value
-        self.staged[ident.removeprefix("field-")] = value
+        self.staged[name] = None if event.value is Select.NULL else event.value
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         ident = event.button.id
@@ -223,9 +221,8 @@ class EditForm(Screen[None]):
                 sensitive_paths=sensitive_paths,
             )
         else:
-            detail_path = _detail_path(self._op.path, self._record.get("id"))
             self._client.patch(
-                detail_path,
+                detail_path(self._op.path, self._record.get("id")),
                 json=patch,
                 operation_id=self._op.operation_id,
                 sensitive_paths=sensitive_paths,

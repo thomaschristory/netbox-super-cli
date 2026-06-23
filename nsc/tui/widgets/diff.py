@@ -9,22 +9,12 @@ from __future__ import annotations
 
 from typing import ClassVar
 
-from textual.app import ComposeResult
-from textual.binding import BindingType
-from textual.containers import VerticalScroll
-from textual.screen import ModalScreen
-from textual.widgets import Static
-
 from nsc.tui.forms import DiffRow
+from nsc.tui.widgets._modal import ConfirmModalBase
 
 
-class DiffModal(ModalScreen[bool]):
-    BINDINGS: ClassVar[list[BindingType]] = [
-        ("enter", "confirm", "Confirm"),
-        ("y", "confirm", "Confirm"),
-        ("escape", "cancel", "Cancel"),
-        ("n", "cancel", "Cancel"),
-    ]
+class DiffModal(ConfirmModalBase):
+    _BODY_ID: ClassVar[str] = "diff-body"
 
     def __init__(self, rows: list[DiffRow]) -> None:
         super().__init__()
@@ -39,13 +29,3 @@ class DiffModal(ModalScreen[bool]):
         lines.append("")
         lines.append("[dim]Enter/y confirm · Esc/n cancel[/dim]")
         return "\n".join(lines)
-
-    def compose(self) -> ComposeResult:
-        with VerticalScroll(id="diff-body"):
-            yield Static(self.render_text(), markup=True)
-
-    def action_confirm(self) -> None:
-        self.dismiss(True)
-
-    def action_cancel(self) -> None:
-        self.dismiss(False)
