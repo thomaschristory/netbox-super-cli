@@ -28,6 +28,7 @@ dependencies = [
     # init_commands.py still imports the standalone click package directly.
     "click>=8.1",
     "rich>=13.7",
+    "textual>=0.50",
     "httpx>=0.27",
     "pydantic>=2.7",
     "ruamel.yaml>=0.18",
