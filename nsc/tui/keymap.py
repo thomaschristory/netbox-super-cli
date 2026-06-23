@@ -1,0 +1,61 @@
+"""The single source of truth for TUI keybindings.
+
+Footer, help overlay, and Textual ``BINDINGS`` all derive from ``KEYMAP``, so
+they cannot drift apart. This module imports nothing from Textual.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+Context = str  # "global" | "list" | "detail"
+
+
+@dataclass(frozen=True)
+class KeyBinding:
+    keys: tuple[str, ...]
+    action: str
+    description: str
+    context: Context
+    show: bool = True
+
+    @property
+    def display_keys(self) -> str:
+        return " / ".join(self.keys)
+
+
+def _b(keys: str, action: str, description: str, context: Context, show: bool = True) -> KeyBinding:
+    return KeyBinding(tuple(keys.split()), action, description, context, show)
+
+
+KEYMAP: tuple[KeyBinding, ...] = (
+    _b("q", "quit_tui", "Quit", "global"),
+    _b("question_mark", "request_help", "Help", "global"),
+    _b("ctrl+p p", "open_palette", "Find resource", "global"),
+    _b("escape backspace", "go_back", "Back", "global"),
+    _b("j down", "cursor_down", "Down", "list"),
+    _b("k up", "cursor_up", "Up", "list"),
+    _b("g", "cursor_top", "Top", "list"),
+    _b("G", "cursor_bottom", "Bottom", "list"),
+    _b("enter", "open_detail", "Open", "list"),
+    _b("slash", "focus_filter", "Filter", "list"),
+    _b("r", "refresh_list", "Refresh", "list"),
+    _b("tab", "next_relation", "Relations", "list", show=False),
+    _b("b", "go_back", "Back", "detail"),
+    _b("tab", "next_tab", "Next tab", "detail"),
+    _b("shift+tab", "prev_tab", "Prev tab", "detail"),
+    _b("enter", "drill_relation", "Open related", "detail"),
+)
+
+
+def bindings_for(context: Context) -> list[KeyBinding]:
+    """Bindings active in ``context``, including all global bindings."""
+    return [b for b in KEYMAP if b.context in ("global", context)]
+
+
+def help_groups() -> dict[Context, list[KeyBinding]]:
+    """All bindings grouped by context, for the help overlay."""
+    groups: dict[Context, list[KeyBinding]] = {"global": [], "list": [], "detail": []}
+    for b in KEYMAP:
+        groups[b.context].append(b)
+    return groups
