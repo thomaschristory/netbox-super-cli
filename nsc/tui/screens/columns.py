@@ -62,6 +62,11 @@ class ColumnChooserScreen(ModalScreen[list[str]]):
     def action_move_down(self) -> None:
         self._rebuild(self.selection.move_down(self._index))
 
+    def on_list_view_selected(self, _: ListView.Selected) -> None:
+        # The ListView owns the enter key (it emits Selected), so the screen's
+        # enter binding never fires — apply from the message instead.
+        self.action_apply()
+
     def action_apply(self) -> None:
         visible = self.selection.visible_in_order()
         if visible:  # never apply an empty column set

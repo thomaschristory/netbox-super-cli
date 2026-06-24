@@ -73,6 +73,28 @@ async def test_reorder_then_apply() -> None:
 
 
 @pytest.mark.asyncio
+async def test_enter_key_applies() -> None:
+    # The ListView owns enter; the screen must still apply on it.
+    app = _ChooserApp(available=["id", "name", "status"], visible=["id", "name"])
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await pilot.press("enter")
+        await pilot.pause()
+    assert app.result == ["id", "name"]
+
+
+@pytest.mark.asyncio
+async def test_space_key_toggles_then_enter_applies() -> None:
+    app = _ChooserApp(available=["id", "name", "status"], visible=["id", "name"])
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await pilot.press("space")  # cursor on "id" -> hide it
+        await pilot.press("enter")
+        await pilot.pause()
+    assert app.result == ["name"]
+
+
+@pytest.mark.asyncio
 async def test_escape_cancels_with_none() -> None:
     app = _ChooserApp(available=["id", "name"], visible=["id"])
     async with app.run_test() as pilot:
