@@ -47,7 +47,7 @@ KEYMAP: tuple[KeyBinding, ...] = (
     _b("g", "cursor_top", "Top", "list"),
     _b("G", "cursor_bottom", "Bottom", "list"),
     _b("enter", "open_detail", "Open", "list"),
-    _b("slash", "focus_filter", "Filter", "list"),
+    _b("slash", "open_filters", "Filter", "list"),
     _b("r", "refresh_list", "Refresh", "list"),
     _b("v space", "toggle_select", "Select", "list"),
     _b("c", "create_record", "Create", "list"),

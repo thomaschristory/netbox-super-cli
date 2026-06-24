@@ -18,6 +18,7 @@ from nsc.model.command_model import (
 from nsc.tui.screens.bulk_edit_form import BulkEditForm
 from nsc.tui.screens.detail import DetailScreen
 from nsc.tui.screens.edit_form import EditForm
+from nsc.tui.screens.filter import FilterScreen
 from nsc.tui.screens.list import ListScreen
 from nsc.tui.widgets.diff import DiffModal
 
@@ -101,11 +102,22 @@ async def test_filter_requeries_with_param() -> None:
         await pilot.pause()
         screen = app.screen
         assert isinstance(screen, ListScreen)
-        screen.apply_filter("name=sw1")
+        screen.apply_filters({"name": "sw1"})
         await pilot.pause()
         last_params = client.calls[-1][1]
         assert last_params is not None
         assert ("name", "sw1") in last_params.items()
+
+
+@pytest.mark.asyncio
+async def test_slash_opens_filter_screen() -> None:
+    client = _FakeClient([{"id": 1, "name": "sw1"}])
+    app = _ListApp(client)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await pilot.press("slash")
+        await pilot.pause()
+        assert isinstance(app.screen, FilterScreen)
 
 
 @pytest.mark.asyncio
@@ -139,7 +151,7 @@ async def test_base_filters_merge_with_extra_filters() -> None:
         await pilot.pause()
         screen = app.screen
         assert isinstance(screen, ListScreen)
-        screen.apply_filter("name=sw1")
+        screen.apply_filters({"name": "sw1"})
         await pilot.pause()
         last_params = client.calls[-1][1]
         assert last_params is not None
@@ -155,8 +167,8 @@ async def test_refilter_replaces_prior_extra_filters() -> None:
         await pilot.pause()
         screen = app.screen
         assert isinstance(screen, ListScreen)
-        screen.apply_filter("name=sw1")
-        screen.apply_filter("name=sw2")
+        screen.apply_filters({"name": "sw1"})
+        screen.apply_filters({"name": "sw2"})
         await pilot.pause()
         last_params = client.calls[-1][1]
         assert last_params is not None
@@ -164,18 +176,18 @@ async def test_refilter_replaces_prior_extra_filters() -> None:
 
 
 @pytest.mark.asyncio
-async def test_malformed_filter_token_is_dropped() -> None:
+async def test_applying_filters_reloads_with_merged_params() -> None:
     client = _FakeClient([{"id": 1, "name": "sw1"}])
     app = _ListApp(client)
     async with app.run_test() as pilot:
         await pilot.pause()
         screen = app.screen
         assert isinstance(screen, ListScreen)
-        screen.apply_filter("bareword name=sw1")
+        screen.apply_filters({"status": "active"})
         await pilot.pause()
         last_params = client.calls[-1][1]
         assert last_params is not None
-        assert last_params == {"name": "sw1"}
+        assert ("status", "active") in last_params.items()
 
 
 def _create_model(*, with_create: bool = True) -> CommandModel:
@@ -545,22 +557,3 @@ async def test_bulk_edit_reloads_list_after_form_dismisses() -> None:
         await pilot.pause()
         assert isinstance(app.screen, ListScreen)
         assert len(client.calls) > load_count
-
-
-@pytest.mark.asyncio
-async def test_input_submitted_applies_filter_and_refocuses_table() -> None:
-    client = _FakeClient([{"id": 1, "name": "sw1"}])
-    app = _ListApp(client)
-    async with app.run_test() as pilot:
-        await pilot.pause()
-        screen = app.screen
-        assert isinstance(screen, ListScreen)
-        screen.query_one("#filter", Input).focus()
-        await pilot.pause()
-        screen.query_one("#filter", Input).value = "name=sw1"
-        await pilot.press("enter")
-        await pilot.pause()
-        last_params = client.calls[-1][1]
-        assert last_params is not None
-        assert ("name", "sw1") in last_params.items()
-        assert isinstance(app.focused, DataTable)

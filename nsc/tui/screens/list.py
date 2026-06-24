@@ -8,7 +8,7 @@ from textual.app import ComposeResult
 from textual.binding import BindingType
 from textual.coordinate import Coordinate
 from textual.screen import Screen
-from textual.widgets import DataTable, Footer, Header, Input
+from textual.widgets import DataTable, Footer, Header
 
 from nsc.model.command_model import CommandModel, Operation
 from nsc.tui._bindings import textual_bindings
@@ -47,15 +47,6 @@ _MARKER_ON = "*"
 _MARKER_OFF = " "
 
 
-def _parse_filter(text: str) -> dict[str, str]:
-    out: dict[str, str] = {}
-    for token in text.split():
-        if "=" in token:
-            key, _, value = token.partition("=")
-            out[key.strip()] = value.strip()
-    return out
-
-
 class ListScreen(Screen[None]):
     BINDINGS: ClassVar[list[BindingType]] = textual_bindings("list")
 
@@ -86,7 +77,6 @@ class ListScreen(Screen[None]):
 
     def compose(self) -> ComposeResult:
         yield Header()
-        yield Input(placeholder="filter: key=value …", id="filter")
         yield DataTable(id="rows")
         yield Footer()
 
@@ -131,16 +121,18 @@ class ListScreen(Screen[None]):
         selected = record_id is not None and self._selection.contains(record_id)
         return _MARKER_ON if selected else _MARKER_OFF
 
-    def apply_filter(self, text: str) -> None:
-        self._extra_filters = _parse_filter(text)
+    def action_open_filters(self) -> None:
+        from nsc.tui.screens.filter import FilterScreen  # noqa: PLC0415
+
+        def _apply(result: dict[str, str] | None) -> None:
+            if result is not None:
+                self.apply_filters(result)
+
+        self.app.push_screen(FilterScreen(self._op, dict(self._extra_filters)), _apply)
+
+    def apply_filters(self, params: dict[str, str]) -> None:
+        self._extra_filters = dict(params)
         self.reload()
-
-    def action_focus_filter(self) -> None:
-        self.query_one("#filter", Input).focus()
-
-    def on_input_submitted(self, event: Input.Submitted) -> None:
-        self.apply_filter(event.value)
-        self._table.focus()
 
     def action_refresh_list(self) -> None:
         self.reload()

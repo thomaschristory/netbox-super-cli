@@ -190,7 +190,7 @@ def test_bulk_preview_action_resolves_on_bulk_edit_form() -> None:
 
 def test_display_keys_renders_pressable_glyphs() -> None:
     help_binding = next(b for b in KEYMAP if b.action == "request_help")
-    filter_binding = next(b for b in KEYMAP if b.action == "focus_filter")
+    filter_binding = next(b for b in KEYMAP if b.action == "open_filters")
     assert help_binding.display_keys == "?"
     assert filter_binding.display_keys == "/"
     assert "question_mark" not in help_binding.display_keys
