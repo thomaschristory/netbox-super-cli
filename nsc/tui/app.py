@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any, ClassVar
 
 from textual.app import App
@@ -24,12 +25,22 @@ class NscTuiApp(App[None]):
     ENABLE_COMMAND_PALETTE = False
 
     def __init__(
-        self, model: CommandModel, client: Any, *, initial_resource: str | None = None
+        self,
+        model: CommandModel,
+        client: Any,
+        *,
+        initial_resource: str | None = None,
+        save_columns: Callable[[str, str, list[str]], None] | None = None,
     ) -> None:
         super().__init__()
         self._model = model
         self._client = client
         self._initial_resource = initial_resource
+        self._save_columns = save_columns
+
+    def save_columns(self, tag: str, resource: str, columns: list[str]) -> None:
+        if self._save_columns is not None:
+            self._save_columns(tag, resource, columns)
 
     def on_mount(self) -> None:
         ref = self._resolve_initial()
@@ -72,5 +83,11 @@ class NscTuiApp(App[None]):
             self.pop_screen()
 
 
-def run_tui(model: CommandModel, client: Any, *, initial_resource: str | None = None) -> None:
-    NscTuiApp(model, client, initial_resource=initial_resource).run()
+def run_tui(
+    model: CommandModel,
+    client: Any,
+    *,
+    initial_resource: str | None = None,
+    save_columns: Callable[[str, str, list[str]], None] | None = None,
+) -> None:
+    NscTuiApp(model, client, initial_resource=initial_resource, save_columns=save_columns).run()

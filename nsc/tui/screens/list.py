@@ -146,6 +146,26 @@ class ListScreen(Screen[None]):
     def action_refresh_list(self) -> None:
         self.reload()
 
+    def action_edit_columns(self) -> None:
+        if not self._records:
+            self.notify("No records loaded — nothing to choose columns from.")
+            return
+        from nsc.tui.columns import available_columns  # noqa: PLC0415
+        from nsc.tui.screens.columns import ColumnChooserScreen  # noqa: PLC0415
+
+        def _apply(columns: list[str] | None) -> None:
+            if not columns:
+                return
+            self._columns_config = columns
+            self.reload()
+            saver = getattr(self.app, "save_columns", None)
+            if callable(saver):
+                saver(self._tag, self._resource_name, columns)
+
+        self.app.push_screen(
+            ColumnChooserScreen(available_columns(self._records), list(self._columns)), _apply
+        )
+
     def action_cursor_down(self) -> None:
         self._table.action_cursor_down()
 

@@ -16,7 +16,9 @@ from nsc.model.command_model import (
     Resource,
     Tag,
 )
+from nsc.tui.app import NscTuiApp
 from nsc.tui.screens.bulk_edit_form import BulkEditForm
+from nsc.tui.screens.columns import ColumnChooserScreen
 from nsc.tui.screens.detail import DetailScreen
 from nsc.tui.screens.edit_form import EditForm
 from nsc.tui.screens.filter import FilterScreen
@@ -205,6 +207,36 @@ async def test_back_on_root_list_does_not_blank_out() -> None:
         await pilot.pause()
         assert app.screen is screen  # still on the list, not the blank base
         assert notes  # hinted how to quit / switch
+
+
+@pytest.mark.asyncio
+async def test_f_opens_chooser_applies_columns_and_persists() -> None:
+    saved: list[tuple[str, str, list[str]]] = []
+    client = _FakeClient([{"id": 1, "name": "sw1", "status": "active"}])
+    app = NscTuiApp(
+        _model(),
+        client,
+        initial_resource="devices",
+        save_columns=lambda tag, res, cols: saved.append((tag, res, cols)),
+    )
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        listscreen = app.screen
+        assert isinstance(listscreen, ListScreen)
+        await pilot.press("f")
+        await pilot.pause()
+        chooser = app.screen
+        assert isinstance(chooser, ColumnChooserScreen)
+        # default columns are ["id", "name"]; show "status" (items index 2) too
+        chooser.query_one("#columns-list").index = 2
+        chooser.action_toggle_column()
+        chooser.action_apply()
+        await pilot.pause()
+        assert app.screen is listscreen  # chooser dismissed
+        table = listscreen.query_one("#rows", DataTable)
+        # marker column + the three chosen columns
+        assert len(table.columns) == 4
+    assert saved == [("dcim", "devices", ["id", "name", "status"])]
 
 
 @pytest.mark.asyncio

@@ -7,8 +7,10 @@ import typer
 from typer.testing import CliRunner
 
 import nsc.tui
+from nsc.cli import tui_commands
 from nsc.cli.app import app as real_app
 from nsc.cli.tui_commands import _runtime_from_ctx, register
+from nsc.config import settings
 
 
 def test_tui_help_lists_resource_argument() -> None:
@@ -33,7 +35,13 @@ def test_invoking_tui_calls_run_tui_with_resource(monkeypatch: pytest.MonkeyPatc
     runtime = _FakeRuntime()
     calls: list[tuple[Any, Any, str | None]] = []
 
-    def _fake_run_tui(model: Any, client: Any, *, initial_resource: str | None = None) -> None:
+    def _fake_run_tui(
+        model: Any,
+        client: Any,
+        *,
+        initial_resource: str | None = None,
+        save_columns: Any = None,
+    ) -> None:
         calls.append((model, client, initial_resource))
 
     monkeypatch.setattr(nsc.tui, "run_tui", _fake_run_tui)
@@ -44,6 +52,26 @@ def test_invoking_tui_calls_run_tui_with_resource(monkeypatch: pytest.MonkeyPatc
     result = CliRunner().invoke(app, ["devices"], obj=(None, runtime))
     assert result.exit_code == 0, result.output
     assert calls == [(runtime.command_model, runtime.client, "devices")]
+
+
+def test_save_columns_persists_to_config(tmp_path: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text("")
+
+    class _Paths:
+        @property
+        def config_file(self) -> Any:
+            return config_file
+
+    monkeypatch.setattr(settings, "default_paths", _Paths)
+
+    tui_commands._save_columns("dcim", "devices", ["id", "name"])
+
+    text = config_file.read_text()
+    assert "columns:" in text
+    assert "dcim:" in text
+    assert "devices:" in text
+    assert "name" in text
 
 
 def test_malformed_ctx_obj_exits_2() -> None:

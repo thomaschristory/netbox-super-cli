@@ -23,6 +23,24 @@ def _runtime_from_ctx(ctx: typer.Context) -> RuntimeContext:
     raise typer.Exit(2)
 
 
+def _save_columns(tag: str, resource: str, columns: list[str]) -> None:
+    """Persist a list view's column choice to ``columns.<tag>.<resource>``."""
+    from nsc.config.settings import default_paths  # noqa: PLC0415
+    from nsc.config.writer import (  # noqa: PLC0415
+        acquire_lock,
+        atomic_write,
+        dump_round_trip,
+        load_round_trip,
+        set_path,
+    )
+
+    path = default_paths().config_file
+    with acquire_lock(path):
+        doc = load_round_trip(path)
+        set_path(doc, f"columns.{tag}.{resource}", list(columns))
+        atomic_write(path, dump_round_trip(doc))
+
+
 def register(app: typer.Typer) -> None:
     @app.command("tui")
     def tui(
@@ -36,4 +54,9 @@ def register(app: typer.Typer) -> None:
         runtime = _runtime_from_ctx(ctx)
         from nsc.tui import run_tui  # noqa: PLC0415  # deferred: keeps Textual lazy.
 
-        run_tui(runtime.command_model, runtime.client, initial_resource=resource)
+        run_tui(
+            runtime.command_model,
+            runtime.client,
+            initial_resource=resource,
+            save_columns=_save_columns,
+        )

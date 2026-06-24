@@ -52,6 +52,7 @@ KEYMAP: tuple[KeyBinding, ...] = (
     _b("r", "refresh_list", "Refresh", "list"),
     _b("v space", "toggle_select", "Select", "list"),
     _b("c", "create_record", "Create", "list"),
+    _b("f", "edit_columns", "Fields", "list"),
     _b("B", "bulk_edit", "Bulk edit", "list"),
     _b("b", "go_back", "Back", "detail"),
     _b("tab", "next_tab", "Next tab", "detail"),
