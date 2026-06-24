@@ -406,6 +406,7 @@ async def test_confirm_patches_each_nonempty_record_and_skips_empty() -> None:
         screen.action_preview()
         await pilot.pause()
         await pilot.press("enter")
+        await app.workers.wait_for_complete()
         await pilot.pause()
 
     # Record #2 already offline -> empty patch -> no patch call. #1 and #3 patched.
@@ -430,6 +431,7 @@ async def test_confirm_advances_progress_per_record() -> None:
         screen.action_preview()
         await pilot.pause()
         await pilot.press("enter")
+        await app.workers.wait_for_complete()
         await pilot.pause()
         assert screen.progress_total == 3
         assert screen.progress_done == 3
@@ -446,6 +448,7 @@ async def test_partial_failure_reports_summary_without_escaping() -> None:
         screen.action_preview()
         await pilot.pause()
         await pilot.press("enter")
+        await app.workers.wait_for_complete()
         await pilot.pause()
         # All records attempted; no early stop on the failing one (#3).
         assert [c["path"] for c in client.patch_calls] == [
@@ -478,6 +481,7 @@ async def test_all_no_op_run_skips_every_record_and_reports_unchanged() -> None:
         screen.action_preview()
         await pilot.pause()
         await pilot.press("enter")
+        await app.workers.wait_for_complete()
         await pilot.pause()
         assert client.patch_calls == []
         assert screen.progress_total == 0
@@ -518,6 +522,7 @@ async def test_partial_failure_dismiss_returns_to_list_and_clears_selection() ->
         form.action_preview()
         await pilot.pause()
         await pilot.press("enter")
+        await app.workers.wait_for_complete()
         await pilot.pause()
         summary = app.screen
         assert isinstance(summary, BulkSummaryModal)
@@ -560,6 +565,7 @@ async def test_success_returns_to_list_reloads_and_clears_selection() -> None:
         form.action_preview()
         await pilot.pause()
         await pilot.press("enter")
+        await app.workers.wait_for_complete()
         await pilot.pause()
         # Dismiss the summary modal -> back to the list.
         await pilot.press("enter")

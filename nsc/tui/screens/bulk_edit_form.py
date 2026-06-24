@@ -9,6 +9,7 @@ opts the field in. Nothing reaches the network until an explicit preview/apply
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any, ClassVar, Protocol
 
 from textual.app import ComposeResult
@@ -188,14 +189,18 @@ class BulkEditForm(Screen[None]):
         self.app.push_screen(BulkDiffModal(changes), _on_confirm)
 
     def _apply_bulk(self, changes: list[RecordChange], sensitive_paths: tuple[str, ...]) -> None:
-        from nsc.tui.bulk import apply_bulk  # noqa: PLC0415
-        from nsc.tui.widgets.bulk_summary import BulkSummaryModal  # noqa: PLC0415
-
         self.progress_total = sum(1 for change in changes if change.patch)
         self.progress_done = 0
         bar = self.query_one("#bulk-progress", ProgressBar)
         bar.display = True
         bar.update(total=max(self.progress_total, 1), progress=0)
+        self.run_worker(self._run_bulk(changes, sensitive_paths), exclusive=True)
+
+    async def _run_bulk(
+        self, changes: list[RecordChange], sensitive_paths: tuple[str, ...]
+    ) -> None:
+        from nsc.tui.bulk import apply_bulk  # noqa: PLC0415
+        from nsc.tui.widgets.bulk_summary import BulkSummaryModal  # noqa: PLC0415
 
         def _patch(change: RecordChange) -> None:
             self._client.patch(
@@ -205,14 +210,16 @@ class BulkEditForm(Screen[None]):
                 sensitive_paths=sensitive_paths,
             )
 
-        def _on_progress(index: int, total: int) -> None:
-            change = changes[index - 1]
-            if not change.patch:
-                return
-            self.progress_done += 1
-            bar.advance(1)
+        def _advance(index: int, total: int) -> None:
+            if changes[index - 1].patch:
+                self.progress_done += 1
+                self.query_one("#bulk-progress", ProgressBar).advance(1)
 
-        result = apply_bulk(changes, _patch, _on_progress)
+        def _on_progress(index: int, total: int) -> None:
+            # apply_bulk runs in a worker thread; bump the bar on the UI thread.
+            self.app.call_from_thread(_advance, index, total)
+
+        result = await asyncio.to_thread(apply_bulk, changes, _patch, _on_progress)
         self.app.push_screen(BulkSummaryModal(result), self._on_summary_dismissed)
 
     def _on_summary_dismissed(self, _: None) -> None:
