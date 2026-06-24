@@ -2,7 +2,7 @@
 
 All notable changes to netbox-super-cli are tracked here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) loosely. From v1.0.0 onward, releases follow [Semantic Versioning](https://semver.org/) and the version in `pyproject.toml` matches the git tag. Pre-1.0 milestones (Phase 1-5) were pinned by tag while `pyproject.toml` stayed at `0.0.1`.
 
-## v1.2.0 — Unreleased
+## v1.2.0 — 2026-06-24
 
 Minor release. Adds an **interactive terminal UI** — a keyboard-driven, fully
 schema-generic front end over the same command model the CLI uses.
