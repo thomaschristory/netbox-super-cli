@@ -29,7 +29,11 @@ def _label(record: dict[str, Any]) -> str:
 
 
 class RecordPicker(ModalScreen[tuple[int, str]]):
-    BINDINGS: ClassVar[list[BindingType]] = [("escape", "dismiss", "Close")]
+    BINDINGS: ClassVar[list[BindingType]] = [
+        ("escape", "dismiss", "Close"),
+        # Down from the search box drops into the list; the list then owns down.
+        ("down", "app.focus_next", "Down"),
+    ]
 
     def __init__(self, client: _Client, list_op: Operation, current_id: int | None = None) -> None:
         super().__init__()

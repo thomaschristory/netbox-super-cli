@@ -301,6 +301,36 @@ async def test_apply_and_clear_buttons_dispatch() -> None:
 
 
 @pytest.mark.asyncio
+async def test_down_arrow_moves_focus_to_next_field() -> None:
+    app = _FilterApp()
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        screen = app.screen
+        assert isinstance(screen, FilterScreen)
+        field = screen.query_one("#f-name", Input)
+        field.focus()
+        await pilot.pause()
+        assert app.focused is field
+        await pilot.press("down")
+        await pilot.pause()
+        assert app.focused is not field  # down fell through to the next widget
+
+
+@pytest.mark.asyncio
+async def test_ctrl_s_applies_even_with_a_text_field_focused() -> None:
+    app = _FilterApp({"status": "active"})
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        screen = app.screen
+        assert isinstance(screen, FilterScreen)
+        screen.query_one("#f-name", Input).focus()
+        await pilot.pause()
+        await pilot.press("ctrl+s")
+        await pilot.pause()
+    assert app.result == {"status": "active"}
+
+
+@pytest.mark.asyncio
 async def test_fk_field_renders_button_not_input() -> None:
     app = _FilterApp()
     async with app.run_test() as pilot:

@@ -14,7 +14,7 @@ from __future__ import annotations
 from typing import Any, ClassVar
 
 from textual.app import ComposeResult
-from textual.binding import BindingType
+from textual.binding import Binding, BindingType
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.screen import ModalScreen
 from textual.widgets import Button, Input, Label, ListItem, ListView, Select
@@ -28,8 +28,12 @@ _ANY = "—any—"
 
 class FilterScreen(ModalScreen[dict[str, str]]):
     BINDINGS: ClassVar[list[BindingType]] = [
-        ("escape", "cancel", "Cancel"),
-        ("ctrl+s", "apply", "Apply"),
+        Binding("escape", "cancel", "Cancel"),
+        # Down falls through to the next field from single-line inputs; lists and
+        # selects consume it for their own navigation. Up stays on (shift+)tab.
+        Binding("down", "app.focus_next", "Next field", show=False),
+        # ctrl+s (not ctrl+a, which inputs capture as cursor-home) applies.
+        Binding("ctrl+s", "apply", "Apply"),
     ]
 
     def __init__(
@@ -73,7 +77,7 @@ class FilterScreen(ModalScreen[dict[str, str]]):
                 yield Label("ACTIVE", classes="filter-heading")
                 yield Vertical(id="chips")
             with Horizontal(id="filter-actions"):
-                yield Button("Apply", id="apply", variant="primary")
+                yield Button("Apply  ⌃s", id="apply", variant="primary")
                 yield Button("Clear", id="clear")
 
     def on_mount(self) -> None:

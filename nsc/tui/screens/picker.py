@@ -15,7 +15,11 @@ from nsc.tui.catalog import ResourceRef, filter_resources, list_resources
 
 
 class ResourcePicker(ModalScreen[ResourceRef]):
-    BINDINGS: ClassVar[list[BindingType]] = [("escape", "dismiss", "Close")]
+    BINDINGS: ClassVar[list[BindingType]] = [
+        ("escape", "dismiss", "Close"),
+        # Down from the search box drops into the list; the list then owns down.
+        ("down", "app.focus_next", "Down"),
+    ]
 
     def __init__(self, model: CommandModel) -> None:
         super().__init__()

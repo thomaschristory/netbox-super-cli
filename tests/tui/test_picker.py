@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from textual.app import App, ComposeResult
-from textual.widgets import Static
+from textual.widgets import ListView, Static
 
 from nsc.model.command_model import CommandModel, Operation, Resource, Tag
 from nsc.tui.catalog import ResourceRef
@@ -43,6 +43,18 @@ async def test_picker_filters_and_selects() -> None:
         await pilot.press("enter")
         await pilot.pause()
     assert app.chosen == "interfaces"
+
+
+async def test_down_arrow_from_filter_focuses_the_list() -> None:
+    app = _PickerApp()
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        picker = app.screen
+        assert isinstance(picker, ResourcePicker)
+        assert app.focused is picker.query_one("#picker-filter")
+        await pilot.press("down")
+        await pilot.pause()
+        assert app.focused is picker.query_one("#picker-list", ListView)
 
 
 async def test_picker_enter_with_no_match_does_not_dismiss() -> None:
