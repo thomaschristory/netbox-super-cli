@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any, ClassVar, Protocol
 
 from textual.app import ComposeResult
@@ -102,11 +103,24 @@ class ListScreen(Screen[None]):
         return {**self._base_filters, **self._extra_filters}
 
     def reload(self) -> None:
+        # Pass the bound coroutine *function* (not a coroutine object) so an exclusive
+        # cancel before the worker starts never leaves a coroutine un-awaited.
+        self.run_worker(self._reload, group="reload", exclusive=True)  # type: ignore[arg-type]
+
+    async def _reload(self) -> None:
+        table = self._table
+        table.loading = True
         try:
-            records = list(self._client.paginate(self._op.path, self._params(), limit=200))
+            records = await asyncio.to_thread(
+                lambda: list(self._client.paginate(self._op.path, self._params(), limit=200))
+            )
+            self._populate(records)
         except (NetBoxAPIError, NetBoxClientError) as exc:
             self.notify(api_error_message(exc), severity="error", timeout=8)
-            return
+        finally:
+            table.loading = False
+
+    def _populate(self, records: list[dict[str, Any]]) -> None:
         self._prune_selection(records)
         table = self._table
         table.clear(columns=True)

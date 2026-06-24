@@ -92,9 +92,46 @@ async def test_list_screen_loads_rows_into_table() -> None:
     app = _ListApp(client)
     async with app.run_test() as pilot:
         await pilot.pause()
+        await app.workers.wait_for_complete()
         table = app.screen.query_one(DataTable)
         assert table.row_count == 2
         assert client.calls[0][0] == "/api/dcim/devices/"
+
+
+@pytest.mark.asyncio
+async def test_reload_clears_table_loading_after_load() -> None:
+    client = _FakeClient([{"id": 1, "name": "sw1"}])
+    app = _ListApp(client)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        screen = app.screen
+        assert isinstance(screen, ListScreen)
+        await screen._reload()
+        table = screen.query_one("#rows", DataTable)
+        assert table.loading is False
+        assert table.row_count == 1
+
+
+@pytest.mark.asyncio
+async def test_reload_clears_table_loading_after_error() -> None:
+    class _FlakyClient(_FakeClient):
+        def paginate(
+            self, path: str, params: dict[str, Any] | None = None, *, limit: int | None = None
+        ) -> Any:
+            self.calls.append((path, params))
+            raise NetBoxAPIError(status_code=500, url=path, body_snippet="boom", headers={})
+            yield  # pragma: no cover
+
+    client = _FlakyClient([{"id": 1, "name": "sw1"}])
+    app = _ListApp(client)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        screen = app.screen
+        assert isinstance(screen, ListScreen)
+        screen.notify = lambda msg, **kwargs: None  # type: ignore[method-assign]
+        await screen._reload()
+        table = screen.query_one("#rows", DataTable)
+        assert table.loading is False
 
 
 @pytest.mark.asyncio
@@ -107,6 +144,7 @@ async def test_filter_requeries_with_param() -> None:
         assert isinstance(screen, ListScreen)
         screen.apply_filters({"name": "sw1"})
         await pilot.pause()
+        await app.workers.wait_for_complete()
         last_params = client.calls[-1][1]
         assert last_params is not None
         assert ("name", "sw1") in last_params.items()
@@ -138,6 +176,7 @@ async def test_enter_on_focused_table_opens_detail() -> None:
     app = _ListApp(client)
     async with app.run_test() as pilot:
         await pilot.pause()
+        await app.workers.wait_for_complete()
         table = app.screen.query_one(DataTable)
         table.move_cursor(row=1)
         await pilot.press("enter")
@@ -156,6 +195,7 @@ async def test_base_filters_merge_with_extra_filters() -> None:
         assert isinstance(screen, ListScreen)
         screen.apply_filters({"name": "sw1"})
         await pilot.pause()
+        await app.workers.wait_for_complete()
         last_params = client.calls[-1][1]
         assert last_params is not None
         assert last_params.get("device_id") == "7"
@@ -173,6 +213,7 @@ async def test_refilter_replaces_prior_extra_filters() -> None:
         screen.apply_filters({"name": "sw1"})
         screen.apply_filters({"name": "sw2"})
         await pilot.pause()
+        await app.workers.wait_for_complete()
         last_params = client.calls[-1][1]
         assert last_params is not None
         assert last_params.get("name") == "sw2"
@@ -188,6 +229,7 @@ async def test_applying_filters_reloads_with_merged_params() -> None:
         assert isinstance(screen, ListScreen)
         screen.apply_filters({"status": "active"})
         await pilot.pause()
+        await app.workers.wait_for_complete()
         last_params = client.calls[-1][1]
         assert last_params is not None
         assert ("status", "active") in last_params.items()
@@ -232,6 +274,7 @@ async def test_f_opens_chooser_applies_columns_and_persists() -> None:
         chooser.action_toggle_column()
         chooser.action_apply()
         await pilot.pause()
+        await app.workers.wait_for_complete()
         assert app.screen is listscreen  # chooser dismissed
         table = listscreen.query_one("#rows", DataTable)
         # marker column + the three chosen columns
@@ -263,9 +306,11 @@ async def test_api_error_during_reload_notifies_and_keeps_rows() -> None:
         assert isinstance(screen, ListScreen)
         notes: list[str] = []
         screen.notify = lambda msg, **kwargs: notes.append(msg)  # type: ignore[method-assign]
+        await app.workers.wait_for_complete()
         rows_before = screen.query_one(DataTable).row_count
         screen.apply_filters({"manufacturer": "Cisco"})  # would 400
         await pilot.pause()
+        await app.workers.wait_for_complete()
         assert app.screen is screen  # did not crash out of the screen
         assert screen.query_one(DataTable).row_count == rows_before  # prior rows preserved
         assert notes and "manufacturer" in notes[0]  # error surfaced as a notification
@@ -391,6 +436,7 @@ async def test_create_success_reloads_list() -> None:
         await pilot.pause()
         screen = app.screen
         assert isinstance(screen, ListScreen)
+        await app.workers.wait_for_complete()
         load_count = len(client.calls)
         screen.action_create_record()
         await pilot.pause()
@@ -402,6 +448,7 @@ async def test_create_success_reloads_list() -> None:
         await pilot.pause()
         await pilot.press("y")
         await pilot.pause()
+        await app.workers.wait_for_complete()
         assert isinstance(app.screen, ListScreen)
         assert len(client.calls) > load_count
 
@@ -418,6 +465,7 @@ async def test_toggle_select_with_v_marks_and_unmarks_row() -> None:
         await pilot.pause()
         screen = app.screen
         assert isinstance(screen, ListScreen)
+        await app.workers.wait_for_complete()
         table = screen.query_one(DataTable)
         table.move_cursor(row=0)
         await pilot.press("v")
@@ -439,6 +487,7 @@ async def test_toggle_select_with_space_marks_row() -> None:
         await pilot.pause()
         screen = app.screen
         assert isinstance(screen, ListScreen)
+        await app.workers.wait_for_complete()
         table = screen.query_one(DataTable)
         table.move_cursor(row=1)
         await pilot.press("space")
@@ -455,6 +504,7 @@ async def test_selection_preserves_insertion_order() -> None:
         await pilot.pause()
         screen = app.screen
         assert isinstance(screen, ListScreen)
+        await app.workers.wait_for_complete()
         table = screen.query_one(DataTable)
         table.move_cursor(row=2)
         await pilot.press("v")
@@ -474,6 +524,7 @@ async def test_reload_preserves_present_ids_and_drops_stale() -> None:
         await pilot.pause()
         screen = app.screen
         assert isinstance(screen, ListScreen)
+        await app.workers.wait_for_complete()
         table = screen.query_one(DataTable)
         table.move_cursor(row=0)
         await pilot.press("v")
@@ -482,7 +533,7 @@ async def test_reload_preserves_present_ids_and_drops_stale() -> None:
         await pilot.pause()
         assert screen.selection.ids() == (1, 3)
         client._records = [{"id": 1, "name": "sw1"}, {"id": 2, "name": "sw2"}]
-        screen.reload()
+        await screen._reload()
         await pilot.pause()
         assert screen.selection.ids() == (1,)
         assert _marker_cell(table, 0).strip() == "*"
@@ -553,6 +604,7 @@ async def test_bulk_edit_pushes_form_with_selected_records_in_selection_order() 
         await pilot.pause()
         screen = app.screen
         assert isinstance(screen, ListScreen)
+        await app.workers.wait_for_complete()
         table = screen.query_one(DataTable)
         table.move_cursor(row=2)
         await pilot.press("v")
@@ -591,6 +643,7 @@ async def test_bulk_edit_no_update_op_is_safe_no_op() -> None:
         await pilot.pause()
         screen = app.screen
         assert isinstance(screen, ListScreen)
+        await app.workers.wait_for_complete()
         table = screen.query_one(DataTable)
         table.move_cursor(row=0)
         await pilot.press("v")
@@ -608,6 +661,7 @@ async def test_bulk_edit_key_pushes_form() -> None:
         await pilot.pause()
         screen = app.screen
         assert isinstance(screen, ListScreen)
+        await app.workers.wait_for_complete()
         table = screen.query_one(DataTable)
         table.move_cursor(row=0)
         await pilot.press("v")
@@ -629,6 +683,7 @@ async def test_bulk_edit_reloads_list_after_form_dismisses() -> None:
         table.move_cursor(row=0)
         await pilot.press("v")
         await pilot.pause()
+        await app.workers.wait_for_complete()
         load_count = len(client.calls)
         screen.action_bulk_edit()
         await pilot.pause()
@@ -636,5 +691,6 @@ async def test_bulk_edit_reloads_list_after_form_dismisses() -> None:
         assert isinstance(form, BulkEditForm)
         form.dismiss()
         await pilot.pause()
+        await app.workers.wait_for_complete()
         assert isinstance(app.screen, ListScreen)
         assert len(client.calls) > load_count
