@@ -95,6 +95,12 @@ class ListScreen(Screen[None]):
     def on_mount(self) -> None:
         table = self._table
         table.cursor_type = "row"
+        # Honour the user's saved column choice (persisted via the app) unless an
+        # explicit columns_config was passed in.
+        if self._columns_config is None:
+            resolver = getattr(self.app, "columns_for", None)
+            if callable(resolver):
+                self._columns_config = resolver(self._tag, self._resource_name)
         self.reload()
         # Land on the table so vim/global keys fire; the filter is reachable via `/`.
         table.focus()

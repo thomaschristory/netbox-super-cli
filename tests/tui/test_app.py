@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
+from textual.widgets import DataTable
 
 from nsc.model.command_model import CommandModel, Operation, Resource, Tag
 from nsc.tui.app import NscTuiApp
@@ -36,6 +37,33 @@ async def test_app_opens_resource_directly_when_named() -> None:
     async with app.run_test() as pilot:
         await pilot.pause()
         assert isinstance(app.screen, ListScreen)
+
+
+@pytest.mark.asyncio
+async def test_saved_column_prefs_are_applied_on_launch() -> None:
+    app = NscTuiApp(
+        _model(),
+        _FakeClient(),
+        initial_resource="devices",
+        column_prefs={"dcim": {"devices": ["name"]}},
+    )
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await app.workers.wait_for_complete()
+        screen = app.screen
+        assert isinstance(screen, ListScreen)
+        table = screen.query_one("#rows", DataTable)
+        labels = [str(col.label) for col in table.columns.values()]
+        assert labels == [" ", "name"]  # marker column + only the saved column
+
+
+@pytest.mark.asyncio
+async def test_save_columns_updates_in_memory_prefs() -> None:
+    app = NscTuiApp(_model(), _FakeClient(), initial_resource="devices")
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        app.save_columns("dcim", "devices", ["name", "id"])
+        assert app.columns_for("dcim", "devices") == ["name", "id"]
 
 
 @pytest.mark.asyncio

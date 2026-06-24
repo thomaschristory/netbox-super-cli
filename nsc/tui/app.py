@@ -31,14 +31,23 @@ class NscTuiApp(App[None]):
         *,
         initial_resource: str | None = None,
         save_columns: Callable[[str, str, list[str]], None] | None = None,
+        column_prefs: dict[str, dict[str, list[str]]] | None = None,
     ) -> None:
         super().__init__()
         self._model = model
         self._client = client
         self._initial_resource = initial_resource
         self._save_columns = save_columns
+        self._column_prefs = column_prefs or {}
+
+    def columns_for(self, tag: str, resource: str) -> list[str] | None:
+        """Saved visible columns for a resource, if any (read by ListScreen)."""
+        return self._column_prefs.get(tag, {}).get(resource)
 
     def save_columns(self, tag: str, resource: str, columns: list[str]) -> None:
+        # Update the in-memory map too, so re-opening the list this session
+        # reflects the choice without a relaunch.
+        self._column_prefs.setdefault(tag, {})[resource] = list(columns)
         if self._save_columns is not None:
             self._save_columns(tag, resource, columns)
 
@@ -89,5 +98,12 @@ def run_tui(
     *,
     initial_resource: str | None = None,
     save_columns: Callable[[str, str, list[str]], None] | None = None,
+    column_prefs: dict[str, dict[str, list[str]]] | None = None,
 ) -> None:
-    NscTuiApp(model, client, initial_resource=initial_resource, save_columns=save_columns).run()
+    NscTuiApp(
+        model,
+        client,
+        initial_resource=initial_resource,
+        save_columns=save_columns,
+        column_prefs=column_prefs,
+    ).run()

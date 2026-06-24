@@ -54,9 +54,11 @@ def register(app: typer.Typer) -> None:
         runtime = _runtime_from_ctx(ctx)
         from nsc.tui import run_tui  # noqa: PLC0415  # deferred: keeps Textual lazy.
 
+        column_prefs = {tag: dict(resources) for tag, resources in runtime.config.columns.items()}
         run_tui(
             runtime.command_model,
             runtime.client,
             initial_resource=resource,
             save_columns=_save_columns,
+            column_prefs=column_prefs,
         )

@@ -25,10 +25,16 @@ def _help_app() -> typer.Typer:
     return app
 
 
+class _FakeConfig:
+    def __init__(self) -> None:
+        self.columns: dict[str, dict[str, list[str]]] = {}
+
+
 class _FakeRuntime:
     def __init__(self) -> None:
         self.command_model = object()
         self.client = object()
+        self.config = _FakeConfig()
 
 
 def test_invoking_tui_calls_run_tui_with_resource(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -41,6 +47,7 @@ def test_invoking_tui_calls_run_tui_with_resource(monkeypatch: pytest.MonkeyPatc
         *,
         initial_resource: str | None = None,
         save_columns: Any = None,
+        column_prefs: Any = None,
     ) -> None:
         calls.append((model, client, initial_resource))
 
