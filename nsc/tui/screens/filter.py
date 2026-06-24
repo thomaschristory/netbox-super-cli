@@ -79,6 +79,10 @@ class FilterScreen(ModalScreen[dict[str, str]]):
             with Horizontal(id="filter-actions"):
                 yield Button("Apply  ⌃s", id="apply", variant="primary")
                 yield Button("Clear", id="clear")
+            yield Label(
+                "↓/Tab next field · Shift+Tab back · Enter pick · ⌃s apply · Esc cancel",
+                id="filter-hint",
+            )
 
     def on_mount(self) -> None:
         self._refresh_chips()

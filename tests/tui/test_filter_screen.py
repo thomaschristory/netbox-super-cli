@@ -301,6 +301,19 @@ async def test_apply_and_clear_buttons_dispatch() -> None:
 
 
 @pytest.mark.asyncio
+async def test_navigation_hint_is_shown_at_the_bottom() -> None:
+    app = _FilterApp()
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        screen = app.screen
+        assert isinstance(screen, FilterScreen)
+        hint = str(screen.query_one("#filter-hint", Label).render())
+        assert "Tab" in hint
+        assert "↓" in hint
+        assert "apply" in hint.lower()
+
+
+@pytest.mark.asyncio
 async def test_down_arrow_moves_focus_to_next_field() -> None:
     app = _FilterApp()
     async with app.run_test() as pilot:

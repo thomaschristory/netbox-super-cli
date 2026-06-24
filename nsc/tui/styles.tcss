@@ -107,6 +107,12 @@ ModalScreen > Vertical {
     margin: 0 1;
 }
 
+#filter-hint {
+    width: 1fr;
+    text-align: center;
+    color: $text-muted;
+}
+
 /* ---- resource picker / record picker ---- */
 #picker,
 #record-picker {
