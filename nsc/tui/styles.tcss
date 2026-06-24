@@ -1,0 +1,120 @@
+/* nsc TUI theme — consistent layout and look across every screen.
+   Layout rules here fix container sizing (so widgets never overlap); the
+   colours lean on Textual's theme variables so the app respects the user's
+   terminal theme. */
+
+/* ---- section headings (filter form, etc.) ---- */
+.filter-heading {
+    text-style: bold;
+    color: $accent;
+    margin: 1 0 0 0;
+}
+
+/* ---- list screen: the table fills the body ---- */
+ListScreen #rows {
+    height: 1fr;
+}
+
+/* ---- detail screen ---- */
+DetailScreen #fields {
+    height: 1fr;
+}
+
+DetailScreen #edit-bar {
+    height: auto;
+    padding: 0 1;
+    border-top: heavy $accent;
+    background: $boost;
+}
+
+DetailScreen #edit-bar-label {
+    width: auto;
+    padding: 0 1 0 0;
+    color: $accent;
+    text-style: bold;
+}
+
+/* ---- edit / create form ---- */
+EditForm #edit-form-body {
+    height: 1fr;
+}
+
+.edit-field {
+    height: 3;
+    padding: 0 1;
+}
+
+.edit-label {
+    width: 20;
+    content-align: left middle;
+    color: $text-muted;
+}
+
+/* ---- generic modal dialogs: centre, box, dim the backdrop ---- */
+ModalScreen {
+    align: center middle;
+    background: $background 60%;
+}
+
+ModalScreen > VerticalScroll,
+ModalScreen > Vertical {
+    width: 80%;
+    max-width: 100;
+    height: auto;
+    max-height: 85%;
+    padding: 1 2;
+    border: round $primary;
+    background: $surface;
+}
+
+/* ---- filter builder ---- */
+#filter-body {
+    height: 85%;
+}
+
+#filter-form {
+    height: 1fr;
+}
+
+.filter-field {
+    height: 3;
+}
+
+.filter-label {
+    width: 16;
+    content-align: left middle;
+    color: $text-muted;
+}
+
+#search-results {
+    max-height: 8;
+    height: auto;
+    border: round $panel;
+    margin: 0 0 1 0;
+}
+
+#chips {
+    height: auto;
+}
+
+#filter-actions {
+    height: auto;
+    align-horizontal: right;
+    padding: 1 0 0 0;
+}
+
+#filter-actions Button {
+    margin: 0 1;
+}
+
+/* ---- resource picker / record picker ---- */
+#picker,
+#record-picker {
+    height: 80%;
+}
+
+#picker-list,
+#record-picker-list {
+    height: 1fr;
+    border: round $panel;
+}

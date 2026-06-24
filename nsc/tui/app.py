@@ -17,6 +17,7 @@ from nsc.tui.widgets.help import HelpOverlay
 
 class NscTuiApp(App[None]):
     BINDINGS: ClassVar[list[BindingType]] = textual_bindings("global")
+    CSS_PATH: ClassVar[str] = "styles.tcss"
     TITLE = "nsc"
     # Free up ctrl+p for our own resource picker; Textual binds it by default.
     ENABLE_COMMAND_PALETTE = False
