@@ -64,6 +64,7 @@ class GlobalSearchScreen(ModalScreen[None]):
         self._spin_timer: Timer | None = None
         self._frame = 0
         self._target_name = ""
+        self._pending_term = ""
 
     def compose(self) -> ComposeResult:
         with Vertical(id="search-box"):
@@ -82,33 +83,42 @@ class GlobalSearchScreen(ModalScreen[None]):
             return
         term = event.value.strip()
         if term:
-            self.run_worker(self._run_search(term), exclusive=True)
+            self._pending_term = term
+            # Pass the bound coroutine *function* (not a coroutine object) so an
+            # exclusive cancel before the worker starts never leaves a coroutine
+            # un-awaited.
+            self.run_worker(self._run_pending, exclusive=True)  # type: ignore[arg-type]
+
+    async def _run_pending(self) -> None:
+        await self._run_search(self._pending_term)
 
     async def _run_search(self, term: str) -> None:
         tree = self.query_one("#search-tree", Tree)
         tree.clear()
-        self._begin_spinner()
+        timer = self._begin_spinner()
         found = 0
-        try:
-            for ref in self._targets:
-                self._target_name = ref.resource_name
-                try:
-                    rows = await asyncio.to_thread(
-                        search_target, self._client, ref, term, _PER_TYPE_LIMIT
-                    )
-                except (NetBoxAPIError, NetBoxClientError):
-                    continue  # one bad endpoint must not abort the whole search
-                if rows:
-                    self._add_group(ref, rows)
-                    found += len(rows)
-        finally:
-            self._end_spinner(found)
+        for ref in self._targets:
+            self._target_name = ref.resource_name
+            try:
+                rows = await asyncio.to_thread(
+                    search_target, self._client, ref, term, _PER_TYPE_LIMIT
+                )
+            except (NetBoxAPIError, NetBoxClientError):
+                continue  # one bad endpoint must not abort the whole search
+            if rows:
+                self._add_group(ref, rows)
+                found += len(rows)
+        # Stop our own spinner only — never in a finally, so a superseded
+        # (cancelled) worker can't stop the spinner a newer search just started.
+        self._end_spinner(timer, found)
 
-    def _begin_spinner(self) -> None:
+    def _begin_spinner(self) -> Timer:
         self._frame = 0
         self._target_name = ""
-        self._spin_timer = self.set_interval(0.1, self._tick)
+        timer = self.set_interval(0.1, self._tick)
+        self._spin_timer = timer
         self._tick()
+        return timer
 
     def _tick(self) -> None:
         self._frame += 1
@@ -117,9 +127,11 @@ class GlobalSearchScreen(ModalScreen[None]):
             f"{spinner_frame(self._frame)} Searching…{suffix}"
         )
 
-    def _end_spinner(self, found: int) -> None:
-        if self._spin_timer is not None:
-            self._spin_timer.stop()
+    def _end_spinner(self, timer: Timer, found: int) -> None:
+        timer.stop()
+        # Only clear the shared handle if it is still ours; a newer search may
+        # have already replaced it with its own running timer.
+        if self._spin_timer is timer:
             self._spin_timer = None
         summary = f"{found} match{'es' if found != 1 else ''}" if found else "No matches."
         self.query_one("#search-status", Label).update(summary)

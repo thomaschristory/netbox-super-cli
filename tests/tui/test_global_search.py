@@ -164,6 +164,24 @@ class _FlakyApp(_SearchApp):
 
 
 @pytest.mark.asyncio
+async def test_submitting_input_runs_worker_and_populates_tree() -> None:
+    app = _SearchApp()
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        screen = _screen(app)
+        screen.query_one("#search-input").focus()
+        await pilot.pause()
+        await pilot.press(*"sw")
+        await pilot.press("enter")
+        await app.workers.wait_for_complete()
+        await pilot.pause()
+        tree = screen.query_one("#search-tree", Tree)
+        assert [str(n.label) for n in tree.root.children] == ["devices (1)"]
+        # The exclusive worker finished and left no dangling spinner timer.
+        assert screen._spin_timer is None
+
+
+@pytest.mark.asyncio
 async def test_a_failing_target_is_skipped_not_fatal() -> None:
     app = _FlakyApp()
     async with app.run_test() as pilot:
