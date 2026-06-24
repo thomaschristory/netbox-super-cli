@@ -88,3 +88,51 @@ def test_related_views_finds_resources_filtering_on_this_resource() -> None:
 
 def test_related_views_empty_when_nothing_references_it() -> None:
     assert related_views(_model(), "interfaces") == []
+
+
+def test_related_views_prefers_id_param_when_both_present() -> None:
+    # Real NetBox declares the name-based filter (`device`) BEFORE the id-based
+    # one (`device_id`). Drill passes a numeric PK, so the id filter must win.
+    interfaces = Resource(
+        name="interfaces",
+        list_op=Operation(
+            operation_id="dcim_interfaces_list",
+            http_method="GET",
+            path="/api/dcim/interfaces/",
+            parameters=[_qp("device"), _qp("device_id")],
+        ),
+    )
+    devices = Resource(
+        name="devices",
+        list_op=Operation(
+            operation_id="dcim_devices_list", http_method="GET", path="/api/dcim/devices/"
+        ),
+    )
+    tag = Tag(name="dcim", resources={"devices": devices, "interfaces": interfaces})
+    model = CommandModel(info_title="t", info_version="1", schema_hash="h", tags={"dcim": tag})
+    views = related_views(model, "devices")
+    assert len(views) == 1
+    assert views[0].filter_param == "device_id"
+
+
+def test_related_views_falls_back_to_name_when_only_name_present() -> None:
+    consumers = Resource(
+        name="consumers",
+        list_op=Operation(
+            operation_id="x_list",
+            http_method="GET",
+            path="/api/x/consumers/",
+            parameters=[_qp("device")],
+        ),
+    )
+    devices = Resource(
+        name="devices",
+        list_op=Operation(
+            operation_id="dcim_devices_list", http_method="GET", path="/api/dcim/devices/"
+        ),
+    )
+    tag = Tag(name="dcim", resources={"devices": devices, "consumers": consumers})
+    model = CommandModel(info_title="t", info_version="1", schema_hash="h", tags={"dcim": tag})
+    views = related_views(model, "devices")
+    assert len(views) == 1
+    assert views[0].filter_param == "device"
