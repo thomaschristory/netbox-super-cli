@@ -10,15 +10,18 @@ from __future__ import annotations
 
 from typing import Any
 
-from nsc.output.flatten import flatten
-
 
 def available_columns(records: list[dict[str, Any]]) -> list[str]:
-    """Ordered union of the flattened keys across ``records`` (first-seen order)."""
+    """Ordered union of the records' top-level keys (first-seen order).
+
+    Only top-level fields are offered: a foreign key or choice object stays one
+    column (the table renders it via its ``display``/``label``), so the chooser
+    shows ``site`` rather than ``site.id`` / ``site.url`` / ``site.display``.
+    """
     seen: list[str] = []
     seen_set: set[str] = set()
     for record in records:
-        for key in flatten(record):
+        for key in record:
             if key not in seen_set:
                 seen_set.add(key)
                 seen.append(key)

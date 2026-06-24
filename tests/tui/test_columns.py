@@ -3,17 +3,17 @@ from __future__ import annotations
 from nsc.tui.columns import ColumnSelection, available_columns
 
 
-def test_available_columns_is_ordered_union_of_flattened_keys() -> None:
+def test_available_columns_is_ordered_union_of_top_level_keys() -> None:
     records = [
-        {"id": 1, "name": "sw1", "site": {"display": "HQ"}},
-        {"id": 2, "name": "sw2", "status": "active"},
+        {"id": 1, "name": "sw1", "site": {"id": 3, "url": "u", "display": "HQ"}},
+        {"id": 2, "name": "sw2", "status": {"value": "active", "label": "Active"}},
     ]
     cols = available_columns(records)
-    # first-seen order across records; nested objects flatten to dotted keys
-    assert cols[:2] == ["id", "name"]
-    assert "site.display" in cols
-    assert "status" in cols
-    assert cols.index("status") > cols.index("name")  # appeared later
+    # first-seen order; FK/choice objects stay a single top-level column (the
+    # table renders them via display/label) — no role.id / site.display noise.
+    assert cols == ["id", "name", "site", "status"]
+    assert "site.display" not in cols
+    assert "site.url" not in cols
 
 
 def test_selection_orders_visible_first_then_the_rest() -> None:
