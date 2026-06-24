@@ -56,9 +56,23 @@ def test_invoking_tui_calls_run_tui_with_resource(monkeypatch: pytest.MonkeyPatc
 
     app = typer.Typer()
     register(app)
-    result = CliRunner().invoke(app, ["devices"], obj=(None, runtime))
+    result = CliRunner().invoke(app, ["tui", "devices"], obj=(None, runtime))
     assert result.exit_code == 0, result.output
     assert calls == [(runtime.command_model, runtime.client, "devices")]
+
+
+def test_interactive_and_i_are_aliases_of_tui() -> None:
+    for name in ("tui", "interactive", "i"):
+        result = CliRunner().invoke(real_app, [name, "--help"])
+        assert result.exit_code == 0, f"{name}: {result.output}"
+        assert "resource" in result.output.lower()
+
+
+def test_tui_is_visible_and_aliases_are_hidden() -> None:
+    group = typer.main.get_command(_help_app())
+    assert group.commands["tui"].hidden is False  # type: ignore[attr-defined]
+    assert group.commands["interactive"].hidden is True  # type: ignore[attr-defined]
+    assert group.commands["i"].hidden is True  # type: ignore[attr-defined]
 
 
 def test_save_columns_persists_to_config(tmp_path: Any, monkeypatch: pytest.MonkeyPatch) -> None:

@@ -42,7 +42,6 @@ def _save_columns(tag: str, resource: str, columns: list[str]) -> None:
 
 
 def register(app: typer.Typer) -> None:
-    @app.command("tui")
     def tui(
         ctx: typer.Context,
         resource: Annotated[
@@ -62,3 +61,9 @@ def register(app: typer.Typer) -> None:
             save_columns=_save_columns,
             column_prefs=column_prefs,
         )
+
+    # `tui` is canonical; `interactive` and `i` are hidden aliases for the same
+    # command (discoverability + a fast shortcut) without a second executable.
+    app.command("tui")(tui)
+    app.command("interactive", hidden=True)(tui)
+    app.command("i", hidden=True)(tui)
