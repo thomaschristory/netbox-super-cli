@@ -10,7 +10,7 @@ from __future__ import annotations
 from typing import ClassVar
 
 from textual.app import ComposeResult
-from textual.binding import BindingType
+from textual.binding import Binding, BindingType
 from textual.containers import Vertical
 from textual.screen import ModalScreen
 from textual.widgets import Input, Label, Tree
@@ -20,6 +20,29 @@ from nsc.tui.catalog import ResourceRef, filter_resources, group_refs, list_reso
 from nsc.tui.nav import can_go_back
 
 _HINT = "↓ enter list · ←/→ close/open · ⌃e all · Enter pick · Esc close"
+
+
+class _ResourceTree(Tree[ResourceRef]):
+    """Tree with left/right collapse/expand (Textual's default uses space/enter)."""
+
+    BINDINGS: ClassVar[list[BindingType]] = [
+        Binding("right", "expand_node", "Open", show=False),
+        Binding("left", "collapse_or_parent", "Close", show=False),
+    ]
+
+    def action_expand_node(self) -> None:
+        node = self.cursor_node
+        if node is not None and node.allow_expand and not node.is_expanded:
+            node.expand()
+
+    def action_collapse_or_parent(self) -> None:
+        node = self.cursor_node
+        if node is None:
+            return
+        if node.allow_expand and node.is_expanded:
+            node.collapse()
+        elif node.parent is not None and node.parent is not self.root:
+            self.action_cursor_parent()
 
 
 class ResourcePicker(ModalScreen[ResourceRef]):
@@ -39,7 +62,7 @@ class ResourcePicker(ModalScreen[ResourceRef]):
     def compose(self) -> ComposeResult:
         with Vertical(id="picker"):
             yield Input(placeholder="Filter resources…", id="picker-filter")
-            tree: Tree[ResourceRef] = Tree("resources", id="picker-tree")
+            tree: _ResourceTree = _ResourceTree("resources", id="picker-tree")
             tree.show_root = False
             yield tree
             yield Label(_HINT, id="picker-hint")
@@ -55,6 +78,10 @@ class ResourcePicker(ModalScreen[ResourceRef]):
             node = tree.root.add(tag, expand=expand)
             for ref in refs:
                 node.add_leaf(ref.resource_name, data=ref)
+        # Place the cursor on the first node so left/right act immediately once
+        # the tree is focused (Textual leaves cursor_line at -1 otherwise).
+        if tree.root.children:
+            tree.cursor_line = 0
         self._expanded_all = expand
 
     def on_input_changed(self, event: Input.Changed) -> None:

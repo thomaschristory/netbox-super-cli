@@ -108,6 +108,23 @@ async def test_ctrl_e_expands_then_collapses_all_groups() -> None:
         assert all(not node.is_expanded for node in tree.root.children)
 
 
+async def test_left_right_arrows_open_and_close_a_group() -> None:
+    app = _PickerApp()
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        picker = _picker(app)
+        await pilot.press("down")  # focus the tree; cursor lands on the first group
+        await pilot.pause()
+        first = picker.query_one("#picker-tree", Tree).root.children[0]
+        assert not first.is_expanded
+        await pilot.press("right")
+        await pilot.pause()
+        assert first.is_expanded
+        await pilot.press("left")
+        await pilot.pause()
+        assert not first.is_expanded
+
+
 async def test_down_arrow_from_filter_focuses_the_tree() -> None:
     app = _PickerApp()
     async with app.run_test() as pilot:
