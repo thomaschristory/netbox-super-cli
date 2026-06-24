@@ -8,9 +8,10 @@ the terminal appears to go black.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from textual.app import App
+if TYPE_CHECKING:
+    from textual.app import App
 
 _BASE_PLUS_ROOT = 2
 
