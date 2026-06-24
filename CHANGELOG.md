@@ -2,6 +2,50 @@
 
 All notable changes to netbox-super-cli are tracked here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) loosely. From v1.0.0 onward, releases follow [Semantic Versioning](https://semver.org/) and the version in `pyproject.toml` matches the git tag. Pre-1.0 milestones (Phase 1-5) were pinned by tag while `pyproject.toml` stayed at `0.0.1`.
 
+## v1.2.0 — Unreleased
+
+Minor release. Adds an **interactive terminal UI** — a keyboard-driven, fully
+schema-generic front end over the same command model the CLI uses.
+
+### Added
+
+- **`nsc tui` — interactive TUI** (aliases: `nsc interactive`, `nsc i`). A
+  Textual app to browse, filter, edit, bulk-edit and search NetBox from the
+  keyboard, generated entirely from the OpenAPI-derived command model (works for
+  every resource and plugin, no per-model wiring). Textual is imported lazily so
+  the regular CLI's startup path is unchanged. See the
+  [Interactive TUI guide](https://thomaschristory.github.io/netbox-super-cli/guides/interactive-tui/).
+  - **Resource picker** — a collapsible tree of resources grouped by tag, with
+    fuzzy filtering (matching groups auto-expand) and expand/collapse-all.
+  - **List view** — paginated tables with vim/arrow navigation, multi-select,
+    refresh, and an async loading wheel that keeps the input responsive.
+  - **Filter builder** (`/`) — a web-UI-like form of curated common fields
+    (enum dropdowns, conventional field names), a search box over every query
+    parameter, foreign-key record pickers (applied as `…_id`), a raw
+    `key=value` line, and removable active-filter chips.
+  - **Inline record editing** — the detail view is the edit surface: edit a
+    field in place, stage changes, and save them all in one `PATCH` after a
+    confirmation diff. Create and delete are supported; foreign keys open a
+    searchable picker.
+  - **Relationship drill-down** — schema-derived relationship tabs (a device's
+    interfaces, modules, cables, …) open a pre-filtered list.
+  - **Bulk edit** — set chosen fields across a multi-selection (prepopulated
+    from the records' shared value), preview a per-record diff, and apply with a
+    progress bar and per-record partial-failure reporting.
+  - **Column chooser** (`f`) — toggle and reorder visible columns; the choice
+    persists per resource in `~/.nsc/config.yaml` (shared with the CLI's
+    `--columns`).
+  - **Global search** (`Ctrl`+`F`) — search across a curated set of common
+    object types at once, with results grouped by type and a live spinner.
+  - **Help overlay** (`?`) — a per-context keymap generated from the live
+    bindings, so it can never drift.
+- New dependency: `textual` (loaded only by the TUI).
+
+### Documentation
+
+- New [Interactive TUI guide](https://thomaschristory.github.io/netbox-super-cli/guides/interactive-tui/)
+  with screenshots, linked from the Home page and the README.
+
 ## v1.1.0 — 2026-06-18
 
 Minor release. Hardens the audit log and schema loader against the security

@@ -11,6 +11,10 @@ nsc tui                 # land on the resource picker
 nsc tui devices         # jump straight into the devices list
 ```
 
+`nsc interactive` and `nsc i` are aliases of the same command.
+
+![The devices list in the nsc TUI](../assets/tui/list.svg)
+
 It uses your active profile and auth exactly like the CLI. Textual (the TUI
 toolkit) is imported lazily, so the normal CLI's startup time is unaffected.
 
@@ -23,6 +27,8 @@ toolkit) is imported lazily, so the normal CLI's startup time is unaffected.
 With no argument, `nsc tui` lands on a **collapsible tree** of resources grouped
 by category (`dcim`, `ipam`, …). It is also reachable anywhere with
 <kbd>Ctrl</kbd>+<kbd>P</kbd>.
+
+![The resource picker tree](../assets/tui/picker.svg)
 
 | Key | Action |
 |---|---|
@@ -58,6 +64,8 @@ stays responsive.
 <kbd>/</kbd> opens a **filter builder** rather than a bare text box, because a
 NetBox list endpoint exposes hundreds of query parameters.
 
+![The filter builder](../assets/tui/filter.svg)
+
 - **Common fields** — a curated form of the fields you usually filter on: the
   free-text `search`, every choice field as a dropdown, and conventional fields
   (name, status, role, site, tenant, tag, …).
@@ -83,6 +91,8 @@ so you can refine them.
 The detail view **is** the edit surface — there is no separate "edit window".
 Move to a field and edit it in place; changes accumulate locally and are sent in
 **one** `PATCH` when you save.
+
+![A record's detail view with relationship tabs](../assets/tui/detail.svg)
 
 | Key | Action |
 |---|---|
@@ -149,6 +159,8 @@ shared between the TUI and the CLI.
 <kbd>Ctrl</kbd>+<kbd>F</kbd> (from anywhere) opens a search across many object
 types at once. Type a term, press <kbd>Enter</kbd>, and matches stream in grouped
 by type with a spinner while it runs; selecting a result opens its detail view.
+
+![Global search results grouped by type](../assets/tui/search.svg)
 
 !!! note "How it works"
     NetBox has no single global-search REST endpoint, so `nsc` approximates the
