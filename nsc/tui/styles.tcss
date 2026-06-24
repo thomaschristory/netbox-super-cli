@@ -152,6 +152,11 @@ ModalScreen > Vertical {
     height: 85%;
 }
 
+#search-status {
+    width: 1fr;
+    color: $accent;
+}
+
 #search-tree {
     height: 1fr;
     border: round $panel;

@@ -4,7 +4,7 @@ from typing import Any
 
 import pytest
 from textual.app import App, ComposeResult
-from textual.widgets import Static, Tree
+from textual.widgets import Label, Static, Tree
 
 from nsc.http.errors import NetBoxAPIError
 from nsc.model.command_model import (
@@ -16,7 +16,7 @@ from nsc.model.command_model import (
     Tag,
 )
 from nsc.tui.screens.detail import DetailScreen
-from nsc.tui.screens.global_search import GlobalSearchScreen
+from nsc.tui.screens.global_search import GlobalSearchScreen, spinner_frame
 
 
 def _q_list(path: str) -> Operation:
@@ -91,6 +91,43 @@ async def test_search_groups_matches_by_type_and_omits_empty_groups() -> None:
         labels = [str(node.label) for node in tree.root.children]
         # devices matched (count shown); prefixes had no hits and is omitted
         assert labels == ["devices (1)"]
+
+
+def test_spinner_frame_cycles() -> None:
+    assert spinner_frame(0) == spinner_frame(10)  # 10 frames, wraps
+    assert spinner_frame(0) != spinner_frame(1)
+    assert all(spinner_frame(i) for i in range(25))  # never empty
+
+
+@pytest.mark.asyncio
+async def test_status_shows_match_count_after_search() -> None:
+    app = _SearchApp()
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        screen = _screen(app)
+        await screen._run_search("sw")  # devices yields one hit
+        await pilot.pause()
+        status = str(screen.query_one("#search-status", Label).render())
+        assert status == "1 match"
+        # spinner timer is stopped after the search ends
+        assert screen._spin_timer is None
+
+
+@pytest.mark.asyncio
+async def test_status_shows_no_matches_when_empty() -> None:
+    class _EmptyClient:
+        def paginate(self, path, params=None, *, limit=None):  # type: ignore[no-untyped-def]
+            return iter([])
+
+    app = _SearchApp()
+    app.client = _EmptyClient()  # type: ignore[assignment]
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        screen = _screen(app)
+        screen._client = app.client
+        await screen._run_search("zzz")
+        await pilot.pause()
+        assert str(screen.query_one("#search-status", Label).render()) == "No matches."
 
 
 @pytest.mark.asyncio

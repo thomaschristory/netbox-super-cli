@@ -16,6 +16,7 @@ from textual.app import ComposeResult
 from textual.binding import BindingType
 from textual.containers import Vertical
 from textual.screen import ModalScreen
+from textual.timer import Timer
 from textual.widgets import Input, Label, Tree
 
 from nsc.http.errors import NetBoxAPIError, NetBoxClientError
@@ -26,6 +27,12 @@ from nsc.tui.widgets.nav_tree import NavTree
 
 _HINT = "Enter search · ↓ results · ←/→ close/open · ⌃e all · Enter open · Esc close"
 _PER_TYPE_LIMIT = 8
+_SPINNER = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
+
+
+def spinner_frame(index: int) -> str:
+    """The braille spinner glyph for a given tick (cycles)."""
+    return _SPINNER[index % len(_SPINNER)]
 
 
 @dataclass(frozen=True)
@@ -54,10 +61,14 @@ class GlobalSearchScreen(ModalScreen[None]):
         self._model = model
         self._client = client
         self._targets = global_search_targets(model)
+        self._spin_timer: Timer | None = None
+        self._frame = 0
+        self._target_name = ""
 
     def compose(self) -> ComposeResult:
         with Vertical(id="search-box"):
             yield Input(placeholder="Search NetBox…", id="search-input")
+            yield Label("", id="search-status")
             tree = NavTree("results", id="search-tree")
             tree.show_root = False
             yield tree
@@ -76,15 +87,42 @@ class GlobalSearchScreen(ModalScreen[None]):
     async def _run_search(self, term: str) -> None:
         tree = self.query_one("#search-tree", Tree)
         tree.clear()
-        for ref in self._targets:
-            try:
-                rows = await asyncio.to_thread(
-                    search_target, self._client, ref, term, _PER_TYPE_LIMIT
-                )
-            except (NetBoxAPIError, NetBoxClientError):
-                continue  # one bad endpoint must not abort the whole search
-            if rows:
-                self._add_group(ref, rows)
+        self._begin_spinner()
+        found = 0
+        try:
+            for ref in self._targets:
+                self._target_name = ref.resource_name
+                try:
+                    rows = await asyncio.to_thread(
+                        search_target, self._client, ref, term, _PER_TYPE_LIMIT
+                    )
+                except (NetBoxAPIError, NetBoxClientError):
+                    continue  # one bad endpoint must not abort the whole search
+                if rows:
+                    self._add_group(ref, rows)
+                    found += len(rows)
+        finally:
+            self._end_spinner(found)
+
+    def _begin_spinner(self) -> None:
+        self._frame = 0
+        self._target_name = ""
+        self._spin_timer = self.set_interval(0.1, self._tick)
+        self._tick()
+
+    def _tick(self) -> None:
+        self._frame += 1
+        suffix = f" {self._target_name}" if self._target_name else ""
+        self.query_one("#search-status", Label).update(
+            f"{spinner_frame(self._frame)} Searching…{suffix}"
+        )
+
+    def _end_spinner(self, found: int) -> None:
+        if self._spin_timer is not None:
+            self._spin_timer.stop()
+            self._spin_timer = None
+        summary = f"{found} match{'es' if found != 1 else ''}" if found else "No matches."
+        self.query_one("#search-status", Label).update(summary)
 
     def _add_group(self, ref: ResourceRef, rows: list[dict[str, Any]]) -> None:
         tree = self.query_one("#search-tree", Tree)
