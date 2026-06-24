@@ -146,6 +146,16 @@ def test_bulk_edit_surfaces_in_list_bindings_and_help() -> None:
     assert "bulk_edit" in help_list_actions
 
 
+def test_bulk_edit_is_a_list_binding_on_a_distinct_capital_key() -> None:
+    bulk = next(b for b in KEYMAP if b.action == "bulk_edit")
+    toggle = next(b for b in KEYMAP if b.action == "toggle_select")
+    assert bulk.context == "list"
+    assert len(bulk.keys) == 1
+    only = bulk.keys[0]
+    assert only.isupper()
+    assert only not in toggle.keys
+
+
 def test_display_keys_renders_pressable_glyphs() -> None:
     help_binding = next(b for b in KEYMAP if b.action == "request_help")
     filter_binding = next(b for b in KEYMAP if b.action == "focus_filter")

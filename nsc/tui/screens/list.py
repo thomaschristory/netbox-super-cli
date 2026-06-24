@@ -218,8 +218,8 @@ class ListScreen(Screen[None]):
         update_op = resource.update_op
         if update_op is None:
             return
-        selected_ids = set(self._selection.ids())
-        selected = [r for r in self._records if r.get("id") in selected_ids]
+        by_id = {r.get("id"): r for r in self._records}
+        selected = [by_id[i] for i in self._selection.ids() if i in by_id]
         if not selected:
             return
         from nsc.tui.screens.bulk_edit_form import BulkEditForm  # noqa: PLC0415

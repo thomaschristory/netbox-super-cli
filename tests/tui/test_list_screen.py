@@ -15,6 +15,7 @@ from nsc.model.command_model import (
     Resource,
     Tag,
 )
+from nsc.tui.screens.bulk_edit_form import BulkEditForm
 from nsc.tui.screens.detail import DetailScreen
 from nsc.tui.screens.edit_form import EditForm
 from nsc.tui.screens.list import ListScreen
@@ -407,6 +408,143 @@ async def test_toggle_select_on_empty_table_is_safe_no_op() -> None:
         await pilot.pause()
         assert screen.selection.ids() == ()
         assert isinstance(app.screen, ListScreen)
+
+
+def _bulk_model(*, with_update: bool = True) -> CommandModel:
+    list_op = Operation(
+        operation_id="devices_list",
+        http_method="GET",
+        path="/api/dcim/devices/",
+        default_columns=["id", "name"],
+    )
+    update_op = (
+        Operation(
+            operation_id="dcim_devices_partial_update",
+            http_method="PATCH",
+            path="/api/dcim/devices/{id}/",
+            request_body=RequestBodyShape(
+                top_level="object",
+                fields={"name": FieldShape(primitive=PrimitiveType.STRING)},
+            ),
+        )
+        if with_update
+        else None
+    )
+    devices = Resource(name="devices", list_op=list_op, update_op=update_op)
+    tag = Tag(name="dcim", resources={"devices": devices})
+    return CommandModel(info_title="t", info_version="1", schema_hash="h", tags={"dcim": tag})
+
+
+class _BulkApp(App[None]):
+    def __init__(self, client: _FakeClient, *, with_update: bool = True) -> None:
+        super().__init__()
+        self._client = client
+        self._with_update = with_update
+
+    def compose(self) -> ComposeResult:
+        yield Static("")
+
+    async def on_mount(self) -> None:
+        model = _bulk_model(with_update=self._with_update)
+        op = model.tags["dcim"].resources["devices"].list_op
+        assert op is not None
+        await self.push_screen(ListScreen(model, self._client, "dcim", "devices", op))
+
+
+@pytest.mark.asyncio
+async def test_bulk_edit_pushes_form_with_selected_records_in_selection_order() -> None:
+    records = [{"id": 10, "name": "sw1"}, {"id": 20, "name": "sw2"}, {"id": 30, "name": "sw3"}]
+    client = _FakeClient(records)
+    app = _BulkApp(client)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        screen = app.screen
+        assert isinstance(screen, ListScreen)
+        table = screen.query_one(DataTable)
+        table.move_cursor(row=2)
+        await pilot.press("v")
+        table.move_cursor(row=0)
+        await pilot.press("v")
+        await pilot.pause()
+        assert screen.selection.ids() == (30, 10)
+        screen.action_bulk_edit()
+        await pilot.pause()
+        form = app.screen
+        assert isinstance(form, BulkEditForm)
+        assert form._selected == [
+            {"id": 30, "name": "sw3"},
+            {"id": 10, "name": "sw1"},
+        ]
+
+
+@pytest.mark.asyncio
+async def test_bulk_edit_with_empty_selection_is_safe_no_op() -> None:
+    client = _FakeClient([{"id": 1, "name": "sw1"}])
+    app = _BulkApp(client)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        screen = app.screen
+        assert isinstance(screen, ListScreen)
+        screen.action_bulk_edit()
+        await pilot.pause()
+        assert isinstance(app.screen, ListScreen)
+
+
+@pytest.mark.asyncio
+async def test_bulk_edit_no_update_op_is_safe_no_op() -> None:
+    client = _FakeClient([{"id": 1, "name": "sw1"}])
+    app = _BulkApp(client, with_update=False)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        screen = app.screen
+        assert isinstance(screen, ListScreen)
+        table = screen.query_one(DataTable)
+        table.move_cursor(row=0)
+        await pilot.press("v")
+        await pilot.pause()
+        screen.action_bulk_edit()
+        await pilot.pause()
+        assert isinstance(app.screen, ListScreen)
+
+
+@pytest.mark.asyncio
+async def test_bulk_edit_key_pushes_form() -> None:
+    client = _FakeClient([{"id": 1, "name": "sw1"}])
+    app = _BulkApp(client)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        screen = app.screen
+        assert isinstance(screen, ListScreen)
+        table = screen.query_one(DataTable)
+        table.move_cursor(row=0)
+        await pilot.press("v")
+        await pilot.pause()
+        await pilot.press("B")
+        await pilot.pause()
+        assert isinstance(app.screen, BulkEditForm)
+
+
+@pytest.mark.asyncio
+async def test_bulk_edit_reloads_list_after_form_dismisses() -> None:
+    client = _FakeClient([{"id": 1, "name": "sw1"}, {"id": 2, "name": "sw2"}])
+    app = _BulkApp(client)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        screen = app.screen
+        assert isinstance(screen, ListScreen)
+        table = screen.query_one(DataTable)
+        table.move_cursor(row=0)
+        await pilot.press("v")
+        await pilot.pause()
+        load_count = len(client.calls)
+        screen.action_bulk_edit()
+        await pilot.pause()
+        form = app.screen
+        assert isinstance(form, BulkEditForm)
+        form.dismiss()
+        await pilot.pause()
+        assert isinstance(app.screen, ListScreen)
+        assert len(client.calls) > load_count
 
 
 @pytest.mark.asyncio
