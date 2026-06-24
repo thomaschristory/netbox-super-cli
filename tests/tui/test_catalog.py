@@ -1,7 +1,13 @@
 from __future__ import annotations
 
 from nsc.model.command_model import CommandModel, Operation, Resource, Tag
-from nsc.tui.catalog import ResourceRef, filter_resources, list_resources
+from nsc.tui.catalog import (
+    ResourceRef,
+    filter_resources,
+    group_refs,
+    grouped_resources,
+    list_resources,
+)
 
 
 def _model() -> CommandModel:
@@ -75,3 +81,19 @@ def test_resource_ref_label_combines_tag_and_name() -> None:
     refs = list_resources(_model())
     by_name = {r.resource_name: r for r in refs}
     assert by_name["prefixes"].label == "ipam / prefixes"
+
+
+def test_grouped_resources_groups_by_tag_in_order_skipping_unlistable() -> None:
+    groups = grouped_resources(_model())
+    assert [(tag, [r.resource_name for r in refs]) for tag, refs in groups] == [
+        ("dcim", ["devices", "interfaces"]),
+        ("ipam", ["prefixes"]),
+    ]
+
+
+def test_group_refs_drops_emptied_groups_and_keeps_order() -> None:
+    refs = filter_resources(list_resources(_model()), "face")  # only "interfaces" (dcim)
+    groups = group_refs(refs)
+    assert [(tag, [r.resource_name for r in g]) for tag, g in groups] == [
+        ("dcim", ["interfaces"]),
+    ]

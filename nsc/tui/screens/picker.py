@@ -1,4 +1,9 @@
-"""Fuzzy resource picker — landing screen and ``ctrl+p`` jump target."""
+"""Fuzzy resource picker — landing screen and ``ctrl+p`` jump target.
+
+Resources are shown as a tree grouped by tag (super-group): tags collapse and
+expand, arrows browse and open/close groups, and the search bar hides
+non-matching groups while auto-expanding the rest.
+"""
 
 from __future__ import annotations
 
@@ -8,56 +13,77 @@ from textual.app import ComposeResult
 from textual.binding import BindingType
 from textual.containers import Vertical
 from textual.screen import ModalScreen
-from textual.widgets import Input, Label, ListItem, ListView
+from textual.widgets import Input, Label, Tree
 
 from nsc.model.command_model import CommandModel
-from nsc.tui.catalog import ResourceRef, filter_resources, list_resources
+from nsc.tui.catalog import ResourceRef, filter_resources, group_refs, list_resources
 from nsc.tui.nav import can_go_back
+
+_HINT = "↓ enter list · ←/→ close/open · ⌃e all · Enter pick · Esc close"
 
 
 class ResourcePicker(ModalScreen[ResourceRef]):
     BINDINGS: ClassVar[list[BindingType]] = [
         ("escape", "cancel", "Close"),
-        # Down from the search box drops into the list; the list then owns down.
+        # Down from the search box drops into the tree; the tree then owns down.
         ("down", "app.focus_next", "Down"),
+        ("ctrl+e", "toggle_all", "Expand/collapse all"),
     ]
 
     def __init__(self, model: CommandModel) -> None:
         super().__init__()
         self._refs = list_resources(model)
+        self._filtered = list(self._refs)
+        self._expanded_all = False
 
     def compose(self) -> ComposeResult:
         with Vertical(id="picker"):
             yield Input(placeholder="Filter resources…", id="picker-filter")
-            yield ListView(id="picker-list")
+            tree: Tree[ResourceRef] = Tree("resources", id="picker-tree")
+            tree.show_root = False
+            yield tree
+            yield Label(_HINT, id="picker-hint")
 
     def on_mount(self) -> None:
-        self._populate(self._refs)
+        self._build(group_refs(self._refs), expand=False)
         self.query_one("#picker-filter", Input).focus()
 
-    def _populate(self, refs: list[ResourceRef]) -> None:
-        lv = self.query_one("#picker-list", ListView)
-        lv.clear()
-        for ref in refs:
-            item = ListItem(Label(ref.label))
-            item.data = ref  # type: ignore[attr-defined]
-            lv.append(item)
-        if refs:
-            lv.index = 0
+    def _build(self, groups: list[tuple[str, list[ResourceRef]]], *, expand: bool) -> None:
+        tree = self.query_one("#picker-tree", Tree)
+        tree.clear()
+        for tag, refs in groups:
+            node = tree.root.add(tag, expand=expand)
+            for ref in refs:
+                node.add_leaf(ref.resource_name, data=ref)
+        self._expanded_all = expand
 
     def on_input_changed(self, event: Input.Changed) -> None:
-        self._populate(filter_resources(self._refs, event.value))
+        if event.input.id != "picker-filter":
+            return
+        query = event.value.strip()
+        self._filtered = filter_resources(self._refs, query)
+        # Querying hides non-matching groups and expands the matches; an empty
+        # query shows every group, collapsed.
+        self._build(group_refs(self._filtered), expand=bool(query))
 
-    def on_input_submitted(self, _: Input.Submitted) -> None:
-        self._dismiss_with(self.query_one("#picker-list", ListView).highlighted_child)
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        if event.input.id == "picker-filter" and self._filtered:
+            self.dismiss(self._filtered[0])
 
-    def on_list_view_selected(self, event: ListView.Selected) -> None:
-        self._dismiss_with(event.item)
-
-    def _dismiss_with(self, item: ListItem | None) -> None:
-        ref = getattr(item, "data", None)
+    def on_tree_node_selected(self, event: Tree.NodeSelected[ResourceRef]) -> None:
+        ref = event.node.data
         if isinstance(ref, ResourceRef):
             self.dismiss(ref)
+        else:
+            event.node.toggle()
+
+    def action_toggle_all(self) -> None:
+        self._expanded_all = not self._expanded_all
+        for node in self.query_one("#picker-tree", Tree).root.children:
+            if self._expanded_all:
+                node.expand()
+            else:
+                node.collapse()
 
     def action_cancel(self) -> None:
         # As the landing screen there is nothing beneath but the blank base, so
