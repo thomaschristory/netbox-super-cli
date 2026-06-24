@@ -139,8 +139,11 @@ def test_toggle_select_surfaces_in_list_bindings_and_help() -> None:
     assert "toggle_select" in help_list_actions
 
 
-def test_bulk_edit_action_not_required_yet() -> None:
-    assert all(b.action != "bulk_edit" for b in KEYMAP)
+def test_bulk_edit_surfaces_in_list_bindings_and_help() -> None:
+    list_actions = {b.action for b in bindings_for("list")}
+    assert "bulk_edit" in list_actions
+    help_list_actions = {b.action for b in help_groups()["list"]}
+    assert "bulk_edit" in help_list_actions
 
 
 def test_display_keys_renders_pressable_glyphs() -> None:

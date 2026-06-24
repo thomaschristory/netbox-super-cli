@@ -212,3 +212,30 @@ class ListScreen(Screen[None]):
             ),
             _after,
         )
+
+    def action_bulk_edit(self) -> None:
+        resource = self._model.tags[self._tag].resources[self._resource_name]
+        update_op = resource.update_op
+        if update_op is None:
+            return
+        selected_ids = set(self._selection.ids())
+        selected = [r for r in self._records if r.get("id") in selected_ids]
+        if not selected:
+            return
+        from nsc.tui.screens.bulk_edit_form import BulkEditForm  # noqa: PLC0415
+
+        def _after(_: None) -> None:
+            self._selection.clear()
+            self.reload()
+
+        self.app.push_screen(
+            BulkEditForm(
+                self._model,
+                self._client,
+                self._tag,
+                self._resource_name,
+                update_op,
+                selected,
+            ),
+            _after,
+        )

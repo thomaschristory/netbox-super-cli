@@ -15,11 +15,13 @@ from textual.app import ComposeResult
 from textual.binding import BindingType
 from textual.containers import Horizontal, VerticalScroll
 from textual.screen import Screen
-from textual.widgets import Button, Footer, Header, Input, Label, Select, Switch
+from textual.widgets import Button, Footer, Header, Input, Label, ProgressBar, Select, Switch
 
 from nsc.model.command_model import CommandModel, Operation
 from nsc.tui._bindings import textual_bindings
+from nsc.tui.bulk import RecordChange
 from nsc.tui.forms import SET_NULL, WidgetSpec, field_to_widget
+from nsc.tui.view import detail_path
 
 
 class _Client(Protocol):
@@ -59,6 +61,8 @@ class BulkEditForm(Screen[None]):
         self._specs: dict[str, WidgetSpec] = {}
         self._values: dict[str, Any] = {}
         self._included: set[str] = set()
+        self.progress_total = 0
+        self.progress_done = 0
         self.title = f"Bulk edit {len(selected_records)} {resource_name}"
 
     @property
@@ -76,6 +80,9 @@ class BulkEditForm(Screen[None]):
                 self._specs[name] = spec
                 yield from self._compose_field(name, spec)
             yield Button("Preview", id="preview", classes="bulk-preview")
+            progress = ProgressBar(id="bulk-progress", show_eta=False)
+            progress.display = False
+            yield progress
         yield Footer()
 
     def _compose_field(self, name: str, spec: WidgetSpec) -> ComposeResult:
@@ -155,4 +162,40 @@ class BulkEditForm(Screen[None]):
         body = self._op.request_body
         sensitive = body.sensitive_paths if body is not None else ()
         changes = bulk_diff(self._selected, self.bulk_set, sensitive)
-        self.app.push_screen(BulkDiffModal(changes))
+
+        def _on_confirm(confirmed: bool | None) -> None:
+            if confirmed:
+                self._apply_bulk(changes, sensitive)
+
+        self.app.push_screen(BulkDiffModal(changes), _on_confirm)
+
+    def _apply_bulk(self, changes: list[RecordChange], sensitive_paths: tuple[str, ...]) -> None:
+        from nsc.tui.bulk import apply_bulk  # noqa: PLC0415
+        from nsc.tui.widgets.bulk_summary import BulkSummaryModal  # noqa: PLC0415
+
+        self.progress_total = sum(1 for change in changes if change.patch)
+        self.progress_done = 0
+        bar = self.query_one("#bulk-progress", ProgressBar)
+        bar.display = True
+        bar.update(total=max(self.progress_total, 1), progress=0)
+
+        def _patch(change: RecordChange) -> None:
+            self._client.patch(
+                detail_path(self._op.path, change.record_id),
+                json=change.patch,
+                operation_id=self._op.operation_id,
+                sensitive_paths=sensitive_paths,
+            )
+
+        def _on_progress(index: int, total: int) -> None:
+            change = changes[index - 1]
+            if not change.patch:
+                return
+            self.progress_done += 1
+            bar.advance(1)
+
+        result = apply_bulk(changes, _patch, _on_progress)
+        self.app.push_screen(BulkSummaryModal(result), self._on_summary_dismissed)
+
+    def _on_summary_dismissed(self, _: None) -> None:
+        self.dismiss()
