@@ -33,6 +33,10 @@ class FilterScreen(ModalScreen[dict[str, str]]):
         self._common = common_filters(operation)
         self._searchable = searchable_filters(operation)
         self.state = FilterState.from_params(current)
+        # Suppresses the Select.Changed / Input.Changed handlers while we
+        # programmatically re-sync the common widgets from state, so a
+        # state-driven refresh never round-trips back and re-mutates state.
+        self._syncing = False
 
     def compose(self) -> ComposeResult:
         with Vertical(id="filter-body"):
@@ -62,8 +66,14 @@ class FilterScreen(ModalScreen[dict[str, str]]):
         with Horizontal(classes="filter-field"):
             yield Label(self._label(param.name), classes="filter-label")
             if param.enum is not None:
-                options = [(choice, choice) for choice in param.enum]
-                value = current if current in param.enum else Select.NULL
+                # An active value outside the schema enum (stale enum, or set via
+                # the raw line / a lookup) is injected as an extra option so the
+                # Select shows the real filter instead of lying with "--any--".
+                choices = list(param.enum)
+                if current and current not in choices:
+                    choices.append(current)
+                options = [(choice, choice) for choice in choices]
+                value = current if current in choices else Select.NULL
                 yield Select(
                     options, value=value, prompt=_ANY, id=f"f-{param.name}", allow_blank=True
                 )
@@ -77,6 +87,8 @@ class FilterScreen(ModalScreen[dict[str, str]]):
         return ident.removeprefix("f-")
 
     def on_select_changed(self, event: Select.Changed) -> None:
+        if self._syncing:
+            return
         name = self._field_name(event.select.id)
         if name is None:
             return
@@ -87,6 +99,8 @@ class FilterScreen(ModalScreen[dict[str, str]]):
     def on_input_changed(self, event: Input.Changed) -> None:
         if event.input.id == "search":
             self._refresh_search(event.value)
+            return
+        if self._syncing:
             return
         name = self._field_name(event.input.id)
         if name is None:
@@ -108,7 +122,7 @@ class FilterScreen(ModalScreen[dict[str, str]]):
             return
         for param in self._searchable:
             if needle in param.name.lower():
-                item = ListItem(Label(param.name))
+                item = ListItem(Label(param.name), classes="search-result")
                 item.data = param.name  # type: ignore[attr-defined]
                 results.append(item)
 
@@ -119,6 +133,20 @@ class FilterScreen(ModalScreen[dict[str, str]]):
         raw = self.query_one("#raw", Input)
         raw.value = f"{name}="
         raw.focus()
+
+    def _sync_common_fields(self) -> None:
+        params = self.state.as_params()
+        self._syncing = True
+        try:
+            for param in self._common:
+                current = params.get(param.name, "")
+                if param.enum is not None:
+                    select = self.query_one(f"#f-{param.name}", Select)
+                    select.value = current if current in param.enum else Select.NULL
+                else:
+                    self.query_one(f"#f-{param.name}", Input).value = current
+        finally:
+            self._syncing = False
 
     def _refresh_chips(self) -> None:
         chips = self.query_one("#chips", Vertical)
@@ -139,6 +167,7 @@ class FilterScreen(ModalScreen[dict[str, str]]):
             self.action_clear()
         elif ident is not None and ident.startswith("rm-"):
             self.state.remove(ident.removeprefix("rm-"))
+            self._sync_common_fields()
             self._refresh_chips()
 
     def action_apply(self) -> None:
@@ -146,6 +175,7 @@ class FilterScreen(ModalScreen[dict[str, str]]):
 
     def action_clear(self) -> None:
         self.state = FilterState()
+        self._sync_common_fields()
         self._refresh_chips()
 
     def action_cancel(self) -> None:

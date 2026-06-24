@@ -20,6 +20,7 @@ _ALLOWLIST: tuple[str, ...] = (
     "slug",
     "label",
     "description",
+    "status",
     "role",
     "tag",
     "tenant",
@@ -72,6 +73,10 @@ def common_filters(operation: Operation) -> list[Parameter]:
         candidate = by_name.get(name)
         if candidate is not None and name not in seen and not _dropped(name):
             take(candidate)
+    # Spec: when both `x` and `x_id` are chosen, COMMON shows `x`; the `x_id`
+    # form stays reachable via search. Make that contract explicit, not
+    # incidental to which names happen to be in the allowlist.
+    chosen = [p for p in chosen if not (p.name.endswith("_id") and p.name[: -len("_id")] in seen)]
     return chosen[:_COMMON_CAP]
 
 
@@ -86,8 +91,12 @@ def parse_raw(text: str) -> dict[str, str]:
         if "=" in token:
             key, _, value = token.partition("=")
             key = key.strip()
-            if key:
-                out[key] = value.strip()
+            value = value.strip()
+            # Skip empty values so a `name=` token (e.g. from the search->raw
+            # affordance, submitted without a value) is a no-op, not a clear.
+            # Clearing stays the job of chip removal / Clear.
+            if key and value:
+                out[key] = value
     return out
 
 
