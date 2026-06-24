@@ -1,13 +1,17 @@
 """FilterScreen — a web-UI-like filter builder over a list operation.
 
-Combines an auto-curated common form (enums as dropdowns), a search box over
-the full param set, a raw ``key=value`` line, and removable active chips. All
-three input paths write into one ``FilterState``; ``Apply`` returns its params.
+Combines an auto-curated common form (enums as dropdowns, foreign keys as
+record-picker buttons), a search box over the full param set, a raw
+``key=value`` line, and removable active chips. All input paths write into one
+``FilterState``; ``Apply`` returns its params.
+
+Foreign-key fields apply as ``{name}_id=<id>`` — NetBox's ``name`` filters want
+a slug while the ``_id`` variant always accepts the picked record's id.
 """
 
 from __future__ import annotations
 
-from typing import ClassVar
+from typing import Any, ClassVar
 
 from textual.app import ComposeResult
 from textual.binding import BindingType
@@ -15,8 +19,9 @@ from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.screen import ModalScreen
 from textual.widgets import Button, Input, Label, ListItem, ListView, Select
 
-from nsc.model.command_model import Operation, Parameter
+from nsc.model.command_model import CommandModel, Operation, Parameter
 from nsc.tui.filters import FilterState, common_filters, parse_raw, searchable_filters
+from nsc.tui.fk import resolve_fk_target
 
 _ANY = "—any—"
 
@@ -27,15 +32,32 @@ class FilterScreen(ModalScreen[dict[str, str]]):
         ("ctrl+s", "apply", "Apply"),
     ]
 
-    def __init__(self, operation: Operation, current: dict[str, str]) -> None:
+    def __init__(
+        self,
+        model: CommandModel,
+        client: Any,
+        operation: Operation,
+        current: dict[str, str],
+    ) -> None:
         super().__init__()
+        self._model = model
+        self._client = client
         self._common = common_filters(operation)
         self._searchable = searchable_filters(operation)
+        self._fk_names = {p.name for p in self._common if self._is_fk(p.name)}
+        self._fk_display: dict[str, str] = {}
         self.state = FilterState.from_params(current)
         # Suppresses the Select.Changed / Input.Changed handlers while we
         # programmatically re-sync the common widgets from state, so a
         # state-driven refresh never round-trips back and re-mutates state.
         self._syncing = False
+
+    def _is_fk(self, name: str) -> bool:
+        return resolve_fk_target(name, None, self._model).kind == "picker"
+
+    @staticmethod
+    def _apply_key(name: str) -> str:
+        return name if name.endswith("_id") else f"{name}_id"
 
     def compose(self) -> ComposeResult:
         with Vertical(id="filter-body"):
@@ -61,6 +83,11 @@ class FilterScreen(ModalScreen[dict[str, str]]):
         return "search" if name == "q" else name
 
     def _common_field(self, param: Parameter) -> ComposeResult:
+        if param.name in self._fk_names:
+            with Horizontal(classes="filter-field"):
+                yield Label(self._label(param.name), classes="filter-label")
+                yield Button(self._fk_button_text(param.name), id=f"fk-{param.name}")
+            return
         current = self.state.as_params().get(param.name, "")
         with Horizontal(classes="filter-field"):
             yield Label(self._label(param.name), classes="filter-label")
@@ -78,6 +105,11 @@ class FilterScreen(ModalScreen[dict[str, str]]):
                 )
             else:
                 yield Input(value=current, id=f"f-{param.name}")
+
+    def _fk_button_text(self, name: str) -> str:
+        key = self._apply_key(name)
+        display = self._fk_display.get(key) or self.state.as_params().get(key, "")
+        return f"{self._label(name)}: {display or _ANY}"
 
     @staticmethod
     def _field_name(ident: str | None) -> str | None:
@@ -129,21 +161,48 @@ class FilterScreen(ModalScreen[dict[str, str]]):
         name = getattr(event.item, "data", None)
         if not isinstance(name, str):
             return
+        if self._is_fk(name):
+            self._open_fk_picker(name)
+            return
         raw = self.query_one("#raw", Input)
         raw.value = f"{name}="
         raw.focus()
+
+    def _open_fk_picker(self, name: str) -> None:
+        target = resolve_fk_target(name, None, self._model)
+        if target.list_op is None:
+            return
+        from nsc.tui.screens.record_picker import RecordPicker  # noqa: PLC0415
+
+        def _stage(result: tuple[int, str] | None) -> None:
+            if result is None:
+                return
+            record_id, display = result
+            key = self._apply_key(name)
+            self.state.set(key, str(record_id))
+            self._fk_display[key] = display
+            self._update_fk_button(name)
+            self._refresh_chips()
+
+        self.app.push_screen(RecordPicker(self._client, target.list_op, None), _stage)
+
+    def _update_fk_button(self, name: str) -> None:
+        for button in self.query(f"#fk-{name}").results(Button):
+            button.label = self._fk_button_text(name)
 
     def _sync_common_fields(self) -> None:
         params = self.state.as_params()
         self._syncing = True
         try:
             for param in self._common:
-                current = params.get(param.name, "")
-                if param.enum is not None:
+                if param.name in self._fk_names:
+                    self._update_fk_button(param.name)
+                elif param.enum is not None:
+                    current = params.get(param.name, "")
                     select = self.query_one(f"#f-{param.name}", Select)
                     select.value = current if current in param.enum else Select.NULL
                 else:
-                    self.query_one(f"#f-{param.name}", Input).value = current
+                    self.query_one(f"#f-{param.name}", Input).value = params.get(param.name, "")
         finally:
             self._syncing = False
 
@@ -151,8 +210,9 @@ class FilterScreen(ModalScreen[dict[str, str]]):
         chips = self.query_one("#chips", Vertical)
         chips.remove_children()
         for key, value in self.state.as_params().items():
+            shown = self._fk_display.get(key, value)
             row = Horizontal(
-                Label(f"{key} = {value}", classes="chip-label"),
+                Label(f"{key} = {shown}", classes="chip-label"),
                 Button("x", id=f"rm-{key}", classes="chip-remove"),
                 classes="chip",
             )
@@ -164,6 +224,8 @@ class FilterScreen(ModalScreen[dict[str, str]]):
             self.action_apply()
         elif ident == "clear":
             self.action_clear()
+        elif ident is not None and ident.startswith("fk-"):
+            self._open_fk_picker(ident.removeprefix("fk-"))
         elif ident is not None and ident.startswith("rm-"):
             self.state.remove(ident.removeprefix("rm-"))
             self._sync_common_fields()
@@ -174,6 +236,7 @@ class FilterScreen(ModalScreen[dict[str, str]]):
 
     def action_clear(self) -> None:
         self.state = FilterState()
+        self._fk_display.clear()
         self._sync_common_fields()
         self._refresh_chips()
 

@@ -1,26 +1,57 @@
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal
 from textual.widgets import Button, Input, Label, ListView, Select, Static
 
-from nsc.model.command_model import Operation, Parameter, ParameterLocation
+from nsc.model.command_model import (
+    CommandModel,
+    Operation,
+    Parameter,
+    ParameterLocation,
+    Resource,
+    Tag,
+)
 from nsc.tui.screens.filter import FilterScreen
+from nsc.tui.screens.record_picker import RecordPicker
 
 
 def _op() -> Operation:
     return Operation(
-        operation_id="x_list",
+        operation_id="devices_list",
         http_method="GET",
-        path="/api/x/",
+        path="/api/dcim/devices/",
         parameters=[
             Parameter(name="q", location=ParameterLocation.QUERY),
             Parameter(name="status", location=ParameterLocation.QUERY, enum=["active", "offline"]),
             Parameter(name="name", location=ParameterLocation.QUERY),
             Parameter(name="name__ic", location=ParameterLocation.QUERY),
+            Parameter(name="manufacturer", location=ParameterLocation.QUERY),
         ],
     )
+
+
+def _model() -> CommandModel:
+    manufacturers = Resource(
+        name="manufacturers",
+        list_op=Operation(
+            operation_id="m_list", http_method="GET", path="/api/dcim/manufacturers/"
+        ),
+    )
+    devices = Resource(name="devices", list_op=_op())
+    tag = Tag(name="dcim", resources={"devices": devices, "manufacturers": manufacturers})
+    return CommandModel(info_title="t", info_version="1", schema_hash="h", tags={"dcim": tag})
+
+
+class _FakeClient:
+    def paginate(
+        self, path: str, params: dict[str, Any] | None = None, *, limit: int | None = None
+    ) -> Any:
+        yield {"id": 8, "display": "Cisco"}
+        yield {"id": 9, "display": "Juniper"}
 
 
 class _FilterApp(App[None]):
@@ -36,7 +67,7 @@ class _FilterApp(App[None]):
         def _cb(result: dict[str, str] | None) -> None:
             self.result = result
 
-        await self.push_screen(FilterScreen(_op(), self._current), _cb)
+        await self.push_screen(FilterScreen(_model(), _FakeClient(), _op(), self._current), _cb)
 
 
 @pytest.mark.asyncio
@@ -267,3 +298,33 @@ async def test_apply_and_clear_buttons_dispatch() -> None:
         screen.on_button_pressed(Button.Pressed(apply))
         await pilot.pause()
     assert app.result == {}
+
+
+@pytest.mark.asyncio
+async def test_fk_field_renders_button_not_input() -> None:
+    app = _FilterApp()
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        screen = app.screen
+        assert isinstance(screen, FilterScreen)
+        assert screen.query_one("#fk-manufacturer", Button) is not None
+        assert not screen.query("#f-manufacturer")  # not a plain text field
+
+
+@pytest.mark.asyncio
+async def test_fk_picker_stages_id_and_labels_chip_with_display() -> None:
+    app = _FilterApp()
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        screen = app.screen
+        assert isinstance(screen, FilterScreen)
+        screen._open_fk_picker("manufacturer")
+        await pilot.pause()
+        picker = app.screen
+        assert isinstance(picker, RecordPicker)
+        picker.dismiss((8, "Cisco"))
+        await pilot.pause()
+        # applies as the _id variant, and the chip shows the picked display
+        assert screen.state.as_params() == {"manufacturer_id": "8"}
+        labels = {str(label.render()) for label in screen.query_one("#chips").query(Label)}
+        assert "manufacturer_id = Cisco" in labels

@@ -134,7 +134,9 @@ class ListScreen(Screen[None]):
             if result is not None:
                 self.apply_filters(result)
 
-        self.app.push_screen(FilterScreen(self._op, dict(self._extra_filters)), _apply)
+        self.app.push_screen(
+            FilterScreen(self._model, self._client, self._op, dict(self._extra_filters)), _apply
+        )
 
     def apply_filters(self, params: dict[str, str]) -> None:
         self._extra_filters = dict(params)
