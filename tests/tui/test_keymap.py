@@ -73,10 +73,16 @@ def test_no_key_maps_to_two_actions_in_a_context(context: str) -> None:
             seen[key] = b.action
 
 
-def test_edit_record_is_a_detail_binding_on_e() -> None:
-    edit = next(b for b in KEYMAP if b.action == "edit_record")
+def test_edit_field_is_a_detail_binding_on_enter_and_e() -> None:
+    edit = next(b for b in KEYMAP if b.action == "edit_field")
     assert edit.context == "detail"
-    assert edit.keys == ("e",)
+    assert edit.keys == ("enter", "e")
+
+
+def test_save_all_is_a_detail_binding_on_s() -> None:
+    save = next(b for b in KEYMAP if b.action == "save_all")
+    assert save.context == "detail"
+    assert save.keys == ("s",)
 
 
 def test_create_record_is_a_list_binding_on_a_or_c() -> None:
@@ -101,9 +107,9 @@ def test_help_groups_place_edit_create_delete_in_their_contexts() -> None:
     list_actions = {b.action for b in groups["list"]}
     detail_actions = {b.action for b in groups["detail"]}
     assert "create_record" in list_actions
-    assert "edit_record" in detail_actions
+    assert "edit_field" in detail_actions
     assert "delete_record" in detail_actions
-    assert "edit_record" not in list_actions
+    assert "edit_field" not in list_actions
     assert "delete_record" not in list_actions
     assert "create_record" not in detail_actions
 
@@ -115,13 +121,22 @@ def test_list_footer_bindings_surface_create() -> None:
 
 def test_detail_footer_bindings_surface_edit_and_delete() -> None:
     actions = {b.action for b in bindings_for("detail")}
-    assert "edit_record" in actions
+    assert "edit_field" in actions
+    assert "save_all" in actions
     assert "delete_record" in actions
 
 
 def test_edit_context_has_no_dead_detail_keys() -> None:
     edit_actions = {b.action for b in bindings_for("edit")}
-    for dead in ("edit_record", "delete_record", "drill_relation", "next_tab", "prev_tab"):
+    dead_detail_actions = (
+        "edit_field",
+        "save_all",
+        "delete_record",
+        "drill_relation",
+        "next_tab",
+        "prev_tab",
+    )
+    for dead in dead_detail_actions:
         assert dead not in edit_actions
     assert "save" in edit_actions
     assert "go_back" in edit_actions

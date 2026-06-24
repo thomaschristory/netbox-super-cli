@@ -4,7 +4,7 @@ from typing import Any
 
 import pytest
 from textual.app import App, ComposeResult
-from textual.widgets import DataTable, Static, Tab, Tabs
+from textual.widgets import DataTable, Input, Static, Tab, Tabs
 
 from nsc.model.command_model import (
     CommandModel,
@@ -18,16 +18,10 @@ from nsc.model.command_model import (
     Tag,
 )
 from nsc.tui.screens.detail import DetailScreen
-from nsc.tui.screens.edit_form import EditForm
 from nsc.tui.screens.list import ListScreen
+from nsc.tui.screens.record_picker import RecordPicker
 from nsc.tui.widgets.confirm import ConfirmModal
-
-
-class _FakeClient:
-    def paginate(
-        self, path: str, params: dict[str, Any] | None = None, *, limit: int | None = None
-    ) -> Any:
-        return iter([])
+from nsc.tui.widgets.diff import DiffModal
 
 
 def _model() -> CommandModel:
@@ -41,7 +35,10 @@ def _model() -> CommandModel:
             path="/api/dcim/devices/{id}/",
             request_body=RequestBodyShape(
                 top_level="object",
-                fields={"name": FieldShape(primitive=PrimitiveType.STRING)},
+                fields={
+                    "name": FieldShape(primitive=PrimitiveType.STRING),
+                    "site": FieldShape(primitive=PrimitiveType.INTEGER),
+                },
             ),
         ),
         delete_op=Operation(
@@ -68,140 +65,53 @@ def _model() -> CommandModel:
             parameters=[Parameter(name="device_id", location=ParameterLocation.QUERY)],
         ),
     )
+    sites = Resource(
+        name="sites",
+        list_op=Operation(operation_id="s_list", http_method="GET", path="/api/dcim/sites/"),
+    )
     tag = Tag(
         name="dcim",
-        resources={"devices": devices, "interfaces": interfaces, "device-bays": bays},
+        resources={
+            "devices": devices,
+            "interfaces": interfaces,
+            "device-bays": bays,
+            "sites": sites,
+        },
     )
     return CommandModel(info_title="t", info_version="1", schema_hash="h", tags={"dcim": tag})
 
 
-class _DetailApp(App[None]):
-    def compose(self) -> ComposeResult:
-        yield Static("")
-
-    async def on_mount(self) -> None:
-        model = _model()
-        resource = model.tags["dcim"].resources["devices"]
-        record = {"id": 7, "name": "sw1", "site": {"display": "HQ"}}
-        await self.push_screen(
-            DetailScreen(model, _FakeClient(), "dcim", "devices", resource, record)
-        )
-
-
-@pytest.mark.asyncio
-async def test_detail_shows_fields_and_relationship_tab() -> None:
-    app = _DetailApp()
-    async with app.run_test() as pilot:
-        await pilot.pause()
-        fields = app.screen.query_one("#fields", DataTable)
-        assert fields.row_count >= 2  # id, name, site.display at least
-        tabs = app.screen.query_one(Tabs)
-        labels = [str(t.label) for t in tabs.query(Tab)]
-        assert any("interfaces" in label for label in labels)
-
-
-@pytest.mark.asyncio
-async def test_drill_relation_pushes_prefiltered_list() -> None:
-    app = _DetailApp()
-    async with app.run_test() as pilot:
-        await pilot.pause()
-        screen = app.screen
-        assert isinstance(screen, DetailScreen)
-        screen.action_drill_relation()
-        await pilot.pause()
-        pushed = app.screen
-        assert isinstance(pushed, ListScreen)
-        assert pushed._base_filters == {"device_id": "7"}
-
-
-@pytest.mark.asyncio
-async def test_enter_drills_into_related_list() -> None:
-    app = _DetailApp()
-    async with app.run_test() as pilot:
-        await pilot.pause()
-        await pilot.press("enter")
-        await pilot.pause()
-        assert isinstance(app.screen, ListScreen)
-        assert app.screen._base_filters == {"device_id": "7"}
-
-
-@pytest.mark.asyncio
-async def test_tab_and_shift_tab_cycle_active_tab() -> None:
-    app = _DetailApp()
-    async with app.run_test() as pilot:
-        await pilot.pause()
-        tabs = app.screen.query_one(Tabs)
-        first = tabs.active
-        await pilot.press("tab")
-        await pilot.pause()
-        second = tabs.active
-        assert second != first
-        await pilot.press("shift+tab")
-        await pilot.pause()
-        assert tabs.active == first
-
-
-@pytest.mark.asyncio
-async def test_action_edit_record_pushes_edit_form() -> None:
-    app = _DetailApp()
-    async with app.run_test() as pilot:
-        await pilot.pause()
-        screen = app.screen
-        assert isinstance(screen, DetailScreen)
-        screen.action_edit_record()
-        await pilot.pause()
-        pushed = app.screen
-        assert isinstance(pushed, EditForm)
-        assert pushed._op.operation_id == "d_update"
-        assert pushed._record == {"id": 7, "name": "sw1", "site": {"display": "HQ"}}
-
-
-@pytest.mark.asyncio
-async def test_pressing_e_pushes_edit_form() -> None:
-    app = _DetailApp()
-    async with app.run_test() as pilot:
-        await pilot.pause()
-        await pilot.press("e")
-        await pilot.pause()
-        assert isinstance(app.screen, EditForm)
-
-
-class _NoUpdateApp(App[None]):
-    def compose(self) -> ComposeResult:
-        yield Static("")
-
-    async def on_mount(self) -> None:
-        model = _model()
-        devices = model.tags["dcim"].resources["devices"]
-        resource = devices.model_copy(update={"update_op": None})
-        record = {"id": 7, "name": "sw1"}
-        await self.push_screen(
-            DetailScreen(model, _FakeClient(), "dcim", "devices", resource, record)
-        )
-
-
-@pytest.mark.asyncio
-async def test_action_edit_record_is_noop_without_update_op() -> None:
-    app = _NoUpdateApp()
-    async with app.run_test() as pilot:
-        await pilot.pause()
-        screen = app.screen
-        assert isinstance(screen, DetailScreen)
-        screen.action_edit_record()
-        await pilot.pause()
-        assert app.screen is screen
-
-
-class _SpyClient(_FakeClient):
+class _SpyClient:
     def __init__(self) -> None:
+        self.patch_calls: list[dict[str, Any]] = []
         self.delete_calls: list[dict[str, Any]] = []
+
+    def paginate(
+        self, path: str, params: dict[str, Any] | None = None, *, limit: int | None = None
+    ) -> Any:
+        return iter([])
+
+    def patch(
+        self,
+        path: str,
+        *,
+        json: Any | None = None,
+        operation_id: str | None = None,
+        sensitive_paths: tuple[str, ...] = (),
+    ) -> dict[str, Any]:
+        self.patch_calls.append({"path": path, "json": json, "operation_id": operation_id})
+        return {}
 
     def delete(self, path: str, *, operation_id: str | None = None, **kwargs: Any) -> Any:
         self.delete_calls.append({"path": path, "operation_id": operation_id})
         return {}
 
 
-class _DeleteApp(App[None]):
+def _record() -> dict[str, Any]:
+    return {"id": 7, "name": "sw1", "site": {"id": 3, "display": "HQ"}}
+
+
+class _DetailApp(App[None]):
     def __init__(self) -> None:
         super().__init__()
         self.client = _SpyClient()
@@ -212,20 +122,228 @@ class _DeleteApp(App[None]):
     async def on_mount(self) -> None:
         model = _model()
         resource = model.tags["dcim"].resources["devices"]
-        record = {"id": 7, "name": "sw1", "site": {"display": "HQ"}}
         await self.push_screen(
-            DetailScreen(model, self.client, "dcim", "devices", resource, record)
+            DetailScreen(model, self.client, "dcim", "devices", resource, _record())
+        )
+
+
+def _detail(app: _DetailApp) -> DetailScreen:
+    screen = app.screen
+    assert isinstance(screen, DetailScreen)
+    return screen
+
+
+@pytest.mark.asyncio
+async def test_detail_shows_editable_and_readonly_fields_plus_relationship_tab() -> None:
+    app = _DetailApp()
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        fields = app.screen.query_one("#fields", DataTable)
+        assert fields.row_count >= 3  # name, site (editable) + id (read-only)
+        tabs = app.screen.query_one(Tabs)
+        labels = [str(t.label) for t in tabs.query(Tab)]
+        assert any("interfaces" in label for label in labels)
+
+
+@pytest.mark.asyncio
+async def test_pressing_e_edits_current_field_inline_and_enter_stages() -> None:
+    app = _DetailApp()
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        screen = _detail(app)
+        screen._table.move_cursor(row=0)  # the "name" field
+        await pilot.press("e")
+        await pilot.pause()
+        editor = screen.query_one("#editor", Input)
+        editor.value = "sw1-renamed"
+        await pilot.press("enter")
+        await pilot.pause()
+        assert screen.staged == {"name": "sw1-renamed"}
+        # editor closes, no PATCH yet (save is separate)
+        assert not screen.query("#editor")
+        assert app.client.patch_calls == []
+
+
+@pytest.mark.asyncio
+async def test_pressing_enter_starts_editing_current_field() -> None:
+    app = _DetailApp()
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        screen = _detail(app)
+        screen._table.move_cursor(row=0)  # the "name" field
+        screen._table.focus()
+        await pilot.press("enter")
+        await pilot.pause()
+        assert screen._editing == "name"
+        assert screen.query("#editor")
+
+
+@pytest.mark.asyncio
+async def test_save_all_previews_then_patches_once() -> None:
+    app = _DetailApp()
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        screen = _detail(app)
+        screen.staged = {"name": "sw1-renamed"}
+        screen.action_save_all()
+        await pilot.pause()
+        assert isinstance(app.screen, DiffModal)
+        await pilot.press("y")
+        await pilot.pause()
+        assert app.client.patch_calls == [
+            {
+                "path": "/api/dcim/devices/7/",
+                "json": {"name": "sw1-renamed"},
+                "operation_id": "d_update",
+            }
+        ]
+        # staged cleared after save
+        assert _detail(app).staged == {}
+
+
+@pytest.mark.asyncio
+async def test_save_all_with_no_changes_does_not_patch() -> None:
+    app = _DetailApp()
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        screen = _detail(app)
+        screen.action_save_all()
+        await pilot.pause()
+        assert app.client.patch_calls == []
+        assert not isinstance(app.screen, DiffModal)
+
+
+@pytest.mark.asyncio
+async def test_editing_fk_field_opens_record_picker() -> None:
+    app = _DetailApp()
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        screen = _detail(app)
+        # row 1 is the "site" FK field
+        screen._table.move_cursor(row=1)
+        screen.action_edit_field()
+        await pilot.pause()
+        assert isinstance(app.screen, RecordPicker)
+
+
+@pytest.mark.asyncio
+async def test_editing_readonly_field_is_noop() -> None:
+    app = _DetailApp()
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        screen = _detail(app)
+        # the read-only "id" row sits after the editable fields
+        screen._table.move_cursor(row=screen._table.row_count - 1)
+        screen.action_edit_field()
+        await pilot.pause()
+        assert screen._editing is None
+        assert not screen.query("#editor")
+
+
+@pytest.mark.asyncio
+async def test_back_with_staged_changes_prompts_discard() -> None:
+    app = _DetailApp()
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        screen = _detail(app)
+        screen.staged = {"name": "changed"}
+        screen.action_go_back()
+        await pilot.pause()
+        assert isinstance(app.screen, ConfirmModal)
+        assert "Discard" in app.screen.message
+
+
+@pytest.mark.asyncio
+async def test_escape_while_editing_cancels_edit_without_leaving() -> None:
+    app = _DetailApp()
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        screen = _detail(app)
+        screen.action_edit_field()
+        await pilot.pause()
+        assert screen._editing is not None
+        await pilot.press("escape")
+        await pilot.pause()
+        assert screen._editing is None
+        assert app.screen is screen  # still on detail
+
+
+@pytest.mark.asyncio
+async def test_o_drills_into_related_list() -> None:
+    app = _DetailApp()
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await pilot.press("o")
+        await pilot.pause()
+        assert isinstance(app.screen, ListScreen)
+        assert app.screen._base_filters == {"device_id": "7"}
+
+
+@pytest.mark.asyncio
+async def test_drill_relation_action_pushes_prefiltered_list() -> None:
+    app = _DetailApp()
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        _detail(app).action_drill_relation()
+        await pilot.pause()
+        assert isinstance(app.screen, ListScreen)
+        assert app.screen._base_filters == {"device_id": "7"}
+
+
+@pytest.mark.asyncio
+async def test_tab_and_shift_tab_cycle_active_tab() -> None:
+    app = _DetailApp()
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        screen = _detail(app)
+        tabs = app.screen.query_one(Tabs)
+        first = tabs.active
+        screen.action_next_tab()
+        await pilot.pause()
+        second = tabs.active
+        assert second != first
+        screen.action_prev_tab()
+        await pilot.pause()
+        assert tabs.active == first
+
+
+class _NoUpdateApp(App[None]):
+    def __init__(self) -> None:
+        super().__init__()
+        self.client = _SpyClient()
+
+    def compose(self) -> ComposeResult:
+        yield Static("")
+
+    async def on_mount(self) -> None:
+        model = _model()
+        devices = model.tags["dcim"].resources["devices"]
+        resource = devices.model_copy(update={"update_op": None})
+        await self.push_screen(
+            DetailScreen(model, self.client, "dcim", "devices", resource, _record())
         )
 
 
 @pytest.mark.asyncio
-async def test_action_delete_record_pushes_confirm_naming_record() -> None:
-    app = _DeleteApp()
+async def test_edit_field_is_noop_without_update_op() -> None:
+    app = _NoUpdateApp()
     async with app.run_test() as pilot:
         await pilot.pause()
         screen = app.screen
         assert isinstance(screen, DetailScreen)
-        screen.action_delete_record()
+        screen._table.move_cursor(row=0)
+        screen.action_edit_field()
+        await pilot.pause()
+        assert screen._editing is None
+        assert not screen.query("#editor")
+
+
+@pytest.mark.asyncio
+async def test_action_delete_record_pushes_confirm_naming_record() -> None:
+    app = _DetailApp()
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        _detail(app).action_delete_record()
         await pilot.pause()
         modal = app.screen
         assert isinstance(modal, ConfirmModal)
@@ -235,7 +353,7 @@ async def test_action_delete_record_pushes_confirm_naming_record() -> None:
 
 @pytest.mark.asyncio
 async def test_pressing_d_pushes_confirm() -> None:
-    app = _DeleteApp()
+    app = _DetailApp()
     async with app.run_test() as pilot:
         await pilot.pause()
         await pilot.press("d")
@@ -244,8 +362,8 @@ async def test_pressing_d_pushes_confirm() -> None:
 
 
 @pytest.mark.asyncio
-async def test_delete_confirm_calls_client_delete_and_pops_to_list() -> None:
-    app = _DeleteApp()
+async def test_delete_confirm_calls_client_delete_and_pops() -> None:
+    app = _DetailApp()
     async with app.run_test() as pilot:
         await pilot.pause()
         screen = app.screen
@@ -261,7 +379,7 @@ async def test_delete_confirm_calls_client_delete_and_pops_to_list() -> None:
 
 @pytest.mark.asyncio
 async def test_delete_cancel_calls_nothing() -> None:
-    app = _DeleteApp()
+    app = _DetailApp()
     async with app.run_test() as pilot:
         await pilot.pause()
         screen = app.screen
@@ -285,10 +403,22 @@ class _NoDeleteApp(App[None]):
         model = _model()
         devices = model.tags["dcim"].resources["devices"]
         resource = devices.model_copy(update={"delete_op": None})
-        record = {"id": 7, "name": "sw1"}
         await self.push_screen(
-            DetailScreen(model, self.client, "dcim", "devices", resource, record)
+            DetailScreen(model, self.client, "dcim", "devices", resource, _record())
         )
+
+
+@pytest.mark.asyncio
+async def test_action_delete_record_is_noop_without_delete_op() -> None:
+    app = _NoDeleteApp()
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        screen = app.screen
+        assert isinstance(screen, DetailScreen)
+        screen.action_delete_record()
+        await pilot.pause()
+        assert app.screen is screen
+        assert app.client.delete_calls == []
 
 
 class _CountingClient(_SpyClient):
@@ -316,9 +446,8 @@ class _DeleteOverListApp(App[None]):
         resource = model.tags["dcim"].resources["devices"]
         assert resource.list_op is not None
         await self.push_screen(ListScreen(model, self.client, "dcim", "devices", resource.list_op))
-        record = {"id": 7, "name": "sw1", "site": {"display": "HQ"}}
         await self.push_screen(
-            DetailScreen(model, self.client, "dcim", "devices", resource, record)
+            DetailScreen(model, self.client, "dcim", "devices", resource, _record())
         )
 
 
@@ -334,16 +463,3 @@ async def test_delete_reloads_underlying_list() -> None:
         await pilot.pause()
         assert isinstance(app.screen, ListScreen)
         assert app.client.paginate_count == before + 1
-
-
-@pytest.mark.asyncio
-async def test_action_delete_record_is_noop_without_delete_op() -> None:
-    app = _NoDeleteApp()
-    async with app.run_test() as pilot:
-        await pilot.pause()
-        screen = app.screen
-        assert isinstance(screen, DetailScreen)
-        screen.action_delete_record()
-        await pilot.pause()
-        assert app.screen is screen
-        assert app.client.delete_calls == []
