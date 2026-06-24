@@ -56,6 +56,7 @@ nav:
       - First run: getting-started/first-run.md
       - Concepts: getting-started/concepts.md
   - Guides:
+      - Interactive TUI: guides/interactive-tui.md
       - Managing profiles: guides/managing-profiles.md
       - Working with plugins: guides/working-with-plugins.md
       - Output formats: guides/output-formats.md

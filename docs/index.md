@@ -10,6 +10,7 @@ because the schema — not hand-written code — defines the surface.
 - **Multi-instance.** Named profiles per NetBox instance, plus env-var overrides.
 - **Safe by default.** Writes preview as dry-runs unless you pass `--apply`.
 - **Agent-friendly.** Deterministic command shape, machine-readable JSON output, stable error envelope with documented exit codes.
+- **Interactive TUI.** `nsc tui` opens a keyboard-driven UI to browse, filter, edit, bulk-edit and search — see the [Interactive TUI guide](guides/interactive-tui.md).
 
 ## Three killer examples
 
