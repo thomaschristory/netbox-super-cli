@@ -29,6 +29,37 @@ def test_list_resources_includes_only_listable_sorted() -> None:
     assert all(isinstance(r, ResourceRef) for r in refs)
 
 
+def test_list_resources_orders_by_tag_then_name_not_name_alone() -> None:
+    # `aggregates` (ipam) sorts before `cables` (dcim) by name alone, but the
+    # picker must group by tag first: all of dcim before any of ipam.
+    dcim = Tag(
+        name="dcim",
+        resources={
+            "cables": Resource(
+                name="cables",
+                list_op=Operation(operation_id="c", http_method="GET", path="/api/dcim/cables/"),
+            )
+        },
+    )
+    ipam = Tag(
+        name="ipam",
+        resources={
+            "aggregates": Resource(
+                name="aggregates",
+                list_op=Operation(operation_id="a", http_method="GET", path="/api/ipam/aggs/"),
+            )
+        },
+    )
+    model = CommandModel(
+        info_title="t", info_version="1", schema_hash="h", tags={"dcim": dcim, "ipam": ipam}
+    )
+    refs = list_resources(model)
+    assert [(r.tag, r.resource_name) for r in refs] == [
+        ("dcim", "cables"),
+        ("ipam", "aggregates"),
+    ]
+
+
 def test_filter_resources_is_case_insensitive_substring() -> None:
     refs = list_resources(_model())
     assert [r.resource_name for r in filter_resources(refs, "iface")] == []

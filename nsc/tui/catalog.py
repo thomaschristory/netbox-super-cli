@@ -24,7 +24,7 @@ def list_resources(model: CommandModel) -> list[ResourceRef]:
         for resource_name, resource in sorted(tag.resources.items()):
             if resource.list_op is not None:
                 refs.append(ResourceRef(tag_name, resource_name, resource.list_op))
-    return sorted(refs, key=lambda r: r.resource_name)
+    return sorted(refs, key=lambda r: (r.tag, r.resource_name))
 
 
 def filter_resources(refs: list[ResourceRef], query: str) -> list[ResourceRef]:
