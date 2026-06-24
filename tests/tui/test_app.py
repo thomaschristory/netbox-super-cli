@@ -50,6 +50,17 @@ async def test_ctrl_f_opens_global_search_from_any_screen() -> None:
 
 
 @pytest.mark.asyncio
+async def test_ctrl_f_opens_global_search_from_the_picker() -> None:
+    app = NscTuiApp(_model(), _FakeClient(), initial_resource=None)  # lands on the picker
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        assert isinstance(app.screen, ResourcePicker)
+        await pilot.press("ctrl+f")
+        await pilot.pause()
+        assert isinstance(app.screen, GlobalSearchScreen)
+
+
+@pytest.mark.asyncio
 async def test_app_lands_on_picker_without_resource() -> None:
     app = NscTuiApp(_model(), _FakeClient(), initial_resource=None)
     async with app.run_test() as pilot:

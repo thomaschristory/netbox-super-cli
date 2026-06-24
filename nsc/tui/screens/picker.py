@@ -20,7 +20,7 @@ from nsc.tui.catalog import ResourceRef, filter_resources, group_refs, list_reso
 from nsc.tui.nav import can_go_back
 from nsc.tui.widgets.nav_tree import NavTree
 
-_HINT = "↓ enter list · ←/→ close/open · ⌃e all · Enter pick · Esc close"
+_HINT = "↓ list · ←/→ close/open · ⌃e all · ⌃f search · Enter pick · Esc close"
 
 
 class ResourcePicker(ModalScreen[ResourceRef]):
@@ -29,6 +29,9 @@ class ResourcePicker(ModalScreen[ResourceRef]):
         # Down from the search box drops into the tree; the tree then owns down.
         ("down", "app.focus_next", "Down"),
         ("ctrl+e", "toggle_all", "Expand/collapse all"),
+        # Reach global search from the landing picker (app.* routes to the App,
+        # which holds the client the search needs).
+        ("ctrl+f", "app.open_search", "Search"),
     ]
 
     def __init__(self, model: CommandModel) -> None:
