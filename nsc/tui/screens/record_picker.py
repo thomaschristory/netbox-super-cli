@@ -64,6 +64,9 @@ class RecordPicker(ModalScreen[tuple[int, str]]):
         await self._query(self._pending)
 
     async def _query(self, search: str) -> None:
+        # Clear `loading` only on our own success/error — never in a `finally`.
+        # A superseded (cancelled) query must not turn off the wheel the newer
+        # query just turned on.
         listing = self.query_one("#record-picker-list", ListView)
         listing.loading = True
         try:
@@ -71,12 +74,13 @@ class RecordPicker(ModalScreen[tuple[int, str]]):
             records = await asyncio.to_thread(
                 lambda: list(self._client.paginate(self._op.path, params, limit=_PAGE_LIMIT))
             )
-            await self._populate(records)
         except (NetBoxAPIError, NetBoxClientError) as exc:
             self.notify(api_error_message(exc), severity="error", timeout=8)
             await self._populate([])
-        finally:
             listing.loading = False
+            return
+        await self._populate(records)
+        listing.loading = False
 
     async def _populate(self, records: list[dict[str, Any]]) -> None:
         lv = self.query_one("#record-picker-list", ListView)

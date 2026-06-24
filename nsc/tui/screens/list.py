@@ -108,17 +108,22 @@ class ListScreen(Screen[None]):
         self.run_worker(self._reload, group="reload", exclusive=True)  # type: ignore[arg-type]
 
     async def _reload(self) -> None:
+        # Clear `loading` only on our own success/error — never in a `finally`.
+        # If this worker is cancelled (a newer exclusive reload superseded it),
+        # that newer worker already set loading=True and owns turning it off;
+        # clearing here would flicker the wheel off mid-load.
         table = self._table
         table.loading = True
         try:
             records = await asyncio.to_thread(
                 lambda: list(self._client.paginate(self._op.path, self._params(), limit=200))
             )
-            self._populate(records)
         except (NetBoxAPIError, NetBoxClientError) as exc:
             self.notify(api_error_message(exc), severity="error", timeout=8)
-        finally:
             table.loading = False
+            return
+        self._populate(records)
+        table.loading = False
 
     def _populate(self, records: list[dict[str, Any]]) -> None:
         self._prune_selection(records)

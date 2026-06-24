@@ -92,6 +92,26 @@ async def test_typing_requeries_with_q_param_and_repopulates() -> None:
 
 
 @pytest.mark.asyncio
+async def test_keystroke_debounce_triggers_requery_end_to_end() -> None:
+    # Drives the full chain: on_input_changed -> debounce timer -> worker -> _query.
+    client = _FakeClient(_records())
+    app = _PickerApp(client)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await app.workers.wait_for_complete()
+        screen = app.screen
+        assert isinstance(screen, RecordPicker)
+        inp = screen.query_one("#record-picker-filter", Input)
+        before = len(client.calls)
+        screen.on_input_changed(Input.Changed(inp, "HQ"))
+        await pilot.pause(0.4)  # let the 0.25s debounce timer fire
+        await app.workers.wait_for_complete()
+        assert len(client.calls) > before
+        assert client.calls[-1][1] == {"q": "HQ"}
+        assert len(screen.query_one(ListView)) == 1
+
+
+@pytest.mark.asyncio
 async def test_query_clears_listview_loading_after_load() -> None:
     client = _FakeClient(_records())
     app = _PickerApp(client)
