@@ -10,7 +10,9 @@ from textual.containers import Vertical
 from textual.screen import ModalScreen
 from textual.widgets import Input, Label, ListItem, ListView
 
+from nsc.http.errors import NetBoxAPIError, NetBoxClientError
 from nsc.model.command_model import Operation
+from nsc.tui.errors import api_error_message
 
 _PAGE_LIMIT = 50
 
@@ -46,7 +48,12 @@ class RecordPicker(ModalScreen[tuple[int, str]]):
 
     def _query(self, search: str) -> None:
         params = {"q": search} if search else None
-        records = list(self._client.paginate(self._op.path, params, limit=_PAGE_LIMIT))
+        try:
+            records = list(self._client.paginate(self._op.path, params, limit=_PAGE_LIMIT))
+        except (NetBoxAPIError, NetBoxClientError) as exc:
+            self.notify(api_error_message(exc), severity="error", timeout=8)
+            self._populate([])
+            return
         self._populate(records)
 
     def _populate(self, records: list[dict[str, Any]]) -> None:

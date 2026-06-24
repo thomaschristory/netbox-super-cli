@@ -10,8 +10,10 @@ from textual.coordinate import Coordinate
 from textual.screen import Screen
 from textual.widgets import DataTable, Footer, Header
 
+from nsc.http.errors import NetBoxAPIError, NetBoxClientError
 from nsc.model.command_model import CommandModel, Operation
 from nsc.tui._bindings import textual_bindings
+from nsc.tui.errors import api_error_message
 from nsc.tui.selection import Selection
 from nsc.tui.view import build_rows, choose_columns
 
@@ -99,7 +101,11 @@ class ListScreen(Screen[None]):
         return {**self._base_filters, **self._extra_filters}
 
     def reload(self) -> None:
-        records = list(self._client.paginate(self._op.path, self._params(), limit=200))
+        try:
+            records = list(self._client.paginate(self._op.path, self._params(), limit=200))
+        except (NetBoxAPIError, NetBoxClientError) as exc:
+            self.notify(api_error_message(exc), severity="error", timeout=8)
+            return
         self._prune_selection(records)
         table = self._table
         table.clear(columns=True)

@@ -15,8 +15,10 @@ from textual.containers import Horizontal, VerticalScroll
 from textual.screen import Screen
 from textual.widgets import Button, Footer, Header, Input, Label, Select, Switch
 
+from nsc.http.errors import NetBoxAPIError, NetBoxClientError
 from nsc.model.command_model import CommandModel, Operation
 from nsc.tui._bindings import textual_bindings
+from nsc.tui.errors import api_error_message
 from nsc.tui.fk import resolve_fk_target
 from nsc.tui.forms import SET_NULL, WidgetSpec, compute_patch, diff_rows, field_to_widget
 from nsc.tui.view import detail_path
@@ -213,20 +215,24 @@ class EditForm(Screen[None]):
         self.app.push_screen(DiffModal(diff_rows(self._record, patch, sensitive)), _on_confirm)
 
     def _apply_patch(self, patch: dict[str, Any], sensitive_paths: tuple[str, ...]) -> None:
-        if self._create_mode:
-            self._client.post(
-                self._op.path,
-                json=patch,
-                operation_id=self._op.operation_id,
-                sensitive_paths=sensitive_paths,
-            )
-        else:
-            self._client.patch(
-                detail_path(self._op.path, self._record.get("id")),
-                json=patch,
-                operation_id=self._op.operation_id,
-                sensitive_paths=sensitive_paths,
-            )
+        try:
+            if self._create_mode:
+                self._client.post(
+                    self._op.path,
+                    json=patch,
+                    operation_id=self._op.operation_id,
+                    sensitive_paths=sensitive_paths,
+                )
+            else:
+                self._client.patch(
+                    detail_path(self._op.path, self._record.get("id")),
+                    json=patch,
+                    operation_id=self._op.operation_id,
+                    sensitive_paths=sensitive_paths,
+                )
+        except (NetBoxAPIError, NetBoxClientError) as exc:
+            self.notify(api_error_message(exc), severity="error", timeout=8)
+            return
         self.dismiss()
 
     def action_go_back(self) -> None:

@@ -18,9 +18,11 @@ from textual.containers import Horizontal
 from textual.screen import Screen
 from textual.widgets import DataTable, Footer, Header, Input, Label, Tab, Tabs
 
+from nsc.http.errors import NetBoxAPIError, NetBoxClientError
 from nsc.model.command_model import CommandModel, Resource
 from nsc.output.flatten import flatten
 from nsc.tui._bindings import textual_bindings
+from nsc.tui.errors import api_error_message
 from nsc.tui.fk import resolve_fk_target
 from nsc.tui.forms import SET_NULL, WidgetSpec, compute_patch, diff_rows, field_to_widget
 from nsc.tui.relations import RelatedView, related_views
@@ -251,12 +253,16 @@ class DetailScreen(Screen[None]):
 
     def _apply_patch(self, patch: dict[str, Any]) -> None:
         assert self._update_op is not None
-        self._client.patch(
-            detail_path(self._update_op.path, self._record.get("id")),
-            json=patch,
-            operation_id=self._update_op.operation_id,
-            sensitive_paths=self._sensitive,
-        )
+        try:
+            self._client.patch(
+                detail_path(self._update_op.path, self._record.get("id")),
+                json=patch,
+                operation_id=self._update_op.operation_id,
+                sensitive_paths=self._sensitive,
+            )
+        except (NetBoxAPIError, NetBoxClientError) as exc:
+            self.notify(api_error_message(exc), severity="error", timeout=8)
+            return
         self._record.update(patch)
         self.staged.clear()
         self._refresh_rows()
@@ -333,10 +339,15 @@ class DetailScreen(Screen[None]):
         message = f"Delete {self._resource_name} #{self._record.get('id')}?"
 
         def _on_confirm(confirmed: bool | None) -> None:
-            if confirmed:
+            if not confirmed:
+                return
+            try:
                 self._client.delete(path, operation_id=delete_op.operation_id)
-                self.app.pop_screen()
-                self._reload_underlying_list()
+            except (NetBoxAPIError, NetBoxClientError) as exc:
+                self.notify(api_error_message(exc), severity="error", timeout=8)
+                return
+            self.app.pop_screen()
+            self._reload_underlying_list()
 
         self.app.push_screen(ConfirmModal(message), _on_confirm)
 

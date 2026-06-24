@@ -6,6 +6,7 @@ import pytest
 from textual.app import App, ComposeResult
 from textual.widgets import DataTable, Input, Static
 
+from nsc.http.errors import NetBoxAPIError
 from nsc.model.command_model import (
     CommandModel,
     FieldShape,
@@ -188,6 +189,38 @@ async def test_applying_filters_reloads_with_merged_params() -> None:
         last_params = client.calls[-1][1]
         assert last_params is not None
         assert ("status", "active") in last_params.items()
+
+
+@pytest.mark.asyncio
+async def test_api_error_during_reload_notifies_and_keeps_rows() -> None:
+    class _FlakyClient(_FakeClient):
+        def paginate(
+            self, path: str, params: dict[str, Any] | None = None, *, limit: int | None = None
+        ) -> Any:
+            self.calls.append((path, params))
+            if params:  # a filter was applied — simulate a 400 from NetBox
+                raise NetBoxAPIError(
+                    status_code=400,
+                    url=path,
+                    body_snippet='{"manufacturer": ["Select a valid choice."]}',
+                    headers={},
+                )
+            yield from self._records
+
+    client = _FlakyClient([{"id": 1, "name": "sw1"}])
+    app = _ListApp(client)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        screen = app.screen
+        assert isinstance(screen, ListScreen)
+        notes: list[str] = []
+        screen.notify = lambda msg, **kwargs: notes.append(msg)  # type: ignore[method-assign]
+        rows_before = screen.query_one(DataTable).row_count
+        screen.apply_filters({"manufacturer": "Cisco"})  # would 400
+        await pilot.pause()
+        assert app.screen is screen  # did not crash out of the screen
+        assert screen.query_one(DataTable).row_count == rows_before  # prior rows preserved
+        assert notes and "manufacturer" in notes[0]  # error surfaced as a notification
 
 
 def _create_model(*, with_create: bool = True) -> CommandModel:
