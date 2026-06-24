@@ -346,7 +346,7 @@ def _flat_fields(schema: SchemaObject, doc: OpenAPIDocument) -> dict[str, FieldS
         resolved = _resolve_ref(prop, doc) or prop
         primitive = _primitive(resolved)
         enum = [str(v) for v in resolved.enum] if resolved.enum else None
-        out[name] = FieldShape(primitive=primitive, enum=enum)
+        out[name] = FieldShape(primitive=primitive, enum=enum, nullable=resolved.nullable)
     return out
 
 

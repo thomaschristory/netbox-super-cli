@@ -10,6 +10,7 @@ A Python CLI for [NetBox](https://netbox.dev/) that builds its command tree dyna
 - **Multi-instance.** Named profiles per NetBox instance, plus env-var overrides.
 - **Safe by default.** POST/PATCH/PUT/DELETE preview as dry-runs unless you pass `--apply`.
 - **Agent-friendly.** Deterministic command shape, machine-readable JSON output, stable error envelope with documented exit codes.
+- **Interactive TUI.** `nsc tui` opens a keyboard-driven terminal UI — see below.
 
 ## Install
 
@@ -26,6 +27,26 @@ cd netbox-super-cli
 uv sync
 uv run nsc --version
 ```
+
+## Interactive TUI
+
+`nsc tui` (aliases `nsc interactive`, `nsc i`) opens a full-screen,
+keyboard-driven UI over your NetBox — browse, filter, edit, bulk-edit and search
+across object types without writing a command. Like the CLI it is generated from
+the live schema, so it works for every resource and plugin.
+
+![The nsc interactive TUI](docs/assets/tui/list.svg)
+
+```sh
+nsc tui            # land on the resource picker
+nsc tui devices    # jump straight into the devices list
+```
+
+Highlights: a collapsible resource picker, a web-UI-style filter builder (`/`),
+inline record editing with a confirm-diff save, schema-derived relationship
+drill-down, bulk edit with a per-record preview, a persisted column chooser
+(`f`), and global search (`Ctrl`+`F`). Full walkthrough in the
+[Interactive TUI guide](https://thomaschristory.github.io/netbox-super-cli/guides/interactive-tui/).
 
 ## Reading
 

@@ -18,6 +18,7 @@ from nsc.cli import (
     login_commands,
     profiles_commands,
     skill_commands,
+    tui_commands,
 )
 from nsc.cli.globals import GlobalState, build_runtime_context
 from nsc.cli.registration import register_dynamic_commands
@@ -278,6 +279,7 @@ login_commands.register(app)
 profiles_commands.register(app)
 aliases_commands.register(app)
 skill_commands.register(app)
+tui_commands.register(app)
 
 # Capture the static baseline AFTER all static sub-apps are registered so that
 # make_context can restore this state at the start of every invocation.

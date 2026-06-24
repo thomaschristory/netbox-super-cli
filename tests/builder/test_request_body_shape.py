@@ -83,6 +83,38 @@ def test_request_body_field_with_enum() -> None:
     assert op.request_body.fields["status"].enum == ["active", "planned"]
 
 
+def test_request_body_field_nullable_openapi_30() -> None:
+    schema = SchemaObject(
+        type="object",
+        properties={
+            "comments": SchemaObject.model_validate({"type": "string", "nullable": True}),
+            "name": SchemaObject(type="string"),
+        },
+    )
+    model = _build(_doc_with_post(schema))
+    op = _find_op(model, "dcim_devices_create")
+    assert op.request_body is not None
+    assert op.request_body.fields["comments"].nullable is True
+    assert op.request_body.fields["name"].nullable is False
+
+
+def test_request_body_field_nullable_openapi_31_type_list() -> None:
+    schema = SchemaObject.model_validate(
+        {
+            "type": "object",
+            "properties": {
+                "comments": {"type": ["string", "null"]},
+                "name": {"type": ["string"]},
+            },
+        }
+    )
+    model = _build(_doc_with_post(schema))
+    op = _find_op(model, "dcim_devices_create")
+    assert op.request_body is not None
+    assert op.request_body.fields["comments"].nullable is True
+    assert op.request_body.fields["name"].nullable is False
+
+
 def test_request_body_top_level_array() -> None:
     schema = SchemaObject(type="array", items=SchemaObject(type="object"))
     model = _build(_doc_with_post(schema))

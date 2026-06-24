@@ -42,6 +42,9 @@ A few curated aliases skip the tag (`ls`, `get`, `rm`, `search`):
 
 Plus interactive meta-commands (not aliases):
 
+- `nsc tui` (aka `nsc interactive` / `nsc i`) — launch the full-screen keyboard
+  TUI to browse, filter, edit, bulk-edit and search. Human-driven; not for
+  scripting. If a user wants to explore or edit NetBox visually, point them here.
 - `nsc init` — interactive config bootstrap.
 - `nsc login` — verify / create / rotate a profile's token.
 - `nsc commands --schema <path-or-url>` — dump the entire generated command
