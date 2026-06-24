@@ -11,6 +11,7 @@ from textual.widgets import DataTable, Footer, Header, Input
 
 from nsc.model.command_model import CommandModel, Operation
 from nsc.tui._bindings import textual_bindings
+from nsc.tui.selection import Selection
 from nsc.tui.view import build_rows, choose_columns
 
 
@@ -74,6 +75,7 @@ class ListScreen(Screen[None]):
         self._columns_config = columns_config
         self._records: list[dict[str, Any]] = []
         self._columns: list[str] = []
+        self._selection: Selection = Selection()
         self.title = f"{tag} / {resource_name}"
 
     def compose(self) -> ComposeResult:
@@ -134,6 +136,15 @@ class ListScreen(Screen[None]):
     def action_cursor_bottom(self) -> None:
         table = self._table
         table.move_cursor(row=max(table.row_count - 1, 0))
+
+    def action_toggle_select(self) -> None:
+        row = self._table.cursor_row
+        if not self._records or not (0 <= row < len(self._records)):
+            return
+        record_id = self._records[row].get("id")
+        if record_id is None:
+            return
+        self._selection.toggle(record_id)
 
     def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
         self._open_detail(event.cursor_row)

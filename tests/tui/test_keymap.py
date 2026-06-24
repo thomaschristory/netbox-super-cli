@@ -125,6 +125,24 @@ def test_edit_context_has_no_dead_detail_keys() -> None:
     assert "go_back" in edit_actions
 
 
+def test_toggle_select_is_a_list_binding_on_v_and_space() -> None:
+    toggle = next(b for b in KEYMAP if b.action == "toggle_select")
+    assert toggle.context == "list"
+    assert "v" in toggle.keys
+    assert "space" in toggle.keys
+
+
+def test_toggle_select_surfaces_in_list_bindings_and_help() -> None:
+    list_actions = {b.action for b in bindings_for("list")}
+    assert "toggle_select" in list_actions
+    help_list_actions = {b.action for b in help_groups()["list"]}
+    assert "toggle_select" in help_list_actions
+
+
+def test_bulk_edit_action_not_required_yet() -> None:
+    assert all(b.action != "bulk_edit" for b in KEYMAP)
+
+
 def test_display_keys_renders_pressable_glyphs() -> None:
     help_binding = next(b for b in KEYMAP if b.action == "request_help")
     filter_binding = next(b for b in KEYMAP if b.action == "focus_filter")
