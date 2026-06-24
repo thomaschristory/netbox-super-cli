@@ -8,8 +8,11 @@ behave identically to single-record edits. No Textual, no http.
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 from pydantic import BaseModel, ConfigDict
 
+from nsc.http.errors import NetBoxAPIError, NetBoxClientError
 from nsc.tui.forms import DiffRow, compute_patch, diff_rows
 
 
@@ -38,3 +41,50 @@ def bulk_diff(
         rows = diff_rows(record, patch, sensitive_paths)
         changes.append(RecordChange(record_id=record.get("id"), patch=patch, rows=rows))
     return changes
+
+
+class BulkFailure(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    record_id: object
+    error: str
+
+
+class BulkResult(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    successes: list[object]
+    failures: list[BulkFailure]
+    skipped: list[object]
+
+
+def apply_bulk(
+    changes: list[RecordChange],
+    patch_fn: Callable[[RecordChange], None],
+    on_progress: Callable[[int, int], None] | None = None,
+) -> BulkResult:
+    """Apply ``patch_fn`` to each change, aggregating per-record outcomes.
+
+    A change with an empty patch is skipped without calling ``patch_fn``. The
+    loop never re-raises: an HTTP error for one record is recorded and the
+    remaining records are still attempted, so a single failure cannot silently
+    abort the batch. Every input change lands in exactly one of
+    ``successes``/``failures``/``skipped``.
+    """
+    successes: list[object] = []
+    failures: list[BulkFailure] = []
+    skipped: list[object] = []
+    total = len(changes)
+    for index, change in enumerate(changes, start=1):
+        if on_progress is not None:
+            on_progress(index, total)
+        if not change.patch:
+            skipped.append(change.record_id)
+            continue
+        try:
+            patch_fn(change)
+        except (NetBoxAPIError, NetBoxClientError) as exc:
+            failures.append(BulkFailure(record_id=change.record_id, error=exc.render_for_cli()))
+        else:
+            successes.append(change.record_id)
+    return BulkResult(successes=successes, failures=failures, skipped=skipped)
