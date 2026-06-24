@@ -12,11 +12,12 @@ from textual.widgets import Input, Label, ListItem, ListView
 
 from nsc.model.command_model import CommandModel
 from nsc.tui.catalog import ResourceRef, filter_resources, list_resources
+from nsc.tui.nav import can_go_back
 
 
 class ResourcePicker(ModalScreen[ResourceRef]):
     BINDINGS: ClassVar[list[BindingType]] = [
-        ("escape", "dismiss", "Close"),
+        ("escape", "cancel", "Close"),
         # Down from the search box drops into the list; the list then owns down.
         ("down", "app.focus_next", "Down"),
     ]
@@ -57,3 +58,11 @@ class ResourcePicker(ModalScreen[ResourceRef]):
         ref = getattr(item, "data", None)
         if isinstance(ref, ResourceRef):
             self.dismiss(ref)
+
+    def action_cancel(self) -> None:
+        # As the landing screen there is nothing beneath but the blank base, so
+        # closing would black out; stay put and hint instead.
+        if can_go_back(self.app):
+            self.dismiss()
+        else:
+            self.notify("Press q to quit, or pick a resource to continue.")

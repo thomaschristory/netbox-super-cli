@@ -57,6 +57,17 @@ async def test_down_arrow_from_filter_focuses_the_list() -> None:
         assert app.focused is picker.query_one("#picker-list", ListView)
 
 
+async def test_escape_on_root_picker_does_not_blank_out() -> None:
+    app = _PickerApp()
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        assert isinstance(app.screen, ResourcePicker)
+        await pilot.press("escape")
+        await pilot.pause()
+        # still on the picker — escape must not reveal the blank base screen
+        assert isinstance(app.screen, ResourcePicker)
+
+
 async def test_picker_enter_with_no_match_does_not_dismiss() -> None:
     app = _PickerApp()
     async with app.run_test() as pilot:

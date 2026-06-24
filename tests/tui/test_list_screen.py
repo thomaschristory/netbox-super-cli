@@ -192,6 +192,22 @@ async def test_applying_filters_reloads_with_merged_params() -> None:
 
 
 @pytest.mark.asyncio
+async def test_back_on_root_list_does_not_blank_out() -> None:
+    client = _FakeClient([{"id": 1, "name": "sw1"}])
+    app = _ListApp(client)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        screen = app.screen
+        assert isinstance(screen, ListScreen)
+        notes: list[str] = []
+        screen.notify = lambda msg, **kwargs: notes.append(msg)  # type: ignore[method-assign]
+        screen.action_go_back()
+        await pilot.pause()
+        assert app.screen is screen  # still on the list, not the blank base
+        assert notes  # hinted how to quit / switch
+
+
+@pytest.mark.asyncio
 async def test_api_error_during_reload_notifies_and_keeps_rows() -> None:
     class _FlakyClient(_FakeClient):
         def paginate(

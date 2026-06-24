@@ -14,6 +14,7 @@ from nsc.http.errors import NetBoxAPIError, NetBoxClientError
 from nsc.model.command_model import CommandModel, Operation
 from nsc.tui._bindings import textual_bindings
 from nsc.tui.errors import api_error_message
+from nsc.tui.nav import can_go_back
 from nsc.tui.selection import Selection
 from nsc.tui.view import build_rows, choose_columns
 
@@ -189,7 +190,10 @@ class ListScreen(Screen[None]):
         )
 
     def action_go_back(self) -> None:
-        self.app.pop_screen()
+        if can_go_back(self.app):
+            self.app.pop_screen()
+        else:
+            self.notify("Nothing to go back to — press q to quit or ctrl+p to switch resource.")
 
     def action_create_record(self) -> None:
         resource = self._model.tags[self._tag].resources[self._resource_name]

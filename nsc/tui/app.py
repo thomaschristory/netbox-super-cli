@@ -10,6 +10,7 @@ from textual.binding import BindingType
 from nsc.model.command_model import CommandModel
 from nsc.tui._bindings import textual_bindings
 from nsc.tui.catalog import ResourceRef, list_resources
+from nsc.tui.nav import can_go_back
 from nsc.tui.screens.list import ListScreen
 from nsc.tui.screens.picker import ResourcePicker
 from nsc.tui.widgets.help import HelpOverlay
@@ -62,7 +63,7 @@ class NscTuiApp(App[None]):
         self.push_screen(ResourcePicker(self._model), self._open_ref)
 
     def action_go_back(self) -> None:
-        if len(self.screen_stack) > 1:
+        if can_go_back(self):
             self.pop_screen()
 
 
