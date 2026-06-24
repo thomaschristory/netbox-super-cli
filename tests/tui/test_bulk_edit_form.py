@@ -159,6 +159,34 @@ async def test_each_writable_field_renders_widget_and_include_toggle() -> None:
 
 
 @pytest.mark.asyncio
+async def test_shared_field_is_prepopulated_but_not_auto_included() -> None:
+    client = _SpyClient([])
+    app = _BulkApp(client)
+    async with app.run_test(size=(120, 60)) as pilot:
+        await pilot.pause()
+        screen = _screen(app)
+        # both records share status="active" -> Select seeded
+        assert screen.query_one("#field-status", Select).value == "active"
+        # name/weight differ across records -> left blank
+        assert screen.query_one("#field-name", Input).value == ""
+        assert screen.query_one("#field-weight", Input).value == ""
+        # seeding alone opts nothing in
+        assert screen.bulk_set == {}
+
+
+@pytest.mark.asyncio
+async def test_including_a_prepopulated_field_uses_the_shared_value() -> None:
+    client = _SpyClient([])
+    app = _BulkApp(client)
+    async with app.run_test(size=(120, 60)) as pilot:
+        await pilot.pause()
+        screen = _screen(app)
+        screen.query_one("#include-status", Switch).value = True  # opt in, unchanged
+        await pilot.pause()
+        assert screen.bulk_set == {"status": "active"}
+
+
+@pytest.mark.asyncio
 async def test_untouched_field_excluded_even_with_value() -> None:
     client = _SpyClient([])
     app = _BulkApp(client)

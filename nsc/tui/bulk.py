@@ -43,6 +43,29 @@ def bulk_diff(
     return changes
 
 
+def _comparable(value: object) -> object:
+    """Normalise an FK nested object to its id so values compare by identity."""
+    if isinstance(value, dict) and "id" in value:
+        return value["id"]
+    return value
+
+
+def shared_values(records: list[dict[str, object]], field_names: list[str]) -> dict[str, object]:
+    """Value each field holds in common across all records (else absent).
+
+    Used to prepopulate the bulk form so an opted-in field starts from the
+    records' shared value. Fields where the records disagree, or whose shared
+    value is ``None``/missing, are omitted (left blank).
+    """
+    shared: dict[str, object] = {}
+    for name in field_names:
+        values = [_comparable(record.get(name)) for record in records]
+        first = values[0] if values else None
+        if first is not None and all(value == first for value in values):
+            shared[name] = first
+    return shared
+
+
 class BulkFailure(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 

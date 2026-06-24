@@ -19,7 +19,7 @@ from textual.widgets import Button, Footer, Header, Input, Label, ProgressBar, S
 
 from nsc.model.command_model import CommandModel, Operation
 from nsc.tui._bindings import textual_bindings
-from nsc.tui.bulk import RecordChange
+from nsc.tui.bulk import RecordChange, shared_values
 from nsc.tui.forms import SET_NULL, WidgetSpec, field_to_widget
 from nsc.tui.view import detail_path
 
@@ -61,6 +61,11 @@ class BulkEditForm(Screen[None]):
         self._specs: dict[str, WidgetSpec] = {}
         self._values: dict[str, Any] = {}
         self._included: set[str] = set()
+        body = update_op.request_body
+        field_names = list(body.fields) if body is not None else []
+        # Shared current value per field, to seed the widgets (does NOT opt the
+        # field in — the include toggle still gates what gets set).
+        self._shared = shared_values(selected_records, field_names)
         self.progress_total = 0
         self.progress_done = 0
         self.title = f"Bulk edit {len(selected_records)} {resource_name}"
@@ -94,14 +99,17 @@ class BulkEditForm(Screen[None]):
                 yield Button("∅", id=f"setnull-{name}", classes="bulk-setnull")
 
     def _compose_widget(self, name: str, spec: WidgetSpec) -> ComposeResult:
+        shared = self._shared.get(name)
         if spec.kind == "select":
             options = [(choice, choice) for choice in spec.choices]
-            yield Select(options, value=Select.NULL, id=f"field-{name}", allow_blank=True)
+            value = shared if shared in spec.choices else Select.NULL
+            yield Select(options, value=value, id=f"field-{name}", allow_blank=True)
             return
         if spec.kind == "switch":
-            yield Switch(value=False, id=f"field-{name}")
+            yield Switch(value=bool(shared), id=f"field-{name}")
             return
-        yield Input(value="", password=spec.sensitive, id=f"field-{name}")
+        text = "" if shared is None else str(shared)
+        yield Input(value=text, password=spec.sensitive, id=f"field-{name}")
 
     @staticmethod
     def _strip(ident: str | None, prefix: str) -> str | None:

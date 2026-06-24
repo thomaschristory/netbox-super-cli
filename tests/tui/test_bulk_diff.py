@@ -3,8 +3,24 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from nsc.tui.bulk import RecordChange, bulk_diff
+from nsc.tui.bulk import RecordChange, bulk_diff, shared_values
 from nsc.tui.forms import SET_NULL, DiffRow
+
+
+def test_shared_values_returns_only_fields_all_records_agree_on() -> None:
+    records = [
+        {"id": 1, "status": "active", "site": {"id": 3, "display": "HQ"}, "role": "leaf"},
+        {"id": 2, "status": "active", "site": {"id": 3, "display": "HQ"}, "role": "spine"},
+    ]
+    shared = shared_values(records, ["status", "site", "role", "absent"])
+    assert shared == {"status": "active", "site": 3}  # FK normalised to id
+    assert "role" not in shared  # records disagree
+    assert "absent" not in shared  # missing everywhere -> None -> omitted
+
+
+def test_shared_values_omits_none_and_handles_empty() -> None:
+    assert shared_values([{"id": 1, "x": None}, {"id": 2, "x": None}], ["x"]) == {}
+    assert shared_values([], ["x"]) == {}
 
 
 def test_uniform_set_yields_per_record_changes_in_order() -> None:
