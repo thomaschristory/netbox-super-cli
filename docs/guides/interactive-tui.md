@@ -151,8 +151,8 @@ Press <kbd>f</kbd> on a list to open the column chooser.
 Only top-level fields are offered — a foreign key or choice field is one column
 (rendered via its display value), not a pile of `site.id` / `site.url` rows. Your
 choice is **persisted per resource** to `~/.nsc/config.yaml` under `columns`, the
-same setting the CLI's `--columns` uses, so it sticks across launches and is
-shared between the TUI and the CLI.
+same config the CLI reads (and which `--columns` overrides), so it sticks across
+launches and is shared between the TUI and the CLI.
 
 ## Global search
 
@@ -178,7 +178,7 @@ current view is preserved.
 
 ## Keyboard reference
 
-Global keys work on every screen:
+Global keys work on the list and detail screens:
 
 | Key | Action |
 |---|---|
@@ -187,6 +187,10 @@ Global keys work on every screen:
 | <kbd>Ctrl</kbd>+<kbd>F</kbd> | Global search |
 | <kbd>Esc</kbd> | Back |
 | <kbd>q</kbd> | Quit |
+
+The resource picker and other modals (global search, the column chooser, confirm
+and diff dialogs) are focused overlays: they show their own key hints in-line and
+do not bubble the global keys above — close them with <kbd>Esc</kbd> first.
 
 The footer always shows the keys for the current screen, and <kbd>?</kbd> lists
 them all. Arrow keys navigate everywhere; the list view also accepts vim-style
