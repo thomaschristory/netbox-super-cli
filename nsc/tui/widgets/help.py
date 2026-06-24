@@ -18,6 +18,7 @@ _TITLES = {
     "list": "List view",
     "detail": "Detail view",
     "edit": "Edit form",
+    "bulk": "Bulk edit form",
 }
 _DISMISS_KEYS = {"escape", "q", "enter", "question_mark"}
 
@@ -32,7 +33,7 @@ class HelpOverlay(ModalScreen[None]):
             for b in bindings:
                 lines.append(f"  {b.display_keys:<16} {b.description}")
             lines.append("")
-        lines.append("[dim]Press Esc, q, or Enter to close[/dim]")
+        lines.append("[dim]Press ?, Esc, q, or Enter to close[/dim]")
         return "\n".join(lines)
 
     def compose(self) -> ComposeResult:

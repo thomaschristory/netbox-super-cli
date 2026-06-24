@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from typing import ClassVar
 
+from rich.markup import escape
 from textual.app import ComposeResult
 from textual.binding import BindingType
 from textual.containers import VerticalScroll
@@ -42,7 +43,7 @@ class BulkSummaryModal(ModalScreen[None]):
             lines.append("")
             lines.append("[b]Failures[/b]")
             for failure in result.failures:
-                lines.append(f"  #{failure.record_id}: {failure.error}")
+                lines.append(f"  #{escape(str(failure.record_id))}: {escape(failure.error)}")
         lines.append("")
         lines.append("[dim]Enter/Esc close[/dim]")
         return "\n".join(lines)

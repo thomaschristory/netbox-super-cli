@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
+from rich.text import Text
 from textual.app import App, ComposeResult
 from textual.widgets import Select, Static, Switch
 
@@ -78,6 +79,22 @@ def test_bulk_diff_modal_masks_sensitive_values() -> None:
     text = BulkDiffModal(_changes()).render_text()
     assert "auth_key: **** -> ****" in text
     assert "secret" not in text
+
+
+def test_bulk_diff_modal_escapes_bracket_content_in_values() -> None:
+    changes = [
+        RecordChange(
+            record_id=1,
+            patch={"comment": "[see note]"},
+            rows=[DiffRow(field="comment", old_display="[/]", new_display="[see note]")],
+        ),
+    ]
+    text = BulkDiffModal(changes).render_text()
+    assert "[/]" in text
+    assert "[see note]" in text
+    rendered = Text.from_markup(text)
+    assert "[/]" in rendered.plain
+    assert "[see note]" in rendered.plain
 
 
 def test_bulk_diff_modal_renders_values_from_pure_bulk_diff() -> None:

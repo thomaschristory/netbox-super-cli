@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-Context = str  # "global" | "list" | "detail" | "edit"
+Context = str  # "global" | "list" | "detail" | "edit" | "bulk"
 
 # Textual key identifiers have no printable form; map them to the glyph the
 # user actually presses so footer and help do not show raw tokens.
@@ -60,6 +60,8 @@ KEYMAP: tuple[KeyBinding, ...] = (
     _b("d", "delete_record", "Delete", "detail"),
     _b("s", "save", "Save", "edit"),
     _b("b", "go_back", "Back", "edit"),
+    _b("p", "preview", "Preview changes", "bulk"),
+    _b("b", "go_back", "Back", "bulk"),
 )
 
 
@@ -75,6 +77,7 @@ def help_groups() -> dict[Context, list[KeyBinding]]:
         "list": [],
         "detail": [],
         "edit": [],
+        "bulk": [],
     }
     for b in KEYMAP:
         groups[b.context].append(b)

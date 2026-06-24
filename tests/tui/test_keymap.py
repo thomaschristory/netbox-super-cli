@@ -4,6 +4,7 @@ import pytest
 
 from nsc.tui.app import NscTuiApp
 from nsc.tui.keymap import KEYMAP, KeyBinding, bindings_for, help_groups
+from nsc.tui.screens.bulk_edit_form import BulkEditForm
 from nsc.tui.screens.detail import DetailScreen
 from nsc.tui.screens.edit_form import EditForm
 from nsc.tui.screens.list import ListScreen
@@ -14,7 +15,7 @@ def test_every_binding_has_required_fields() -> None:
         assert b.keys, "binding must declare at least one key"
         assert b.action
         assert b.description
-        assert b.context in {"global", "list", "detail", "edit"}
+        assert b.context in {"global", "list", "detail", "edit", "bulk"}
 
 
 def test_bindings_for_filters_by_context_and_includes_global() -> None:
@@ -28,7 +29,7 @@ def test_bindings_for_filters_by_context_and_includes_global() -> None:
 
 def test_help_groups_are_keyed_by_context_and_nonempty() -> None:
     groups = help_groups()
-    assert set(groups) == {"global", "list", "detail", "edit"}
+    assert set(groups) == {"global", "list", "detail", "edit", "bulk"}
     assert all(len(v) >= 1 for v in groups.values())
 
 
@@ -46,10 +47,11 @@ _OWNER_FOR_CONTEXT = {
     "list": (NscTuiApp, ListScreen),
     "detail": (NscTuiApp, DetailScreen),
     "edit": (NscTuiApp, EditForm),
+    "bulk": (NscTuiApp, BulkEditForm),
 }
 
 
-@pytest.mark.parametrize("context", ["global", "list", "detail", "edit"])
+@pytest.mark.parametrize("context", ["global", "list", "detail", "edit", "bulk"])
 def test_every_action_resolves_to_a_method(context: str) -> None:
     owners = _OWNER_FOR_CONTEXT[context]
     for b in bindings_for(context):
@@ -59,7 +61,7 @@ def test_every_action_resolves_to_a_method(context: str) -> None:
         )
 
 
-@pytest.mark.parametrize("context", ["global", "list", "detail", "edit"])
+@pytest.mark.parametrize("context", ["global", "list", "detail", "edit", "bulk"])
 def test_no_key_maps_to_two_actions_in_a_context(context: str) -> None:
     seen: dict[str, str] = {}
     for b in bindings_for(context):
@@ -154,6 +156,21 @@ def test_bulk_edit_is_a_list_binding_on_a_distinct_capital_key() -> None:
     only = bulk.keys[0]
     assert only.isupper()
     assert only not in toggle.keys
+
+
+def test_bulk_context_surfaces_preview_and_back_not_save() -> None:
+    bulk_actions = {b.action for b in bindings_for("bulk")}
+    assert "preview" in bulk_actions
+    assert "go_back" in bulk_actions
+    assert "save" not in bulk_actions
+    help_bulk_actions = {b.action for b in help_groups()["bulk"]}
+    assert "preview" in help_bulk_actions
+
+
+def test_bulk_preview_action_resolves_on_bulk_edit_form() -> None:
+    assert hasattr(BulkEditForm, "action_preview")
+    assert hasattr(BulkEditForm, "action_go_back")
+    assert not hasattr(BulkEditForm, "action_save")
 
 
 def test_display_keys_renders_pressable_glyphs() -> None:

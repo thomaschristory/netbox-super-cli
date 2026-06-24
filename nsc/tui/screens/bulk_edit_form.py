@@ -40,7 +40,7 @@ class _Client(Protocol):
 
 
 class BulkEditForm(Screen[None]):
-    BINDINGS: ClassVar[list[BindingType]] = textual_bindings("edit")
+    BINDINGS: ClassVar[list[BindingType]] = textual_bindings("bulk")
 
     def __init__(
         self,
@@ -131,12 +131,22 @@ class BulkEditForm(Screen[None]):
         if include is not None:
             if event.value:
                 self._included.add(include)
+                self._values.setdefault(include, self._read_widget_value(include))
             else:
                 self._included.discard(include)
             return
         name = self._strip(event.switch.id, "field-")
         if name is not None:
             self._values[name] = event.value
+
+    def _read_widget_value(self, name: str) -> Any:
+        spec = self._specs.get(name)
+        if spec is not None and spec.kind == "select":
+            value = self.query_one(f"#field-{name}", Select).value
+            return None if value is Select.NULL else value
+        if spec is not None and spec.kind == "switch":
+            return self.query_one(f"#field-{name}", Switch).value
+        return self._coerce_input(name, self.query_one(f"#field-{name}", Input).value)
 
     def on_select_changed(self, event: Select.Changed) -> None:
         name = self._strip(event.select.id, "field-")
@@ -199,3 +209,15 @@ class BulkEditForm(Screen[None]):
 
     def _on_summary_dismissed(self, _: None) -> None:
         self.dismiss()
+
+    def action_go_back(self) -> None:
+        if not self.bulk_set:
+            self.dismiss()
+            return
+        from nsc.tui.widgets.confirm import ConfirmModal  # noqa: PLC0415
+
+        def _on_confirm(confirmed: bool | None) -> None:
+            if confirmed:
+                self.dismiss()
+
+        self.app.push_screen(ConfirmModal("Discard staged bulk changes?"), _on_confirm)

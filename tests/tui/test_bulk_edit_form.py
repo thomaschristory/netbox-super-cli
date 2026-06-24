@@ -19,6 +19,7 @@ from nsc.model.command_model import (
 from nsc.tui.forms import SET_NULL
 from nsc.tui.screens.bulk_edit_form import BulkEditForm
 from nsc.tui.screens.list import ListScreen
+from nsc.tui.widgets.bulk_diff import BulkDiffModal
 from nsc.tui.widgets.bulk_summary import BulkSummaryModal
 
 
@@ -236,6 +237,66 @@ async def test_widget_change_only_no_network() -> None:
 
 
 @pytest.mark.asyncio
+async def test_include_boolean_at_default_false_lands_in_bulk_set() -> None:
+    client = _SpyClient([])
+    app = _BulkApp(client)
+    async with app.run_test(size=(120, 60)) as pilot:
+        await pilot.pause()
+        screen = _screen(app)
+        # Include 'enabled' without ever toggling its field switch (stays False).
+        screen.query_one("#include-enabled", Switch).value = True
+        await pilot.pause()
+        assert screen.bulk_set == {"enabled": False}
+
+
+@pytest.mark.asyncio
+async def test_include_seeds_numeric_int_value_from_widget() -> None:
+    client = _SpyClient([])
+    app = _BulkApp(client)
+    async with app.run_test(size=(120, 60)) as pilot:
+        await pilot.pause()
+        screen = _screen(app)
+        screen.query_one("#field-weight", Input).value = "42"
+        await pilot.pause()
+        screen.query_one("#include-weight", Switch).value = True
+        await pilot.pause()
+        assert screen.bulk_set == {"weight": 42}
+        assert isinstance(screen.bulk_set["weight"], int)
+
+
+@pytest.mark.asyncio
+async def test_include_non_numeric_weight_falls_back_to_raw_string() -> None:
+    client = _SpyClient([])
+    app = _BulkApp(client)
+    async with app.run_test(size=(120, 60)) as pilot:
+        await pilot.pause()
+        screen = _screen(app)
+        screen.query_one("#field-weight", Input).value = "abc"
+        await pilot.pause()
+        screen.query_one("#include-weight", Switch).value = True
+        await pilot.pause()
+        assert screen.bulk_set == {"weight": "abc"}
+
+
+@pytest.mark.asyncio
+async def test_keyboard_preview_binding_pushes_diff_modal() -> None:
+    client = _SpyClient([])
+    app = _BulkApp(client)
+    async with app.run_test(size=(120, 60)) as pilot:
+        await pilot.pause()
+        screen = _screen(app)
+        screen.query_one("#field-status", Select).value = "offline"
+        await pilot.pause()
+        screen.query_one("#include-status", Switch).value = True
+        await pilot.pause()
+        screen.focus_next()
+        await pilot.press("p")
+        await pilot.pause()
+        assert isinstance(app.screen, BulkDiffModal)
+        assert client.patch_calls == []
+
+
+@pytest.mark.asyncio
 async def test_preview_action_builds_changes_and_pushes_screen() -> None:
     client = _SpyClient([])
     app = _BulkApp(client)
@@ -371,6 +432,74 @@ async def test_partial_failure_reports_summary_without_escaping() -> None:
         assert "1 failed" in text
         assert "#3" in text
         assert "bad request" in text
+
+
+@pytest.mark.asyncio
+async def test_all_no_op_run_skips_every_record_and_reports_unchanged() -> None:
+    # Every selected record already has status "offline" -> staging "offline" is a no-op.
+    selected = [
+        {"id": 1, "status": "offline", "enabled": True, "weight": 10, "name": "sw1"},
+        {"id": 2, "status": "offline", "enabled": False, "weight": 20, "name": "sw2"},
+    ]
+    client = _SpyClient([])
+    app = _BulkApp3(client, selected)
+    async with app.run_test(size=(120, 60)) as pilot:
+        await pilot.pause()
+        screen = _screen3(app)
+        await _stage_status_offline(pilot, screen)
+        screen.action_preview()
+        await pilot.pause()
+        await pilot.press("enter")
+        await pilot.pause()
+        assert client.patch_calls == []
+        assert screen.progress_total == 0
+        summary = app.screen
+        assert isinstance(summary, BulkSummaryModal)
+        text = summary.render_text()
+        assert "0 succeeded, 0 failed, 2 unchanged" in text
+
+
+@pytest.mark.asyncio
+async def test_partial_failure_dismiss_returns_to_list_and_clears_selection() -> None:
+    records = _selected_all_active()
+    client = _SpyClient(records, fail_ids=(3,))
+
+    class _ListApp(App[None]):
+        def compose(self) -> ComposeResult:
+            yield Static("")
+
+        async def on_mount(self) -> None:
+            model = _model()
+            await self.push_screen(ListScreen(model, client, "dcim", "devices", _update_op(model)))
+
+    app = _ListApp()
+    async with app.run_test(size=(120, 60)) as pilot:
+        await pilot.pause()
+        list_screen = app.screen
+        assert isinstance(list_screen, ListScreen)
+        list_screen.selection.toggle(1)
+        list_screen.selection.toggle(2)
+        list_screen.selection.toggle(3)
+        paginate_before = len(client.paginate_calls)
+
+        list_screen.action_bulk_edit()
+        await pilot.pause()
+        form = app.screen
+        assert isinstance(form, BulkEditForm)
+        await _stage_status_offline(pilot, form)
+        form.action_preview()
+        await pilot.pause()
+        await pilot.press("enter")
+        await pilot.pause()
+        summary = app.screen
+        assert isinstance(summary, BulkSummaryModal)
+        assert "1 failed" in summary.render_text()
+        # Dismiss the partial-failure summary -> still returns to list and clears selection.
+        await pilot.press("escape")
+        await pilot.pause()
+        assert app.screen is list_screen
+        assert len(list_screen.selection) == 0
+        assert len(client.paginate_calls) > paginate_before
 
 
 @pytest.mark.asyncio
