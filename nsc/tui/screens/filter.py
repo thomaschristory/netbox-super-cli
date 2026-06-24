@@ -29,7 +29,6 @@ class FilterScreen(ModalScreen[dict[str, str]]):
 
     def __init__(self, operation: Operation, current: dict[str, str]) -> None:
         super().__init__()
-        self._op = operation
         self._common = common_filters(operation)
         self._searchable = searchable_filters(operation)
         self.state = FilterState.from_params(current)
