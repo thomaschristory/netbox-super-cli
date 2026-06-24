@@ -150,10 +150,9 @@ class BulkEditForm(Screen[None]):
 
     def action_preview(self) -> None:
         from nsc.tui.bulk import bulk_diff  # noqa: PLC0415
-        from nsc.tui.widgets.diff import DiffModal  # noqa: PLC0415
+        from nsc.tui.widgets.bulk_diff import BulkDiffModal  # noqa: PLC0415
 
         body = self._op.request_body
         sensitive = body.sensitive_paths if body is not None else ()
         changes = bulk_diff(self._selected, self.bulk_set, sensitive)
-        rows = [row for change in changes for row in change.rows]
-        self.app.push_screen(DiffModal(rows))
+        self.app.push_screen(BulkDiffModal(changes))
