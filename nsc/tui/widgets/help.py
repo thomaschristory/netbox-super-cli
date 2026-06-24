@@ -4,6 +4,10 @@ from __future__ import annotations
 
 from typing import ClassVar
 
+from rich.console import Group, RenderableType
+from rich.panel import Panel
+from rich.table import Table
+from rich.text import Text
 from textual import events
 from textual.app import ComposeResult
 from textual.binding import BindingType
@@ -23,22 +27,37 @@ _TITLES = {
 _DISMISS_KEYS = {"escape", "q", "enter", "question_mark"}
 
 
+def help_renderable() -> RenderableType:
+    """A rich renderable of the keymap: a panel per context with a key/desc grid."""
+    panels: list[RenderableType] = []
+    for context, bindings in help_groups().items():
+        if not bindings:
+            continue
+        grid = Table.grid(padding=(0, 3))
+        grid.add_column(justify="right", style="bold cyan", no_wrap=True)
+        grid.add_column(ratio=1)
+        for binding in bindings:
+            grid.add_row(binding.display_keys, binding.description)
+        panels.append(
+            Panel(
+                grid,
+                title=f"[b]{_TITLES[context]}[/b]",
+                title_align="left",
+                border_style="cyan",
+                padding=(0, 1),
+            )
+        )
+    title = Text("⌨  nsc — keyboard shortcuts", style="bold", justify="center")
+    footer = Text("Press ?, Esc, q, or Enter to close", style="dim italic", justify="center")
+    return Group(title, Text(), *panels, Text(), footer)
+
+
 class HelpOverlay(ModalScreen[None]):
     BINDINGS: ClassVar[list[BindingType]] = [("escape", "dismiss", "Close")]
 
-    def render_text(self) -> str:
-        lines: list[str] = []
-        for context, bindings in help_groups().items():
-            lines.append(f"[b]{_TITLES[context]}[/b]")
-            for b in bindings:
-                lines.append(f"  {b.display_keys:<16} {b.description}")
-            lines.append("")
-        lines.append("[dim]Press ?, Esc, q, or Enter to close[/dim]")
-        return "\n".join(lines)
-
     def compose(self) -> ComposeResult:
         with VerticalScroll(id="help-body"):
-            yield Static(self.render_text(), markup=True)
+            yield Static(help_renderable())
 
     def on_key(self, event: events.Key) -> None:
         # Dismiss only on explicit close keys so arrow/page keys can scroll the body.

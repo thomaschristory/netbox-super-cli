@@ -1,8 +1,18 @@
 from __future__ import annotations
 
+import io
+
+from rich.console import Console
 from textual.app import App, ComposeResult
 
-from nsc.tui.widgets.help import HelpOverlay
+from nsc.tui.widgets.help import HelpOverlay, help_renderable
+
+
+def _rendered() -> str:
+    """Plain-text projection of the overlay's renderable, for content assertions."""
+    console = Console(file=io.StringIO(), width=120, no_color=True)
+    console.print(help_renderable())
+    return console.file.getvalue()
 
 
 class _HelpApp(App[None]):
@@ -41,7 +51,7 @@ async def test_help_overlay_closes_on_q() -> None:
 async def test_help_overlay_lists_every_action_description() -> None:
     app = _HelpApp()
     async with app.run_test() as pilot:
-        text = app.screen.query_one(HelpOverlay).render_text()
+        text = _rendered()
         assert "Quit" in text
         assert "Filter" in text
         assert "Open related" in text
@@ -55,7 +65,7 @@ async def test_help_overlay_lists_every_action_description() -> None:
 async def test_help_overlay_lists_edit_create_delete_descriptions() -> None:
     app = _HelpApp()
     async with app.run_test() as pilot:
-        text = app.screen.query_one(HelpOverlay).render_text()
+        text = _rendered()
         assert "Create" in text
         assert "Edit" in text
         assert "Delete" in text
@@ -75,7 +85,7 @@ async def test_help_overlay_groups_edit_create_delete_under_their_context() -> N
     the same context the keymap assigns and cannot drift from it."""
     app = _HelpApp()
     async with app.run_test() as pilot:
-        text = app.screen.query_one(HelpOverlay).render_text()
+        text = _rendered()
         list_section = _section_for(text, "List view")
         detail_section = _section_for(text, "Detail view")
         assert "Create" in list_section
