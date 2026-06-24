@@ -4,8 +4,10 @@ from typing import Any
 
 import pytest
 from textual.app import App, ComposeResult
+from textual.coordinate import Coordinate
 from textual.widgets import DataTable, Input, Static, Tab, Tabs
 
+from nsc.http.errors import NetBoxAPIError
 from nsc.model.command_model import (
     CommandModel,
     FieldShape,
@@ -38,7 +40,9 @@ def _model() -> CommandModel:
                 fields={
                     "name": FieldShape(primitive=PrimitiveType.STRING),
                     "site": FieldShape(primitive=PrimitiveType.INTEGER),
+                    "auth_key": FieldShape(primitive=PrimitiveType.STRING),
                 },
+                sensitive_paths=("auth_key",),
             ),
         ),
         delete_op=Operation(
@@ -82,9 +86,10 @@ def _model() -> CommandModel:
 
 
 class _SpyClient:
-    def __init__(self) -> None:
+    def __init__(self, *, fail_on_write: bool = False) -> None:
         self.patch_calls: list[dict[str, Any]] = []
         self.delete_calls: list[dict[str, Any]] = []
+        self._fail_on_write = fail_on_write
 
     def paginate(
         self, path: str, params: dict[str, Any] | None = None, *, limit: int | None = None
@@ -100,10 +105,16 @@ class _SpyClient:
         sensitive_paths: tuple[str, ...] = (),
     ) -> dict[str, Any]:
         self.patch_calls.append({"path": path, "json": json, "operation_id": operation_id})
+        if self._fail_on_write:
+            raise NetBoxAPIError(status_code=400, url=path, body_snippet="bad request", headers={})
         return {}
 
     def delete(self, path: str, *, operation_id: str | None = None, **kwargs: Any) -> Any:
         self.delete_calls.append({"path": path, "operation_id": operation_id})
+        if self._fail_on_write:
+            raise NetBoxAPIError(
+                status_code=400, url=path, body_snippet="cannot delete", headers={}
+            )
         return {}
 
 
@@ -112,9 +123,9 @@ def _record() -> dict[str, Any]:
 
 
 class _DetailApp(App[None]):
-    def __init__(self) -> None:
+    def __init__(self, *, fail_on_write: bool = False) -> None:
         super().__init__()
-        self.client = _SpyClient()
+        self.client = _SpyClient(fail_on_write=fail_on_write)
 
     def compose(self) -> ComposeResult:
         yield Static("")
@@ -179,6 +190,22 @@ async def test_pressing_enter_starts_editing_current_field() -> None:
 
 
 @pytest.mark.asyncio
+async def test_staged_sensitive_field_renders_masked_in_table() -> None:
+    app = _DetailApp()
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        screen = _detail(app)
+        screen.staged = {"auth_key": "topsecret"}
+        screen._refresh_rows()
+        await pilot.pause()
+        table = screen._table
+        auth_row = next(i for i, r in enumerate(screen._rows) if r.name == "auth_key")
+        cell = table.get_cell_at(Coordinate(auth_row, 1))
+        assert cell == "****"
+        assert "topsecret" not in str(cell)
+
+
+@pytest.mark.asyncio
 async def test_save_all_previews_then_patches_once() -> None:
     app = _DetailApp()
     async with app.run_test() as pilot:
@@ -199,6 +226,32 @@ async def test_save_all_previews_then_patches_once() -> None:
         ]
         # staged cleared after save
         assert _detail(app).staged == {}
+
+
+@pytest.mark.asyncio
+async def test_detail_save_all_api_error_keeps_staged_and_screen() -> None:
+    app = _DetailApp(fail_on_write=True)
+    notifications: list[tuple[str, Any]] = []
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        screen = _detail(app)
+        original_notify = screen.notify
+
+        def _capture(message: str, *args: Any, **kwargs: Any) -> None:
+            notifications.append((message, kwargs.get("severity")))
+            original_notify(message, *args, **kwargs)
+
+        screen.notify = _capture  # type: ignore[method-assign]
+        screen.staged = {"name": "sw1-renamed"}
+        screen.action_save_all()
+        await pilot.pause()
+        await pilot.press("y")
+        await pilot.pause()
+        assert len(app.client.patch_calls) == 1
+        # On error the staged change is preserved and we stay on the detail screen.
+        assert screen.staged == {"name": "sw1-renamed"}
+        assert app.screen is screen
+        assert any(sev == "error" for _, sev in notifications)
 
 
 @pytest.mark.asyncio
@@ -389,6 +442,31 @@ async def test_delete_cancel_calls_nothing() -> None:
         await pilot.pause()
         assert app.client.delete_calls == []
         assert app.screen is screen
+
+
+@pytest.mark.asyncio
+async def test_delete_api_error_notifies_and_does_not_pop() -> None:
+    app = _DetailApp(fail_on_write=True)
+    notifications: list[tuple[str, Any]] = []
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        screen = app.screen
+        assert isinstance(screen, DetailScreen)
+        original_notify = screen.notify
+
+        def _capture(message: str, *args: Any, **kwargs: Any) -> None:
+            notifications.append((message, kwargs.get("severity")))
+            original_notify(message, *args, **kwargs)
+
+        screen.notify = _capture  # type: ignore[method-assign]
+        await pilot.press("d")
+        await pilot.pause()
+        await pilot.press("y")
+        await pilot.pause()
+        assert len(app.client.delete_calls) == 1
+        # Failed delete: stay on the detail screen and surface the error.
+        assert app.screen is screen
+        assert any(sev == "error" for _, sev in notifications)
 
 
 class _NoDeleteApp(App[None]):

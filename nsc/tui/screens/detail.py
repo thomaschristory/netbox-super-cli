@@ -124,14 +124,20 @@ class DetailScreen(Screen[None]):
             table.move_cursor(row=min(cursor, table.row_count - 1))
 
     def _value_display(self, row: _FieldRow, flat: dict[str, Any]) -> str:
+        sensitive = row.spec is not None and row.spec.sensitive
         if row.editable and row.name in self.staged:
             staged = self.staged[row.name]
-            return "(null)" if staged is SET_NULL else str(staged)
+            if staged is SET_NULL:
+                return "(null)"
+            # Never echo a just-typed secret back into the on-screen table.
+            return "****" if sensitive and staged != "" else str(staged)
         if row.editable:
             value = self._record.get(row.name)
             if isinstance(value, dict):
                 display = value.get("display")
                 return str(display if display is not None else value.get("id", ""))
+            if sensitive and value not in (None, ""):
+                return "****"
             return "" if value is None else str(value)
         value = flat.get(row.name)
         return "" if value is None else str(value)

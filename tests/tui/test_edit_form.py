@@ -6,6 +6,7 @@ import pytest
 from textual.app import App, ComposeResult
 from textual.widgets import Button, Input, ListView, Select, Static, Switch
 
+from nsc.http.errors import NetBoxAPIError
 from nsc.model.command_model import (
     CommandModel,
     FieldShape,
@@ -22,8 +23,9 @@ from nsc.tui.widgets.diff import DiffModal
 
 
 class _SpyClient:
-    def __init__(self, records: list[dict[str, Any]]) -> None:
+    def __init__(self, records: list[dict[str, Any]], *, fail_on_write: bool = False) -> None:
         self._records = records
+        self._fail_on_write = fail_on_write
         self.patch_calls: list[dict[str, Any]] = []
         self.post_calls: list[dict[str, Any]] = []
         self.paginate_calls: list[tuple[str, dict[str, Any] | None]] = []
@@ -50,6 +52,8 @@ class _SpyClient:
                 "sensitive_paths": sensitive_paths,
             }
         )
+        if self._fail_on_write:
+            raise NetBoxAPIError(status_code=400, url=path, body_snippet="bad request", headers={})
         return {}
 
     def post(
@@ -61,6 +65,8 @@ class _SpyClient:
         sensitive_paths: tuple[str, ...] = (),
     ) -> dict[str, Any]:
         self.post_calls.append({"path": path, "json": json})
+        if self._fail_on_write:
+            raise NetBoxAPIError(status_code=400, url=path, body_snippet="bad request", headers={})
         return {}
 
 
@@ -275,6 +281,34 @@ async def test_save_confirm_calls_patch_with_minimal_body() -> None:
         assert call["json"] == {"name": "sw2"}
         assert call["operation_id"] == "dcim_devices_partial_update"
         assert call["sensitive_paths"] == ("auth_key",)
+
+
+@pytest.mark.asyncio
+async def test_save_api_error_notifies_keeps_form_and_staged() -> None:
+    client = _SpyClient([], fail_on_write=True)
+    app = _EditApp(client)
+    notifications: list[tuple[str, Any]] = []
+    async with app.run_test(size=(120, 60)) as pilot:
+        await pilot.pause()
+        screen = _screen(app)
+        original_notify = screen.notify
+
+        def _capture(message: str, *args: Any, **kwargs: Any) -> None:
+            notifications.append((message, kwargs.get("severity")))
+            original_notify(message, *args, **kwargs)
+
+        screen.notify = _capture  # type: ignore[method-assign]
+        screen.query_one("#field-name", Input).value = "sw2"
+        await pilot.pause()
+        screen.action_save()
+        await pilot.pause()
+        await pilot.press("y")
+        await pilot.pause()
+        assert len(client.patch_calls) == 1
+        # On error the form is NOT dismissed and the staged change survives.
+        assert app.screen is screen
+        assert screen.staged.get("name") == "sw2"
+        assert any(sev == "error" for _, sev in notifications)
 
 
 @pytest.mark.asyncio
