@@ -41,6 +41,7 @@ KEYMAP: tuple[KeyBinding, ...] = (
     _b("q", "quit_tui", "Quit", "global"),
     _b("question_mark", "request_help", "Help", "global"),
     _b("ctrl+p", "open_palette", "Find resource", "global"),
+    _b("ctrl+f", "open_search", "Search", "global"),
     _b("escape", "go_back", "Back", "global"),
     _b("j down", "cursor_down", "Down", "list"),
     _b("k up", "cursor_up", "Up", "list"),

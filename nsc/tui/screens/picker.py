@@ -10,7 +10,7 @@ from __future__ import annotations
 from typing import ClassVar
 
 from textual.app import ComposeResult
-from textual.binding import Binding, BindingType
+from textual.binding import BindingType
 from textual.containers import Vertical
 from textual.screen import ModalScreen
 from textual.widgets import Input, Label, Tree
@@ -18,31 +18,9 @@ from textual.widgets import Input, Label, Tree
 from nsc.model.command_model import CommandModel
 from nsc.tui.catalog import ResourceRef, filter_resources, group_refs, list_resources
 from nsc.tui.nav import can_go_back
+from nsc.tui.widgets.nav_tree import NavTree
 
 _HINT = "↓ enter list · ←/→ close/open · ⌃e all · Enter pick · Esc close"
-
-
-class _ResourceTree(Tree[ResourceRef]):
-    """Tree with left/right collapse/expand (Textual's default uses space/enter)."""
-
-    BINDINGS: ClassVar[list[BindingType]] = [
-        Binding("right", "expand_node", "Open", show=False),
-        Binding("left", "collapse_or_parent", "Close", show=False),
-    ]
-
-    def action_expand_node(self) -> None:
-        node = self.cursor_node
-        if node is not None and node.allow_expand and not node.is_expanded:
-            node.expand()
-
-    def action_collapse_or_parent(self) -> None:
-        node = self.cursor_node
-        if node is None:
-            return
-        if node.allow_expand and node.is_expanded:
-            node.collapse()
-        elif node.parent is not None and node.parent is not self.root:
-            self.action_cursor_parent()
 
 
 class ResourcePicker(ModalScreen[ResourceRef]):
@@ -62,7 +40,7 @@ class ResourcePicker(ModalScreen[ResourceRef]):
     def compose(self) -> ComposeResult:
         with Vertical(id="picker"):
             yield Input(placeholder="Filter resources…", id="picker-filter")
-            tree: _ResourceTree = _ResourceTree("resources", id="picker-tree")
+            tree = NavTree("resources", id="picker-tree")
             tree.show_root = False
             yield tree
             yield Label(_HINT, id="picker-hint")

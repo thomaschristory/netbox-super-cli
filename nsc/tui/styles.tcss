@@ -130,3 +130,19 @@ ModalScreen > Vertical {
     text-align: center;
     color: $text-muted;
 }
+
+/* ---- global search ---- */
+#search-box {
+    height: 85%;
+}
+
+#search-tree {
+    height: 1fr;
+    border: round $panel;
+}
+
+#search-hint {
+    width: 1fr;
+    text-align: center;
+    color: $text-muted;
+}

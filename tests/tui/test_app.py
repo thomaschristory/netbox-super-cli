@@ -6,6 +6,7 @@ import pytest
 
 from nsc.model.command_model import CommandModel, Operation, Resource, Tag
 from nsc.tui.app import NscTuiApp
+from nsc.tui.screens.global_search import GlobalSearchScreen
 from nsc.tui.screens.list import ListScreen
 from nsc.tui.screens.picker import ResourcePicker
 from nsc.tui.widgets.help import HelpOverlay
@@ -35,6 +36,17 @@ async def test_app_opens_resource_directly_when_named() -> None:
     async with app.run_test() as pilot:
         await pilot.pause()
         assert isinstance(app.screen, ListScreen)
+
+
+@pytest.mark.asyncio
+async def test_ctrl_f_opens_global_search_from_any_screen() -> None:
+    app = NscTuiApp(_model(), _FakeClient(), initial_resource="devices")
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        assert isinstance(app.screen, ListScreen)
+        await pilot.press("ctrl+f")
+        await pilot.pause()
+        assert isinstance(app.screen, GlobalSearchScreen)
 
 
 @pytest.mark.asyncio

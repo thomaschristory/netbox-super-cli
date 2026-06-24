@@ -62,6 +62,11 @@ class NscTuiApp(App[None]):
     def action_open_palette(self) -> None:
         self.push_screen(ResourcePicker(self._model), self._open_ref)
 
+    def action_open_search(self) -> None:
+        from nsc.tui.screens.global_search import GlobalSearchScreen  # noqa: PLC0415
+
+        self.push_screen(GlobalSearchScreen(self._model, self._client))
+
     def action_go_back(self) -> None:
         if can_go_back(self):
             self.pop_screen()
