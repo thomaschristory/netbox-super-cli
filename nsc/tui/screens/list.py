@@ -6,6 +6,7 @@ from typing import Any, ClassVar, Protocol
 
 from textual.app import ComposeResult
 from textual.binding import BindingType
+from textual.coordinate import Coordinate
 from textual.screen import Screen
 from textual.widgets import DataTable, Footer, Header, Input
 
@@ -39,6 +40,11 @@ class _Client(Protocol):
         operation_id: str | None = None,
         sensitive_paths: tuple[str, ...] = (),
     ) -> dict[str, Any]: ...
+
+
+_MARKER_HEADER = " "
+_MARKER_ON = "*"
+_MARKER_OFF = " "
 
 
 def _parse_filter(text: str) -> dict[str, str]:
@@ -85,6 +91,10 @@ class ListScreen(Screen[None]):
         yield Footer()
 
     @property
+    def selection(self) -> Selection:
+        return self._selection
+
+    @property
     def _table(self) -> DataTable[str]:
         return self.query_one("#rows", DataTable)
 
@@ -100,15 +110,26 @@ class ListScreen(Screen[None]):
 
     def reload(self) -> None:
         records = list(self._client.paginate(self._op.path, self._params(), limit=200))
+        self._prune_selection(records)
         table = self._table
         table.clear(columns=True)
         sample = records[0] if records else None
         columns = choose_columns(self._op, self._columns_config, sample)
-        table.add_columns(*columns)
-        for row in build_rows(records, columns):
-            table.add_row(*row)
+        table.add_columns(_MARKER_HEADER, *columns)
+        for record, row in zip(records, build_rows(records, columns), strict=True):
+            table.add_row(self._marker_for(record.get("id")), *row)
         self._records = records
         self._columns = columns
+
+    def _prune_selection(self, records: list[dict[str, Any]]) -> None:
+        present = {record.get("id") for record in records}
+        for record_id in self._selection.ids():
+            if record_id not in present:
+                self._selection.toggle(record_id)
+
+    def _marker_for(self, record_id: Any) -> str:
+        selected = record_id is not None and self._selection.contains(record_id)
+        return _MARKER_ON if selected else _MARKER_OFF
 
     def apply_filter(self, text: str) -> None:
         self._extra_filters = _parse_filter(text)
@@ -138,13 +159,15 @@ class ListScreen(Screen[None]):
         table.move_cursor(row=max(table.row_count - 1, 0))
 
     def action_toggle_select(self) -> None:
-        row = self._table.cursor_row
+        table = self._table
+        row = table.cursor_row
         if not self._records or not (0 <= row < len(self._records)):
             return
         record_id = self._records[row].get("id")
         if record_id is None:
             return
         self._selection.toggle(record_id)
+        table.update_cell_at(Coordinate(row, 0), self._marker_for(record_id))
 
     def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
         self._open_detail(event.cursor_row)

@@ -312,6 +312,103 @@ async def test_create_success_reloads_list() -> None:
         assert len(client.calls) > load_count
 
 
+def _marker_cell(table: DataTable[str], row: int) -> str:
+    return str(table.get_row_at(row)[0])
+
+
+@pytest.mark.asyncio
+async def test_toggle_select_with_v_marks_and_unmarks_row() -> None:
+    client = _FakeClient([{"id": 1, "name": "sw1"}, {"id": 2, "name": "sw2"}])
+    app = _ListApp(client)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        screen = app.screen
+        assert isinstance(screen, ListScreen)
+        table = screen.query_one(DataTable)
+        table.move_cursor(row=0)
+        await pilot.press("v")
+        await pilot.pause()
+        assert screen.selection.ids() == (1,)
+        assert _marker_cell(table, 0).strip() == "*"
+        assert _marker_cell(table, 1).strip() == ""
+        await pilot.press("v")
+        await pilot.pause()
+        assert screen.selection.ids() == ()
+        assert _marker_cell(table, 0).strip() == ""
+
+
+@pytest.mark.asyncio
+async def test_toggle_select_with_space_marks_row() -> None:
+    client = _FakeClient([{"id": 1, "name": "sw1"}, {"id": 2, "name": "sw2"}])
+    app = _ListApp(client)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        screen = app.screen
+        assert isinstance(screen, ListScreen)
+        table = screen.query_one(DataTable)
+        table.move_cursor(row=1)
+        await pilot.press("space")
+        await pilot.pause()
+        assert screen.selection.ids() == (2,)
+        assert _marker_cell(table, 1).strip() == "*"
+
+
+@pytest.mark.asyncio
+async def test_selection_preserves_insertion_order() -> None:
+    client = _FakeClient([{"id": 10, "name": "sw1"}, {"id": 20, "name": "sw2"}, {"id": 30}])
+    app = _ListApp(client)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        screen = app.screen
+        assert isinstance(screen, ListScreen)
+        table = screen.query_one(DataTable)
+        table.move_cursor(row=2)
+        await pilot.press("v")
+        await pilot.pause()
+        table.move_cursor(row=0)
+        await pilot.press("v")
+        await pilot.pause()
+        assert screen.selection.ids() == (30, 10)
+
+
+@pytest.mark.asyncio
+async def test_reload_preserves_present_ids_and_drops_stale() -> None:
+    records = [{"id": 1, "name": "sw1"}, {"id": 2, "name": "sw2"}, {"id": 3, "name": "sw3"}]
+    client = _FakeClient(records)
+    app = _ListApp(client)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        screen = app.screen
+        assert isinstance(screen, ListScreen)
+        table = screen.query_one(DataTable)
+        table.move_cursor(row=0)
+        await pilot.press("v")
+        table.move_cursor(row=2)
+        await pilot.press("v")
+        await pilot.pause()
+        assert screen.selection.ids() == (1, 3)
+        client._records = [{"id": 1, "name": "sw1"}, {"id": 2, "name": "sw2"}]
+        screen.reload()
+        await pilot.pause()
+        assert screen.selection.ids() == (1,)
+        assert _marker_cell(table, 0).strip() == "*"
+        assert _marker_cell(table, 1).strip() == ""
+
+
+@pytest.mark.asyncio
+async def test_toggle_select_on_empty_table_is_safe_no_op() -> None:
+    client = _FakeClient([])
+    app = _ListApp(client)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        screen = app.screen
+        assert isinstance(screen, ListScreen)
+        await pilot.press("v")
+        await pilot.pause()
+        assert screen.selection.ids() == ()
+        assert isinstance(app.screen, ListScreen)
+
+
 @pytest.mark.asyncio
 async def test_input_submitted_applies_filter_and_refocuses_table() -> None:
     client = _FakeClient([{"id": 1, "name": "sw1"}])
