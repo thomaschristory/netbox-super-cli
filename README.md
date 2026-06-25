@@ -74,6 +74,10 @@ uv run nsc dcim devices create -f device.yaml --apply
 uv run nsc dcim devices create -f devices.yaml --apply
 uv run nsc dcim devices create -f devices.yaml --no-bulk --on-error continue --apply
 
+# Speed up a loop-mode bulk write with concurrent requests (default 1, max 32).
+# Per-record --on-error semantics hold; the audit log stays one line per record.
+uv run nsc dcim devices create -f devices.ndjson --workers 8 --apply
+
 # NDJSON / JSONL — one record per line; parse failures abort the whole batch
 # before any wire request fires (`type: input_error`, exit 4, `details.bad_lines`).
 uv run nsc dcim devices create -f devices.ndjson --apply
@@ -108,7 +112,26 @@ Stdin is sniffed from the first 512 bytes (first non-whitespace byte plus a one-
 - HTTP headers in the `SENSITIVE_HEADERS` set (e.g. `Authorization`, `X-API-Key`) — replaced with `"<redacted>"`.
 - Request-body fields whose OpenAPI definition has `format: password` OR whose name (case-insensitive) is one of: `password`, `secret`, `token`, `api_key`, `apikey`, `private_key`, `passphrase`, `client_secret`. Nested fields and arrays of objects are walked recursively.
 
-The wire body sent to NetBox is **not** redacted — only the audit log. A failed write still records the redacted body; redaction is irreversible. Treat `audit.jsonl` like a verbose application log: gate it behind your home-directory permissions and rotate / archive accordingly. A "redact everything" mode is on the post-v1.0 roadmap.
+The wire body sent to NetBox is **not** redacted — only the audit log. A failed write still records the redacted body; redaction is irreversible. Treat `audit.jsonl` like a verbose application log: gate it behind your home-directory permissions and rotate / archive accordingly.
+
+For a stricter posture, set `audit_redaction: full` in `~/.nsc/config.yaml` (the default is `safe`, the field-level redaction described above). In `full` mode every audit line keeps only `{method, url, status_code, timestamp, profile}` — all request and response bodies are dropped, and the `url` is sanitized (query string and any `user:pass@` credentials stripped).
+
+## Curated aliases
+
+`nsc ls`, `nsc get`, `nsc rm`, and `nsc search` are short verbs over the dynamic
+command tree.
+
+```sh
+nsc ls devices                 # list a resource by plural name
+nsc ls device                  # singular also works (curated set, see below)
+nsc get devices 7              # one record by id or name
+nsc rm devices 7 --apply       # delete (dry-run by default)
+nsc search "rack-42"           # /api/search/ on NetBox 4.5+
+```
+
+Singular forms resolve for a curated set of nine resources: `device`, `prefix`,
+`tenant`, `vlan`, `site`, `rack`, `interface`, `cable`, and `tag`. Any other
+singular that does not resolve suggests its plural ("Did you mean `devices`?").
 
 ## Output and errors
 
@@ -154,7 +177,16 @@ nsc --install-completion         # auto-detects $SHELL
 nsc --show-completion            # prints the script instead of installing
 ```
 
-Typer supports `bash`, `zsh`, `fish`, and `pwsh`. Completion of dynamic values (resource names, profile names, filter keys) is on the post-1.0 roadmap.
+Typer supports `bash`, `zsh`, `fish`, and `pwsh`.
+
+Completion of dynamic values reads the cached schema and complements the static
+stubs above:
+
+```sh
+nsc ls dev<TAB>                               # devices device-roles device-types
+nsc --profile <TAB>                           # configured profile names
+nsc dcim devices list --status <TAB>          # enum values for the field
+```
 
 ## Bundled Skill for AI agents
 
