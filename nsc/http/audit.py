@@ -15,6 +15,7 @@ import json
 import os
 import sys
 import tempfile
+import threading
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
@@ -32,6 +33,12 @@ SCHEMA_VERSION = 1
 # Audit logs hold request/response bodies verbatim; keep them owner-only,
 # mirroring the 0600 treatment of config.yaml in nsc/config/writer.py.
 _FILE_MODE = 0o600
+
+# Serializes audit appends across threads. The bulk loop can run with N
+# concurrent workers; buffered writes plus O_APPEND give no cross-thread
+# atomicity for lines larger than PIPE_BUF, so we take this lock around the
+# whole open/write/close to guarantee exactly one complete line per record.
+_APPEND_LOCK = threading.Lock()
 
 
 class _Frozen(BaseModel):
@@ -176,21 +183,27 @@ def append_audit_jsonl(
     path: Path,
     rotate_bytes: int = DEFAULT_ROTATE_BYTES,
 ) -> None:
-    """Append the entry as a single line. Rotate to `path.1` when over the threshold."""
-    try:
-        ensure_private_dir(path.parent)
-        if path.exists() and path.stat().st_size > rotate_bytes:
-            rolled = path.with_suffix(path.suffix + ".1")
-            os.replace(path, rolled)
-            # os.replace keeps the source mode; force 0600 so a pre-existing
-            # world-readable log does not carry that mode onto the rotated copy.
-            os.chmod(rolled, _FILE_MODE)
-        # os.open with _FILE_MODE sets owner-only perms at creation (umask can
-        # only clear bits, never widen 0600); chmod fixes any pre-existing file.
-        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, _FILE_MODE)
-        with os.fdopen(fd, "a", encoding="utf-8") as fh:
-            os.chmod(path, _FILE_MODE)
-            fh.write(json.dumps(_to_dict(entry)))
-            fh.write("\n")
-    except OSError as exc:
-        _warn(f"could not append audit log {path}: {exc}")
+    """Append the entry as a single line. Rotate to `path.1` when over the threshold.
+
+    Thread-safe: the entire dir-ensure/rotate/open/write/close runs under
+    `_APPEND_LOCK` so concurrent bulk-loop workers cannot interleave partial
+    lines or race the rotation check.
+    """
+    line = json.dumps(_to_dict(entry)) + "\n"
+    with _APPEND_LOCK:
+        try:
+            ensure_private_dir(path.parent)
+            if path.exists() and path.stat().st_size > rotate_bytes:
+                rolled = path.with_suffix(path.suffix + ".1")
+                os.replace(path, rolled)
+                # os.replace keeps the source mode; force 0600 so a pre-existing
+                # world-readable log does not carry that mode onto the rotated copy.
+                os.chmod(rolled, _FILE_MODE)
+            # os.open with _FILE_MODE sets owner-only perms at creation (umask can
+            # only clear bits, never widen 0600); chmod fixes any pre-existing file.
+            fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, _FILE_MODE)
+            with os.fdopen(fd, "a", encoding="utf-8") as fh:
+                os.chmod(path, _FILE_MODE)
+                fh.write(line)
+        except OSError as exc:
+            _warn(f"could not append audit log {path}: {exc}")

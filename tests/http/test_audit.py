@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
@@ -109,6 +110,28 @@ def test_append_audit_jsonl_writes_one_line_per_call(tmp_path: Path) -> None:
     assert len(lines) == 2
     assert json.loads(lines[0])["operation_id"] == "a"
     assert json.loads(lines[1])["operation_id"] == "b"
+
+
+def test_append_audit_jsonl_concurrent_appends_are_well_formed(tmp_path: Path) -> None:
+    target = tmp_path / "logs" / "audit.jsonl"
+    n = 200
+    # Large body so each serialized line far exceeds PIPE_BUF, defeating any
+    # reliance on a single-syscall append being atomic.
+    big = {"blob": "z" * 16384}
+
+    def write(i: int) -> None:
+        append_audit_jsonl(_entry(operation_id=f"op-{i}", request_body=big), path=target)
+
+    with ThreadPoolExecutor(max_workers=16) as pool:
+        list(pool.map(write, range(n)))
+
+    lines = target.read_text().splitlines()
+    assert len(lines) == n
+    ops = set()
+    for line in lines:
+        parsed = json.loads(line)
+        ops.add(parsed["operation_id"])
+    assert ops == {f"op-{i}" for i in range(n)}
 
 
 def test_append_audit_jsonl_rotates_at_size_threshold(tmp_path: Path) -> None:

@@ -12,7 +12,9 @@ Pure logic. No I/O, no Typer, no httpx. Three responsibilities:
 
 from __future__ import annotations
 
+import threading
 from collections.abc import Callable
+from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import TYPE_CHECKING, Any, Literal, assert_never
@@ -186,17 +188,62 @@ def run_loop(
     send_one: SendOne,
     audit_attempt: AuditAttempt,
     to_envelope: ToEnvelope,
+    workers: int = 1,
 ) -> LoopResult:
-    """Sequentially send N requests; collect successes and failures (spec §4.5).
+    """Send N requests; collect successes and failures (spec §4.5).
 
-    The loop never spawns concurrency. Audit fires once per attempted request
-    (success and failure). On `on_error="stop"` the loop aborts on the first
-    failure; on `"continue"` it attempts every request.
+    With `workers == 1` the loop is sequential and deterministic: requests run
+    in input order and audit fires once per attempted request in that order.
+    With `workers > 1` up to `workers` requests are in flight concurrently via
+    a thread pool (the NetBox client is sync httpx, so threads — not asyncio —
+    are the right mechanism). Each record's send/retry/audit is independent.
+
+    On `on_error="stop"` the loop stops submitting *new* work after the first
+    failure; in-flight requests are allowed to complete (cancelling them would
+    leave partially-applied writes whose outcome the audit log could not
+    record). Because up to `workers` requests dispatch in the first wave,
+    `stop` cannot prevent any send when `len(requests) <= workers` — all of
+    them are already in flight. On `"continue"` every request is attempted.
+
+    Audit fires once per attempted request (success and failure). Under
+    concurrency the audit *callback* may run from worker threads; the injected
+    writer must be thread-safe (the production audit writer serializes appends).
 
     `send_one` does the wire send; `audit_attempt` writes the audit entry;
     `to_envelope` converts a raised exception into an ErrorEnvelope. Callers
     inject these so this loop has no dependency on httpx or the audit module.
     """
+    if workers < 1:
+        raise ValueError(f"workers must be >= 1, got {workers}")
+    if workers == 1:
+        return _run_loop_sequential(
+            requests,
+            operation=operation,
+            on_error=on_error,
+            send_one=send_one,
+            audit_attempt=audit_attempt,
+            to_envelope=to_envelope,
+        )
+    return _run_loop_concurrent(
+        requests,
+        operation=operation,
+        on_error=on_error,
+        send_one=send_one,
+        audit_attempt=audit_attempt,
+        to_envelope=to_envelope,
+        workers=workers,
+    )
+
+
+def _run_loop_sequential(
+    requests: list[ResolvedRequest],
+    *,
+    operation: Operation,
+    on_error: Literal["stop", "continue"],
+    send_one: SendOne,
+    audit_attempt: AuditAttempt,
+    to_envelope: ToEnvelope,
+) -> LoopResult:
     attempts: list[LoopAttempt] = []
     for request in requests:
         try:
@@ -212,6 +259,67 @@ def run_loop(
         else:
             audit_attempt(request, response, None)
             attempts.append(LoopAttempt(request=request, response=response, failure=None))
+    return LoopResult(attempts=attempts)
+
+
+def _attempt_one(
+    request: ResolvedRequest,
+    *,
+    operation: Operation,
+    send_one: SendOne,
+    audit_attempt: AuditAttempt,
+    to_envelope: ToEnvelope,
+) -> LoopAttempt:
+    try:
+        response = send_one(operation, request)
+    except (KeyboardInterrupt, SystemExit):
+        raise
+    except Exception as exc:
+        audit_attempt(request, None, exc)
+        return LoopAttempt(request=request, response=None, failure=to_envelope(exc))
+    audit_attempt(request, response, None)
+    return LoopAttempt(request=request, response=response, failure=None)
+
+
+def _run_loop_concurrent(
+    requests: list[ResolvedRequest],
+    *,
+    operation: Operation,
+    on_error: Literal["stop", "continue"],
+    send_one: SendOne,
+    audit_attempt: AuditAttempt,
+    to_envelope: ToEnvelope,
+    workers: int,
+) -> LoopResult:
+    pending = iter(requests)
+    stop = threading.Event()
+
+    def run(request: ResolvedRequest) -> LoopAttempt:
+        return _attempt_one(
+            request,
+            operation=operation,
+            send_one=send_one,
+            audit_attempt=audit_attempt,
+            to_envelope=to_envelope,
+        )
+
+    attempts: list[LoopAttempt] = []
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        in_flight: set[Future[LoopAttempt]] = set()
+        for request in pending:
+            in_flight.add(pool.submit(run, request))
+            if len(in_flight) < workers:
+                continue
+            done, in_flight = wait(in_flight, return_when=FIRST_COMPLETED)
+            for future in done:
+                attempt = future.result()
+                attempts.append(attempt)
+                if attempt.failure is not None and on_error == "stop":
+                    stop.set()
+            if stop.is_set():
+                break
+        for future in in_flight:
+            attempts.append(future.result())
     return LoopResult(attempts=attempts)
 
 
