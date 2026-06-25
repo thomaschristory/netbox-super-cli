@@ -2,6 +2,27 @@
 
 All notable changes to netbox-super-cli are tracked here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) loosely. From v1.0.0 onward, releases follow [Semantic Versioning](https://semver.org/) and the version in `pyproject.toml` matches the git tag. Pre-1.0 milestones (Phase 1-5) were pinned by tag while `pyproject.toml` stayed at `0.0.1`.
 
+## v1.2.1 — 2026-06-25
+
+Patch release. Fixes foreign-key handling in the interactive TUI.
+
+### Fixed
+
+- **TUI foreign-key fields show names and a chooser, not raw IDs** ([#97]).
+  In the bulk-edit, single-edit and detail screens, FK fields (device `role`,
+  `site`, `tenant`, `device_type`, …) now render their human-readable
+  `display`/`name` in the confirmation diff and present a searchable
+  record-picker dropdown of valid related objects, instead of showing the
+  numeric id and requiring a raw id to be typed. The outgoing `PATCH` still
+  carries the id, so the wire format is unchanged. FK detection is now keyed on
+  the record's nested object rather than the widget kind, because NetBox's
+  writable schema types FK fields as `oneOf[integer, brief]` (no primitive
+  type), which previously fell through to a free-text widget. When a relation's
+  target resource has no list endpoint, the field gracefully falls back to
+  raw-id entry with a hint rather than an inert chooser button.
+
+[#97]: https://github.com/thomaschristory/netbox-super-cli/issues/97
+
 ## v1.2.0 — 2026-06-24
 
 Minor release. Adds an **interactive terminal UI** — a keyboard-driven, fully
