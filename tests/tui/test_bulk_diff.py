@@ -78,7 +78,15 @@ def test_fk_nested_dict_by_id_changes_when_id_differs() -> None:
     selected = [{"id": 1, "site": {"id": 9, "name": "dc1"}}]
     result = bulk_diff(selected, {"site": 3}, ())
     assert result[0].patch == {"site": 3}
-    assert result[0].rows == [DiffRow(field="site", old_display="9", new_display="3")]
+    # Old value renders the FK's human label, not its numeric id.
+    assert result[0].rows == [DiffRow(field="site", old_display="dc1", new_display="3")]
+
+
+def test_fk_new_display_override_renders_chosen_label() -> None:
+    selected = [{"id": 1, "site": {"id": 9, "name": "dc1"}}]
+    result = bulk_diff(selected, {"site": 3}, (), {"site": "dc2"})
+    assert result[0].patch == {"site": 3}
+    assert result[0].rows == [DiffRow(field="site", old_display="dc1", new_display="dc2")]
 
 
 def test_set_null_on_already_null_record_yields_no_row() -> None:

@@ -19,8 +19,15 @@ from nsc.http.errors import NetBoxAPIError, NetBoxClientError
 from nsc.model.command_model import CommandModel, Operation
 from nsc.tui._bindings import textual_bindings
 from nsc.tui.errors import api_error_message
-from nsc.tui.fk import resolve_fk_target
-from nsc.tui.forms import SET_NULL, WidgetSpec, compute_patch, diff_rows, field_to_widget
+from nsc.tui.fk import is_fk_value, resolve_fk_target
+from nsc.tui.forms import (
+    SET_NULL,
+    WidgetSpec,
+    compute_patch,
+    diff_rows,
+    field_to_widget,
+    fk_display,
+)
 from nsc.tui.view import detail_path
 
 
@@ -75,6 +82,7 @@ class EditForm(Screen[None]):
         self._op = operation
         self._record = record
         self._specs: dict[str, WidgetSpec] = {}
+        self._fk_labels: dict[str, str] = {}
         self.staged: dict[str, Any] = {}
         self._create_mode = operation.http_method.upper() == "POST"
         if self._create_mode:
@@ -119,9 +127,12 @@ class EditForm(Screen[None]):
         yield Input(value=text, password=spec.sensitive, id=f"field-{name}")
 
     def _is_fk(self, name: str, spec: WidgetSpec) -> bool:
-        if spec.kind != "number" or spec.is_float or spec.sensitive:
+        # Writable FK fields type as oneOf[int, brief] -> UNKNOWN -> `text`, so a
+        # `number`-only gate would miss real relations (role, site, tenant…). Key
+        # off the record's nested object instead; exclude enum/bool/secret/float.
+        if spec.kind in ("select", "switch", "masked") or spec.is_float:
             return False
-        return name.endswith("_id") or isinstance(self._record.get(name), dict)
+        return name.endswith("_id") or is_fk_value(self._record.get(name))
 
     def _compose_fk(self, name: str, value: Any) -> ComposeResult:
         target = resolve_fk_target(name, self._record.get(name), self._model)
@@ -131,7 +142,12 @@ class EditForm(Screen[None]):
             if target.hint:
                 yield Label(target.hint, classes="edit-fk-hint")
             return
-        current = "" if value is None else str(value)
+        nested = self._record.get(name)
+        current = (
+            fk_display(nested)
+            if isinstance(nested, dict)
+            else ("" if value is None else str(value))
+        )
         yield Button(f"{name}: {current}", id=f"fk-{name}", classes="edit-fk")
 
     @staticmethod
@@ -181,7 +197,10 @@ class EditForm(Screen[None]):
             self.action_save()
             return
         if ident.startswith("setnull-"):
-            self.staged[ident.removeprefix("setnull-")] = SET_NULL
+            field = ident.removeprefix("setnull-")
+            self.staged[field] = SET_NULL
+            # Drop any picked label so the diff can't show a name while nulling.
+            self._fk_labels.pop(field, None)
             return
         if ident.startswith("fk-"):
             self._open_picker(ident.removeprefix("fk-"))
@@ -195,6 +214,7 @@ class EditForm(Screen[None]):
         def _stage(result: tuple[int, str] | None) -> None:
             if result is not None:
                 self.staged[name] = result[0]
+                self._fk_labels[name] = result[1]
                 self.query_one(f"#fk-{name}", Button).label = f"{name}: {result[1]}"
 
         self.app.push_screen(RecordPicker(self._client, target.list_op, target.current_id), _stage)
@@ -212,7 +232,9 @@ class EditForm(Screen[None]):
             if confirmed:
                 self._apply_patch(patch, sensitive)
 
-        self.app.push_screen(DiffModal(diff_rows(self._record, patch, sensitive)), _on_confirm)
+        self.app.push_screen(
+            DiffModal(diff_rows(self._record, patch, sensitive, self._fk_labels)), _on_confirm
+        )
 
     def _apply_patch(self, patch: dict[str, Any], sensitive_paths: tuple[str, ...]) -> None:
         try:

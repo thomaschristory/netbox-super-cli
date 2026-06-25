@@ -28,6 +28,17 @@ FkKind = Literal["picker", "raw_id"]
 _MIN_URL_SEGMENTS = 2
 
 
+def is_fk_value(value: Any) -> bool:
+    """True when ``value`` is a NetBox FK nested object (carries ``id``/``url``).
+
+    The writable schema types FK fields as ``oneOf[integer, brief-ref]`` with no
+    top-level ``type``, so the model has no FK signal; the reliable runtime cue
+    is the record's nested object. A bare ``custom_fields`` dict (no id/url) is
+    deliberately excluded.
+    """
+    return isinstance(value, dict) and ("id" in value or "url" in value)
+
+
 class FkTarget(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -79,6 +90,16 @@ def _resolve_from_url(field_name: str, current_value: Any, model: CommandModel) 
         )
 
     tag, list_op = located
+    # A `picker` target must carry a usable list endpoint — otherwise the screen
+    # renders a chooser button that can't open anything. Resolvable but
+    # list-less resources fall back to raw-ID entry, like an unknown resource.
+    if list_op is None:
+        return FkTarget(
+            kind="raw_id",
+            field_name=field_name,
+            current_id=current_id,
+            hint=(f"'{resource_name}' has no list endpoint; enter the numeric ID."),
+        )
     return FkTarget(
         kind="picker",
         field_name=field_name,

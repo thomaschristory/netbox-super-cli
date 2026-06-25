@@ -4,7 +4,7 @@ from typing import Any
 
 import pytest
 from textual.app import App, ComposeResult
-from textual.widgets import Input, Select, Static, Switch
+from textual.widgets import Button, Input, ListView, Select, Static, Switch
 
 from nsc.http.errors import NetBoxAPIError
 from nsc.model.command_model import (
@@ -19,6 +19,7 @@ from nsc.model.command_model import (
 from nsc.tui.forms import SET_NULL
 from nsc.tui.screens.bulk_edit_form import BulkEditForm
 from nsc.tui.screens.list import ListScreen
+from nsc.tui.screens.record_picker import RecordPicker
 from nsc.tui.widgets.bulk_diff import BulkDiffModal
 from nsc.tui.widgets.bulk_summary import BulkSummaryModal
 
@@ -574,3 +575,233 @@ async def test_success_returns_to_list_reloads_and_clears_selection() -> None:
         assert app.screen is list_screen
         assert len(list_screen.selection) == 0
         assert len(client.paginate_calls) > paginate_before
+
+
+# ---- foreign-key chooser (issue #97) ---------------------------------------
+#
+# Writable FK fields type as `oneOf[integer, brief-ref]` -> UNKNOWN primitive ->
+# `text` widget; the model carries no FK signal. Detection keys on the record's
+# runtime nested object, so the bulk form must show a chooser (not a raw-id box)
+# and render names in the diff.
+
+
+def _fk_model() -> CommandModel:
+    update_op = Operation(
+        operation_id="dcim_devices_partial_update",
+        http_method="PATCH",
+        path="/api/dcim/devices/{id}/",
+        request_body=RequestBodyShape(
+            top_level="object",
+            fields={
+                "status": FieldShape(primitive=PrimitiveType.STRING, enum=["active", "offline"]),
+                "role": FieldShape(primitive=PrimitiveType.UNKNOWN),
+            },
+        ),
+    )
+    devices = Resource(name="devices", update_op=update_op)
+    roles_list = Operation(
+        operation_id="dcim_device_roles_list",
+        http_method="GET",
+        path="/api/dcim/device-roles/",
+    )
+    roles = Resource(name="device-roles", list_op=roles_list)
+    tag = Tag(name="dcim", resources={"devices": devices, "device-roles": roles})
+    return CommandModel(info_title="t", info_version="1", schema_hash="h", tags={"dcim": tag})
+
+
+def _role(role_id: int, display: str) -> dict[str, Any]:
+    return {
+        "id": role_id,
+        "url": f"https://nb/api/dcim/device-roles/{role_id}/",
+        "display": display,
+    }
+
+
+def _fk_selected_shared() -> list[dict[str, Any]]:
+    role = _role(2, "Top of Rack Switch")
+    return [
+        {"id": 1, "status": "active", "role": role},
+        {"id": 2, "status": "active", "role": role},
+    ]
+
+
+def _fk_selected_hetero() -> list[dict[str, Any]]:
+    return [
+        {"id": 1, "status": "active", "role": _role(2, "Top of Rack Switch")},
+        {"id": 2, "status": "active", "role": _role(9, "Spine Switch")},
+    ]
+
+
+class _FkBulkApp(App[None]):
+    def __init__(self, client: _SpyClient, selected: list[dict[str, Any]]) -> None:
+        super().__init__()
+        self._client = client
+        self._selected = selected
+
+    def compose(self) -> ComposeResult:
+        yield Static("")
+
+    async def on_mount(self) -> None:
+        model = _fk_model()
+        op = model.tags["dcim"].resources["devices"].update_op
+        assert op is not None
+        await self.push_screen(
+            BulkEditForm(model, self._client, "dcim", "devices", op, self._selected)
+        )
+
+
+@pytest.mark.asyncio
+async def test_fk_field_renders_chooser_button_seeded_with_shared_name() -> None:
+    client = _SpyClient([])
+    app = _FkBulkApp(client, _fk_selected_shared())
+    async with app.run_test(size=(120, 60)) as pilot:
+        await pilot.pause()
+        screen = app.screen
+        assert isinstance(screen, BulkEditForm)
+        # A picker button, not a free-text id box.
+        button = screen.query_one("#fk-role", Button)
+        assert not screen.query("#field-role")
+        # Seeded with the shared FK's human label, not its id.
+        assert "Top of Rack Switch" in str(button.label)
+
+
+@pytest.mark.asyncio
+async def test_fk_pick_stages_id_updates_label_and_diff_shows_names() -> None:
+    client = _SpyClient([{"id": 5, "display": "Leaf Switch"}, {"id": 6, "display": "Spine"}])
+    app = _FkBulkApp(client, _fk_selected_shared())
+    async with app.run_test(size=(120, 60)) as pilot:
+        await pilot.pause()
+        screen = app.screen
+        assert isinstance(screen, BulkEditForm)
+        screen.query_one("#fk-role", Button).press()
+        await pilot.pause()
+        picker = app.screen
+        assert isinstance(picker, RecordPicker)
+        picker.query_one(ListView).index = 0  # Leaf Switch -> id 5
+        await pilot.pause()
+        await pilot.press("enter")
+        await pilot.pause()
+        # Picking alone does not opt the field in (consistent with other widgets).
+        assert screen.bulk_set == {}
+        screen.query_one("#include-role", Switch).value = True
+        await pilot.pause()
+        assert screen.bulk_set == {"role": 5}
+        assert "Leaf Switch" in str(screen.query_one("#fk-role", Button).label)
+        # Diff renders names on both sides, not ids; patch still carries the id.
+        screen.action_preview()
+        await pilot.pause()
+        modal = app.screen
+        assert isinstance(modal, BulkDiffModal)
+        text = modal.render_text()
+        assert "Top of Rack Switch" in text
+        assert "Leaf Switch" in text
+        assert client.patch_calls == []
+
+
+@pytest.mark.asyncio
+async def test_include_shared_fk_without_picking_uses_shared_id() -> None:
+    client = _SpyClient([])
+    app = _FkBulkApp(client, _fk_selected_shared())
+    async with app.run_test(size=(120, 60)) as pilot:
+        await pilot.pause()
+        screen = app.screen
+        assert isinstance(screen, BulkEditForm)
+        screen.query_one("#include-role", Switch).value = True
+        await pilot.pause()
+        # Seeds from the shared id (a no-op against the records), never None.
+        assert screen.bulk_set == {"role": 2}
+
+
+@pytest.mark.asyncio
+async def test_include_heterogeneous_fk_without_picking_does_not_null() -> None:
+    client = _SpyClient([])
+    app = _FkBulkApp(client, _fk_selected_hetero())
+    async with app.run_test(size=(120, 60)) as pilot:
+        await pilot.pause()
+        screen = app.screen
+        assert isinstance(screen, BulkEditForm)
+        # No shared value and nothing picked: must NOT inject None and null the FK.
+        screen.query_one("#include-role", Switch).value = True
+        await pilot.pause()
+        assert "role" not in screen.bulk_set
+
+
+@pytest.mark.asyncio
+async def test_pick_then_setnull_clears_label_so_diff_matches_patch() -> None:
+    # A nullable FK: pick a value (stages id + label), then ∅. The diff must show
+    # the null, never the stale picked name.
+    model = _fk_model()
+    body = model.tags["dcim"].resources["devices"].update_op.request_body
+    assert body is not None
+    body.fields["role"] = FieldShape(primitive=PrimitiveType.UNKNOWN, nullable=True)
+    client = _SpyClient([{"id": 5, "display": "Leaf Switch"}])
+
+    class _NullableApp(App[None]):
+        def compose(self) -> ComposeResult:
+            yield Static("")
+
+        async def on_mount(self) -> None:
+            op = model.tags["dcim"].resources["devices"].update_op
+            assert op is not None
+            await self.push_screen(
+                BulkEditForm(model, client, "dcim", "devices", op, _fk_selected_shared())
+            )
+
+    app = _NullableApp()
+    async with app.run_test(size=(120, 60)) as pilot:
+        await pilot.pause()
+        screen = app.screen
+        assert isinstance(screen, BulkEditForm)
+        screen.query_one("#fk-role", Button).press()
+        await pilot.pause()
+        picker = app.screen
+        assert isinstance(picker, RecordPicker)
+        picker.query_one(ListView).index = 0
+        await pilot.pause()
+        await pilot.press("enter")
+        await pilot.pause()
+        assert screen._fk_labels.get("role") == "Leaf Switch"
+        screen.query_one("#setnull-role", Button).press()
+        await pilot.pause()
+        screen.query_one("#include-role", Switch).value = True
+        await pilot.pause()
+        assert screen.bulk_set.get("role") is SET_NULL
+        assert "role" not in screen._fk_labels
+        screen.action_preview()
+        await pilot.pause()
+        text = app.screen.render_text()
+        assert "Leaf Switch" not in text
+
+
+@pytest.mark.asyncio
+async def test_unresolvable_fk_falls_back_to_raw_id_input() -> None:
+    # No matching list resource -> resolve_fk_target yields raw_id -> text box.
+    model = _fk_model()
+    model.tags["dcim"].resources.pop("device-roles")
+    selected = _fk_selected_shared()
+
+    class _RawApp(App[None]):
+        def compose(self) -> ComposeResult:
+            yield Static("")
+
+        async def on_mount(self) -> None:
+            op = model.tags["dcim"].resources["devices"].update_op
+            assert op is not None
+            await self.push_screen(
+                BulkEditForm(model, _SpyClient([]), "dcim", "devices", op, selected)
+            )
+
+    app = _RawApp()
+    async with app.run_test(size=(120, 60)) as pilot:
+        await pilot.pause()
+        screen = app.screen
+        assert isinstance(screen, BulkEditForm)
+        widget = screen.query_one("#field-role")
+        assert isinstance(widget, Input)
+        assert not screen.query("#fk-role")
+        widget.value = "7"
+        await pilot.pause()
+        screen.query_one("#include-role", Switch).value = True
+        await pilot.pause()
+        assert screen.bulk_set == {"role": 7}
+        assert isinstance(screen.bulk_set["role"], int)

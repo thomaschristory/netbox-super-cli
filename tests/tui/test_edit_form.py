@@ -245,6 +245,59 @@ async def test_fk_control_opens_record_picker() -> None:
 
 
 @pytest.mark.asyncio
+async def test_text_kind_fk_is_detected_from_nested_record_value() -> None:
+    # Real writable FK fields type as oneOf[int, brief] -> UNKNOWN -> `text`.
+    # Detection must key off the record's nested object, not a `number` kind.
+    update_op = Operation(
+        operation_id="dcim_devices_partial_update",
+        http_method="PATCH",
+        path="/api/dcim/devices/{id}/",
+        request_body=RequestBodyShape(
+            top_level="object",
+            fields={"role": FieldShape(primitive=PrimitiveType.UNKNOWN)},
+        ),
+    )
+    devices = Resource(name="devices", update_op=update_op)
+    roles = Resource(
+        name="device-roles",
+        list_op=Operation(
+            operation_id="dcim_device_roles_list",
+            http_method="GET",
+            path="/api/dcim/device-roles/",
+        ),
+    )
+    tag = Tag(name="dcim", resources={"devices": devices, "device-roles": roles})
+    model = CommandModel(info_title="t", info_version="1", schema_hash="h", tags={"dcim": tag})
+    record = {
+        "id": 5,
+        "role": {
+            "id": 2,
+            "url": "https://nb/api/dcim/device-roles/2/",
+            "display": "Top of Rack Switch",
+        },
+    }
+
+    class _RoleApp(App[None]):
+        def compose(self) -> ComposeResult:
+            yield Static("")
+
+        async def on_mount(self) -> None:
+            await self.push_screen(
+                EditForm(model, _SpyClient([]), "dcim", "devices", update_op, record)
+            )
+
+    app = _RoleApp()
+    async with app.run_test(size=(120, 60)) as pilot:
+        await pilot.pause()
+        screen = app.screen
+        assert isinstance(screen, EditForm)
+        # Renders a chooser button (not a free-text id box) and seeds the name.
+        button = screen.query_one("#fk-role", Button)
+        assert "Top of Rack Switch" in str(button.label)
+        assert not screen.query("#field-role")
+
+
+@pytest.mark.asyncio
 async def test_save_pushes_diff_modal_with_only_changed_field() -> None:
 
     client = _SpyClient([])

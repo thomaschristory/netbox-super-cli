@@ -87,8 +87,18 @@ def compute_patch(original: dict[str, object], staged: dict[str, object]) -> dic
     return patch
 
 
-def _display(value: object) -> str:
+def fk_display(value: object) -> str:
+    """Human-readable label for a value, resolving FK nested objects.
+
+    NetBox FK objects carry ``display`` (and usually ``name``/``slug``); prefer
+    those over the bare ``id`` so the diff shows e.g. ``Top of Rack Switch``
+    rather than ``12``. Non-dict values render via ``str``.
+    """
     if isinstance(value, dict):
+        for key in ("display", "name", "slug"):
+            label = value.get(key)
+            if label:
+                return str(label)
         ident = value.get("id")
         if ident is not None:
             return str(ident)
@@ -99,13 +109,21 @@ def diff_rows(
     original: dict[str, object],
     patch: dict[str, object],
     sensitive_paths: tuple[str, ...],
+    new_displays: dict[str, str] | None = None,
 ) -> list[DiffRow]:
-    """Render ``patch`` as human-readable old -> new rows for the confirm modal."""
+    """Render ``patch`` as human-readable old -> new rows for the confirm modal.
+
+    ``new_displays`` overrides a field's rendered *new* value — used for FK
+    fields whose staged value is a bare id but whose chosen label is known
+    (e.g. picked from the record chooser). The patch still carries the id.
+    """
+    overrides = new_displays or {}
     rows: list[DiffRow] = []
     for name, new_value in patch.items():
         if name in sensitive_paths:
             rows.append(DiffRow(field=name, old_display="****", new_display="****"))
             continue
-        old_display = _display(original[name]) if name in original else ""
-        rows.append(DiffRow(field=name, old_display=old_display, new_display=str(new_value)))
+        old_display = fk_display(original[name]) if name in original else ""
+        new_display = overrides.get(name, str(new_value))
+        rows.append(DiffRow(field=name, old_display=old_display, new_display=new_display))
     return rows

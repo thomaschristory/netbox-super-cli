@@ -81,13 +81,14 @@ def test_diff_rows_set_null_shows_none() -> None:
     assert rows == [DiffRow(field="comments", old_display="hi", new_display="None")]
 
 
-def test_diff_rows_nested_fk_old_display_uses_id() -> None:
+def test_diff_rows_nested_fk_old_display_uses_name() -> None:
+    # Issue #97: the old value renders the FK's human label, not its numeric id.
     original = {"site": {"id": 5, "name": "AMS1"}}
     staged = {"site": 7}
     patch = compute_patch(original, staged)
     rows = diff_rows(original, patch, sensitive_paths=())
     assert rows[0].field == "site"
-    assert "5" in rows[0].old_display
+    assert rows[0].old_display == "AMS1"
     assert rows[0].new_display == "7"
 
 
