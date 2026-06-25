@@ -2,6 +2,18 @@
 
 All notable changes to netbox-super-cli are tracked here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) loosely. From v1.0.0 onward, releases follow [Semantic Versioning](https://semver.org/) and the version in `pyproject.toml` matches the git tag. Pre-1.0 milestones (Phase 1-5) were pinned by tag while `pyproject.toml` stayed at `0.0.1`.
 
+## v1.3.1 — 2026-06-25
+
+Patch release. CI maintenance only — no runtime or user-facing changes.
+
+### Changed
+
+- **CI**: bump `actions/checkout` from 5 to 7 ([#110]) and
+  `actions/upload-pages-artifact` from 3 to 5 ([#109]).
+
+[#109]: https://github.com/thomaschristory/netbox-super-cli/pull/109
+[#110]: https://github.com/thomaschristory/netbox-super-cli/pull/110
+
 ## v1.3.0 — 2026-06-25
 
 Minor release. A batch of user-facing features — singular alias forms, parallel
