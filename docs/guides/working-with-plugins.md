@@ -30,6 +30,16 @@ nsc commands --schema <path-or-url> -o json | jq '.tags.my_plugin'   # full subt
 document) and emits JSON only. The dumped tree is
 `{info_title, info_version, schema_hash, tags: {<tag>: {resources: ...}}}`.
 
+## Aliases across plugins
+
+The tag-skipping aliases (`ls`, `get`, `rm`, `search`) resolve a resource name
+across **every** tag in the schema, plugin tags included — so
+`nsc ls widgets` finds `my_plugin widgets` without naming the tag, as long as
+the name is unambiguous. Singular forms only apply to the curated core
+resources (`device`, `prefix`, `tenant`, `vlan`, `site`, `rack`, `interface`,
+`cable`, `tag`); plugin resources are matched by their plural name as it
+appears in the schema.
+
 ## Schema cache and plugin upgrades
 
 The cache is keyed by the schema's SHA-256 hash, stored at

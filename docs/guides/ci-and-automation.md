@@ -21,6 +21,22 @@ This:
 - Emits machine-readable output to stdout.
 - Returns a stable exit code.
 
+## Faster bulk loads with `--workers`
+
+When a payload loops record-by-record, `--workers N` runs up to N requests
+concurrently (default `1`, max `32`), which can sharply cut wall-clock time for
+large NDJSON loads:
+
+```sh
+nsc dcim devices create -f new-devices.ndjson --apply --workers 8 \
+  --output json --on-error continue
+```
+
+Raise it cautiously: NetBox may rate-limit or strain under high concurrency, so
+tune N to what your instance tolerates. The `--on-error` semantics and the
+one-line-per-record audit log are unchanged. See
+[Writes and safety](writes-and-safety.md#parallel-bulk-writes-workers).
+
 ## Exit-code-driven control flow
 
 ```sh

@@ -17,6 +17,7 @@ nsc/
 ├── cache/           # On-disk cache for generated CommandModels
 ├── auth/            # Login verification helpers (verify probe, token rotate)
 ├── aliases/         # Curated alias resolver (ls/get/rm/search)
+├── completion/      # Dynamic shell-completion: providers + cache probe + Typer callbacks
 ├── skill/           # Bundle-path helper for the portable SKILL.md
 └── schemas/bundled/ # Versioned NetBox OpenAPI snapshots (offline fallback)
 ```

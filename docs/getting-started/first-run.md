@@ -74,6 +74,7 @@ nsc dcim devices list                       # default page (page_size=50)
 nsc dcim devices list --all                 # paginate to completion
 nsc dcim devices get 7                      # get by id
 nsc ls devices                              # alias — matches devices.list
+nsc ls device                               # singular works too for curated resources
 nsc dcim devices list --output json --all   # canonical machine-readable form
 ```
 
