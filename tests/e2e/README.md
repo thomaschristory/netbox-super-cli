@@ -1,8 +1,16 @@
 # Live-NetBox e2e suite (Phase 3d)
 
-These tests exercise `nsc` against a real NetBox 4.5.9 container instead of
+These tests exercise `nsc` against a real NetBox container instead of
 mocked HTTP. They are gated out of the default `just test` invocation
 (`NSC_E2E=1` required) and require Docker to run.
+
+CI runs the suite as a matrix over the latest patch of each supported NetBox
+minor (currently `v4.5.10` and `v4.6.3`) with `fail-fast: false`, so a
+regression on one version surfaces per-dimension rather than as a sweeping
+red. The NetBox image is parametrized via the `NETBOX_IMAGE` env var, which
+`docker-compose.yml` interpolates (defaulting to the latest 4.5 patch so
+`just e2e` works unparametrized). Override it locally with e.g.
+`NETBOX_IMAGE=netboxcommunity/netbox:v4.6.3 just e2e`.
 
 ## Run locally
 
