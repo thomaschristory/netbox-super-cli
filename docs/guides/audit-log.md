@@ -46,8 +46,12 @@ contains exactly five keys:
 {"method":"POST","url":"https://nb/api/users/users/","status_code":201,"timestamp":"2026-06-25T12:00:00.000Z","profile":"prod"}
 ```
 
-Nothing else is written: no request body, no response body, no headers, and no
-query string — so no field can carry a secret into the log.
+Nothing else is written: no request body, no response body, and no headers. The
+one remaining string — `url` — is sanitized to scheme + host + path before it is
+logged: the **query string is dropped** (a debug-mode GET can encode a
+`private_key` or similar filter value there) and any **`user:pass@` userinfo is
+stripped** (a `https://user:pass@host` profile URL would otherwise carry basic-auth
+credentials). So no field can carry a secret into the log.
 
 ## Trade-offs
 

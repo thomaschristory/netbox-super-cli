@@ -138,3 +138,67 @@ def test_full_always_contains_each_allowed_key(tmp_path: Path, missing: str) -> 
     entry = _entry(request_body={"x": 1}, response_body={"y": 2})
     line = _emit(entry, tmp_path)
     assert missing in line
+
+
+def test_full_url_strips_query_and_credentials(tmp_path: Path) -> None:
+    """A debug-mode GET can carry filter params + basic-auth userinfo in the URL.
+
+    `full` mode must reduce the URL to scheme + host + path so neither the query
+    string (which may hold a `private_key` filter) nor the `user:pass@` userinfo
+    leaks into the audit line.
+    """
+    entry = AuditEntry(
+        timestamp="2026-06-25T12:00:00.000Z",
+        method=HttpMethod.GET,
+        url="https://user:pass@nb/api/x/?private_key=SECRETVAL&q=a",
+        request_body=None,
+        response_status_code=200,
+        profile="prod",
+        redaction=AuditRedaction.FULL,
+    )
+    line = _emit(entry, tmp_path)
+    assert set(line.keys()) == _ALLOWED_KEYS
+    assert line["url"] == "https://nb/api/x/"
+    blob = json.dumps(line)
+    for leak in ("SECRETVAL", "private_key", "pass", "user"):
+        assert leak not in blob
+
+
+def test_full_url_with_port_preserved(tmp_path: Path) -> None:
+    entry = AuditEntry(
+        timestamp="2026-06-25T12:00:00.000Z",
+        method=HttpMethod.GET,
+        url="https://nb:8443/api/x/?q=a",
+        request_body=None,
+        response_status_code=200,
+        profile="prod",
+        redaction=AuditRedaction.FULL,
+    )
+    line = _emit(entry, tmp_path)
+    assert line["url"] == "https://nb:8443/api/x/"
+
+
+def test_full_url_no_query_or_userinfo_is_noop(tmp_path: Path) -> None:
+    entry = AuditEntry(
+        timestamp="2026-06-25T12:00:00.000Z",
+        method=HttpMethod.GET,
+        url="https://nb/api/x/",
+        request_body=None,
+        response_status_code=200,
+        profile="prod",
+        redaction=AuditRedaction.FULL,
+    )
+    line = _emit(entry, tmp_path)
+    assert line["url"] == "https://nb/api/x/"
+
+
+def test_full_excludes_hypothetical_extra_entry_field(tmp_path: Path) -> None:
+    """Regression guard: `full` lines are an allow-list, not a deny-list.
+
+    If a new field is added to `AuditEntry`, it must not silently appear in a
+    `full` line. The emitted key set stays pinned to `_ALLOWED_KEYS`.
+    """
+    entry = _entry(request_body={"x": 1}, response_body={"y": 2})
+    line = _emit(entry, tmp_path)
+    extra = set(line.keys()) - _ALLOWED_KEYS
+    assert extra == set(), f"unexpected keys leaked into full line: {extra}"

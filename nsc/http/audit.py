@@ -19,6 +19,7 @@ import threading
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit, urlunsplit
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -123,16 +124,41 @@ def truncate_body(body: Any, *, cap_bytes: int = DEFAULT_BODY_CAP_BYTES) -> tupl
     return {"_truncated": True, "_size_bytes": len(serialized)}, True
 
 
+def _sanitize_url(url: str) -> str:
+    """Reduce `url` to scheme + host[:port] + path, dropping query and userinfo.
+
+    The query string of a debug-mode GET can carry secret filter values
+    (e.g. `?private_key=...`), and `Profile.url` permits `https://user:pass@host`
+    whose `user:pass@` httpx keeps in `str(request.url)`. Both are stripped so a
+    `full` line cannot leak a credential through the one remaining string field.
+
+    Robust to URLs with no query/userinfo (no-op) and to relative/edge URLs: if
+    splitting yields no scheme and host, the original is returned unchanged
+    rather than producing a misleading empty value.
+    """
+    try:
+        parts = urlsplit(url)
+    except ValueError:
+        return url
+    if not parts.scheme and not parts.hostname:
+        return url
+    host = parts.hostname or ""
+    netloc = f"{host}:{parts.port}" if parts.port is not None else host
+    return urlunsplit((parts.scheme, netloc, parts.path, "", ""))
+
+
 def _to_dict_full(entry: AuditEntry) -> dict[str, Any]:
     """`audit_redaction: full` line: routing metadata only, no body/header/query.
 
     Compliance escalation — omitting bodies entirely (not truncating) removes
     every channel a secret could ride on: request/response bodies, headers, and
-    query string. Only `status_code` is taken from the response object.
+    query string. The URL is sanitized to scheme + host + path (`_sanitize_url`)
+    so neither query params nor `user:pass@` userinfo leak. Only `status_code`
+    is taken from the response object.
     """
     return {
         "method": entry.method.value,
-        "url": entry.url,
+        "url": _sanitize_url(entry.url),
         "status_code": entry.response_status_code,
         "timestamp": entry.timestamp,
         "profile": entry.profile,
