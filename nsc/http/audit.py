@@ -13,7 +13,6 @@ from __future__ import annotations
 import copy
 import json
 import os
-import stat
 import sys
 import tempfile
 import threading
@@ -23,6 +22,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from nsc.config.settings import ensure_private_dir
 from nsc.model.command_model import HttpMethod
 from nsc.output.headers import SENSITIVE_HEADERS
 
@@ -32,7 +32,6 @@ SCHEMA_VERSION = 1
 
 # Audit logs hold request/response bodies verbatim; keep them owner-only,
 # mirroring the 0600 treatment of config.yaml in nsc/config/writer.py.
-_DIR_MODE = 0o700
 _FILE_MODE = 0o600
 
 # Serializes audit appends across threads. The bulk loop can run with N
@@ -163,23 +162,10 @@ def _warn(msg: str) -> None:
     print(f"warning: {msg}", file=sys.stderr)
 
 
-def _ensure_private_dir(directory: Path) -> None:
-    """Ensure `directory` exists and is owner-only.
-
-    Tightens an existing world/group-accessible dir too (e.g. a `~/.nsc/logs`
-    left 0755 by an older nsc version or a permissive umask), but leaves an
-    already-restrictive dir alone so a deliberately read-only dir still surfaces
-    a write failure rather than being silently reopened.
-    """
-    directory.mkdir(parents=True, exist_ok=True)
-    if stat.S_IMODE(directory.stat().st_mode) & 0o077:
-        os.chmod(directory, _DIR_MODE)
-
-
 def write_last_request(entry: AuditEntry, *, path: Path) -> None:
     """Atomically overwrite `path` with the entry. Failures emit a stderr warning."""
     try:
-        _ensure_private_dir(path.parent)
+        ensure_private_dir(path.parent)
         with tempfile.NamedTemporaryFile(
             "w", encoding="utf-8", dir=path.parent, delete=False
         ) as tmp:
@@ -199,14 +185,14 @@ def append_audit_jsonl(
 ) -> None:
     """Append the entry as a single line. Rotate to `path.1` when over the threshold.
 
-    Thread-safe: the entire rotate/open/write/close runs under `_APPEND_LOCK`
-    so concurrent bulk-loop workers cannot interleave partial lines or race the
-    rotation check.
+    Thread-safe: the entire dir-ensure/rotate/open/write/close runs under
+    `_APPEND_LOCK` so concurrent bulk-loop workers cannot interleave partial
+    lines or race the rotation check.
     """
     line = json.dumps(_to_dict(entry)) + "\n"
     with _APPEND_LOCK:
         try:
-            _ensure_private_dir(path.parent)
+            ensure_private_dir(path.parent)
             if path.exists() and path.stat().st_size > rotate_bytes:
                 rolled = path.with_suffix(path.suffix + ".1")
                 os.replace(path, rolled)

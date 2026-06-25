@@ -16,6 +16,7 @@ from nsc.aliases import (
     ResolvedAlias,
     UnknownAlias,
     resolve,
+    suggest_plural,
 )
 from nsc.model.command_model import (
     CommandModel,
@@ -79,12 +80,55 @@ def test_resolve_ls_is_case_insensitive() -> None:
     assert isinstance(resolve(AliasVerb.LS, "Devices", model), ResolvedAlias)
 
 
-def test_resolve_ls_does_not_pluralize_singular_input() -> None:
-    """Spec §11: plural-only is the v1 stance. `device` must NOT match `devices`."""
+def test_resolve_ls_curated_singular_resolves_to_plural() -> None:
+    """Issue #6: curated singular `device` resolves like `devices`."""
     model = _model(Tag(name="dcim", resources={"devices": _devices_resource()}))
     result = resolve(AliasVerb.LS, "device", model)
+    assert isinstance(result, ResolvedAlias)
+    assert result.resource_name == "devices"
+    assert result.operation.operation_id == "dcim_devices_list"
+
+
+def test_resolve_curated_singular_is_case_insensitive() -> None:
+    model = _model(Tag(name="dcim", resources={"devices": _devices_resource()}))
+    assert isinstance(resolve(AliasVerb.LS, "Device", model), ResolvedAlias)
+    assert isinstance(resolve(AliasVerb.LS, "DEVICE", model), ResolvedAlias)
+
+
+def test_resolve_curated_singular_works_for_get_and_rm() -> None:
+    model = _model(Tag(name="dcim", resources={"devices": _devices_resource()}))
+    get_result = resolve(AliasVerb.GET, "device", model)
+    assert isinstance(get_result, ResolvedAlias)
+    assert get_result.operation.operation_id == "dcim_devices_retrieve"
+    rm_result = resolve(AliasVerb.RM, "device", model)
+    assert isinstance(rm_result, ResolvedAlias)
+    assert rm_result.operation.http_method is HttpMethod.DELETE
+
+
+def test_resolve_curated_singular_unknown_when_plural_absent() -> None:
+    """`tag` is curated but if no `tags` resource exists, still UnknownAlias."""
+    model = _model(Tag(name="dcim", resources={"devices": _devices_resource()}))
+    result = resolve(AliasVerb.LS, "tag", model)
     assert isinstance(result, UnknownAlias)
-    assert result.term == "device"
+    assert result.term == "tag"
+
+
+def test_resolve_literal_match_wins_over_curated_pluralization() -> None:
+    """A resource literally named `device` matches before the curated retry."""
+    literal = _read_only_resource("device", "dcim")
+    model = _model(Tag(name="dcim", resources={"device": literal}))
+    result = resolve(AliasVerb.LS, "device", model)
+    assert isinstance(result, ResolvedAlias)
+    assert result.resource_name == "device"
+
+
+def test_resolve_non_curated_singular_does_not_pluralize() -> None:
+    """Non-curated singular must NOT auto-pluralize in the resolver."""
+    widgets = _read_only_resource("widgets", "dcim")
+    model = _model(Tag(name="dcim", resources={"widgets": widgets}))
+    result = resolve(AliasVerb.LS, "widget", model)
+    assert isinstance(result, UnknownAlias)
+    assert result.term == "widget"
 
 
 def test_resolve_ls_unknown_when_no_resource_named_term() -> None:
@@ -103,6 +147,18 @@ def test_resolve_ls_ambiguous_across_two_tags() -> None:
     assert isinstance(result, AmbiguousAlias)
     # Candidates returned in deterministic (sorted-by-tag) order.
     assert result.candidates == [("plugin_a", "widgets"), ("plugin_b", "widgets")]
+
+
+def test_resolve_curated_singular_ambiguous_across_two_tags() -> None:
+    """Curated `device` retries as `devices`; if that exists under >=2 tags it is ambiguous."""
+    model = _model(
+        Tag(name="plugin_a", resources={"devices": _read_only_resource("devices", "plugin_a")}),
+        Tag(name="plugin_b", resources={"devices": _read_only_resource("devices", "plugin_b")}),
+    )
+    result = resolve(AliasVerb.LS, "device", model)
+    assert isinstance(result, AmbiguousAlias)
+    assert result.term == "device"
+    assert result.candidates == [("plugin_a", "devices"), ("plugin_b", "devices")]
 
 
 def test_resolve_rm_skips_resources_without_delete_op() -> None:
@@ -181,6 +237,28 @@ def test_resolve_search_unknown_when_endpoint_missing() -> None:
     result = resolve(AliasVerb.SEARCH, "anything", model)
     assert isinstance(result, UnknownAlias)
     assert result.reason == "search_endpoint_unavailable"
+
+
+def test_suggest_plural_returns_plural_when_it_resolves() -> None:
+    """`rack` (non-curated singular here) → `racks` only if `racks` resolves."""
+    racks = _read_only_resource("racks", "dcim")
+    model = _model(Tag(name="dcim", resources={"racks": racks}))
+    assert suggest_plural(AliasVerb.LS, "widget", model) is None
+    assert suggest_plural(AliasVerb.LS, "rack", model) == "racks"
+
+
+def test_suggest_plural_none_when_already_plural() -> None:
+    """An s-terminated term is not re-pluralized."""
+    racks = _read_only_resource("racks", "dcim")
+    model = _model(Tag(name="dcim", resources={"racks": racks}))
+    assert suggest_plural(AliasVerb.LS, "racks", model) is None
+
+
+def test_suggest_plural_respects_verb_required_op() -> None:
+    """No suggestion if the pluralized resource lacks the required op for the verb."""
+    racks = _read_only_resource("racks", "dcim")
+    model = _model(Tag(name="dcim", resources={"racks": racks}))
+    assert suggest_plural(AliasVerb.RM, "rack", model) is None
 
 
 def test_resolve_search_ignores_non_get_search_paths() -> None:

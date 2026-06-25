@@ -205,6 +205,7 @@ def unknown_alias_envelope(
     verb: str,
     term: str,
     reason: str = "no_such_resource",
+    suggestion: str | None = None,
 ) -> ErrorEnvelope:
     """Build the envelope for an alias term that resolves to zero resources.
 
@@ -212,6 +213,10 @@ def unknown_alias_envelope(
     suggests `nsc commands` for resource discovery. `reason="search_endpoint_unavailable"`
     is the search-specific case (schema does not expose `/api/search/`); the
     message must not suggest `nsc commands` since that wouldn't help.
+
+    `suggestion` is an optional resource name (e.g. the pluralized form) that
+    actually resolves; when present it is appended as a "Did you mean ...?" hint
+    and surfaced in `details.suggestion` for JSON consumers.
     """
     if reason == "search_endpoint_unavailable":
         message = (
@@ -223,10 +228,14 @@ def unknown_alias_envelope(
             f"unknown resource `{term}` for `nsc {verb}`; "
             f"run `nsc commands` to list known resources"
         )
+    details: dict[str, Any] = {"verb": verb, "term": term, "reason": reason}
+    if suggestion is not None:
+        message = f"{message}. Did you mean `{suggestion}`?"
+        details["suggestion"] = suggestion
     return ErrorEnvelope(
         error=message,
         type=ErrorType.UNKNOWN_ALIAS,
-        details={"verb": verb, "term": term, "reason": reason},
+        details=details,
     )
 
 

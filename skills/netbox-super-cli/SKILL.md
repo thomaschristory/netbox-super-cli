@@ -26,6 +26,8 @@ nsc <tag> <resource> <verb> [args] [--apply] [--output json]
 
 - `<tag>` — the OpenAPI tag, e.g., `dcim`, `ipam`, `tenancy`, `circuits`, `extras`.
 - `<resource>` — plural form, e.g., `devices`, `prefixes`, `tenants`, `vlans`.
+  Curated singular forms are also accepted for common resources (`device`,
+  `prefix`, `tenant`, `vlan`, `site`, `rack`, `interface`, `cable`, `tag`).
 - `<verb>` — reads: `list`, `get`. Writes: `create`, `update`, `replace`,
   `delete`, plus any custom actions the schema exposes. `replace` is a
   PUT-with-id (full-object) replace; `update` is a PATCH. (Bulk variants exist
@@ -218,8 +220,11 @@ indefinitely until manually refreshed), `weekly` (7-day TTL).
   change with NetBox versions.
 - DO NOT authenticate per-command. Configure a profile (`nsc init` then
   `nsc login`) once at session start; `--profile <name>` switches between them.
-- DO NOT assume singular resource names. Plural-only is the v1 stance:
-  `nsc ls devices`, not `nsc ls device`.
+- DO NOT assume every resource name has a singular alias. Resource names are
+  plural (`nsc ls devices`). Curated singular forms also work for the common
+  resources — `device, prefix, tenant, vlan, site, rack, interface, cable, tag`
+  (so `nsc ls device` == `nsc ls devices`) — but outside that list, use the
+  plural. An unknown singular suggests its plural when one exists.
 
 ## Profile management
 

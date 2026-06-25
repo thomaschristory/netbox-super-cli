@@ -19,6 +19,13 @@ def test_atomic_write_creates_file_with_0600_permissions(tmp_path: Path) -> None
     assert mode == 0o600
 
 
+def test_atomic_write_clamps_created_parent_dir_to_0700(tmp_path: Path) -> None:
+    """The `~/.nsc` root created as a side effect of the first write is owner-only."""
+    root = tmp_path / ".nsc"
+    atomic_write(root / "config.yaml", "hello: world\n")
+    assert stat.S_IMODE(root.stat().st_mode) == 0o700
+
+
 def test_atomic_write_replaces_existing_file_atomically(tmp_path: Path) -> None:
     target = tmp_path / "config.yaml"
     target.write_text("old: value\n", encoding="utf-8")
