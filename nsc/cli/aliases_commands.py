@@ -23,6 +23,11 @@ from nsc.aliases import (
 )
 from nsc.cli.handlers import handle_delete, handle_get, handle_list
 from nsc.cli.runtime import RuntimeContext, emit_envelope
+from nsc.completion.callbacks import (
+    shell_complete_resource_name_get,
+    shell_complete_resource_name_ls,
+    shell_complete_resource_name_rm,
+)
 from nsc.config.models import OutputFormat
 from nsc.http.errors import NetBoxAPIError, NetBoxClientError
 from nsc.model.command_model import Operation
@@ -91,7 +96,13 @@ def register(app: typer.Typer) -> None:  # noqa: PLR0915
     @app.command("ls", help="List records on a resource (alias for `<tag> <resource> list`).")
     def ls_cmd(
         ctx: typer.Context,
-        term: Annotated[str, typer.Argument(help="Resource name (plural, e.g. `devices`).")],
+        term: Annotated[
+            str,
+            typer.Argument(
+                help="Resource name (plural, e.g. `devices`).",
+                shell_complete=shell_complete_resource_name_ls,
+            ),
+        ],
         output: Annotated[str | None, typer.Option("--output", "-o")] = None,
         compact: Annotated[bool, typer.Option("--compact")] = False,
         columns: Annotated[str | None, typer.Option("--columns")] = None,
@@ -138,7 +149,13 @@ def register(app: typer.Typer) -> None:  # noqa: PLR0915
     @app.command("rm", help="Delete one record (alias for `<tag> <resource> delete`).")
     def rm_cmd(
         ctx: typer.Context,
-        term: Annotated[str, typer.Argument(help="Resource name (plural).")],
+        term: Annotated[
+            str,
+            typer.Argument(
+                help="Resource name (plural).",
+                shell_complete=shell_complete_resource_name_rm,
+            ),
+        ],
         id_or_name: Annotated[str, typer.Argument(help="Numeric id or unique name.")],
         apply: Annotated[bool, typer.Option("--apply", "-a")] = False,
         explain: Annotated[bool, typer.Option("--explain")] = False,
@@ -195,7 +212,13 @@ def register(app: typer.Typer) -> None:  # noqa: PLR0915
     @app.command("get", help="Get one record (alias for `<tag> <resource> get`).")
     def get_cmd(
         ctx: typer.Context,
-        term: Annotated[str, typer.Argument(help="Resource name (plural).")],
+        term: Annotated[
+            str,
+            typer.Argument(
+                help="Resource name (plural).",
+                shell_complete=shell_complete_resource_name_get,
+            ),
+        ],
         id_or_name: Annotated[str, typer.Argument(help="Numeric id or unique name.")],
         output: Annotated[str | None, typer.Option("--output", "-o")] = None,
         compact: Annotated[bool, typer.Option("--compact")] = False,
