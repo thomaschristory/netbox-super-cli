@@ -90,6 +90,16 @@ def _resolve_from_url(field_name: str, current_value: Any, model: CommandModel) 
         )
 
     tag, list_op = located
+    # A `picker` target must carry a usable list endpoint — otherwise the screen
+    # renders a chooser button that can't open anything. Resolvable but
+    # list-less resources fall back to raw-ID entry, like an unknown resource.
+    if list_op is None:
+        return FkTarget(
+            kind="raw_id",
+            field_name=field_name,
+            current_id=current_id,
+            hint=(f"'{resource_name}' has no list endpoint; enter the numeric ID."),
+        )
     return FkTarget(
         kind="picker",
         field_name=field_name,

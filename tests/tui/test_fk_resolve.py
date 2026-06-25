@@ -105,6 +105,20 @@ def test_unknown_url_resource_falls_back_to_raw_id() -> None:
     assert "widget" in target.hint
 
 
+def test_url_resource_without_list_op_falls_back_to_raw_id() -> None:
+    # The resource exists but has no list endpoint, so a chooser is impossible;
+    # `kind="picker"` must never carry a None list_op (it would be a dead button).
+    sites = Resource(name="sites", list_op=None)
+    dcim = Tag(name="dcim", resources={"sites": sites})
+    model = CommandModel(info_title="t", info_version="1", schema_hash="h", tags={"dcim": dcim})
+    value = {"id": 3, "url": "https://nb/api/dcim/sites/3/"}
+    target = resolve_fk_target("site", value, model)
+    assert target.kind == "raw_id"
+    assert target.list_op is None
+    assert target.current_id == 3
+    assert target.hint
+
+
 def test_unknown_field_name_falls_back_to_raw_id() -> None:
     target = resolve_fk_target("gizmo_id", None, _model())
     assert target.kind == "raw_id"
