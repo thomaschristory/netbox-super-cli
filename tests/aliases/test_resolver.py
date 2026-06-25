@@ -149,6 +149,18 @@ def test_resolve_ls_ambiguous_across_two_tags() -> None:
     assert result.candidates == [("plugin_a", "widgets"), ("plugin_b", "widgets")]
 
 
+def test_resolve_curated_singular_ambiguous_across_two_tags() -> None:
+    """Curated `device` retries as `devices`; if that exists under >=2 tags it is ambiguous."""
+    model = _model(
+        Tag(name="plugin_a", resources={"devices": _read_only_resource("devices", "plugin_a")}),
+        Tag(name="plugin_b", resources={"devices": _read_only_resource("devices", "plugin_b")}),
+    )
+    result = resolve(AliasVerb.LS, "device", model)
+    assert isinstance(result, AmbiguousAlias)
+    assert result.term == "device"
+    assert result.candidates == [("plugin_a", "devices"), ("plugin_b", "devices")]
+
+
 def test_resolve_rm_skips_resources_without_delete_op() -> None:
     """A resource that has list_op but no delete_op cannot match `rm`.
 

@@ -26,6 +26,8 @@ nsc <tag> <resource> <verb> [args] [--apply] [--output json]
 
 - `<tag>` — the OpenAPI tag, e.g., `dcim`, `ipam`, `tenancy`, `circuits`, `extras`.
 - `<resource>` — plural form, e.g., `devices`, `prefixes`, `tenants`, `vlans`.
+  Curated singular forms are also accepted for common resources (`device`,
+  `prefix`, `tenant`, `vlan`, `site`, `rack`, `interface`, `cable`, `tag`).
 - `<verb>` — reads: `list`, `get`. Writes: `create`, `update`, `replace`,
   `delete`, plus any custom actions the schema exposes. `replace` is a
   PUT-with-id (full-object) replace; `update` is a PATCH. (Bulk variants exist
