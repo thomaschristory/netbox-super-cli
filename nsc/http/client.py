@@ -12,6 +12,7 @@ from urllib.parse import parse_qs, urlsplit
 
 import httpx
 
+from nsc.config.models import AuditRedaction
 from nsc.config.settings import default_paths
 from nsc.http.audit import (
     AuditEntry,
@@ -41,11 +42,20 @@ class _ProfileLike(Protocol):
 
 
 class NetBoxClient:
-    def __init__(self, profile: _ProfileLike, *, debug: bool = False) -> None:
+    def __init__(
+        self,
+        profile: _ProfileLike,
+        *,
+        debug: bool = False,
+        redaction: AuditRedaction = AuditRedaction.SAFE,
+        profile_name: str | None = None,
+    ) -> None:
         if profile.token is None:
             raise ValueError("NetBoxClient requires a non-None token on the profile")
         self._url = str(profile.url).rstrip("/")
         self._debug = debug
+        self._redaction = redaction
+        self._profile_name = profile_name
         self._client = httpx.Client(
             base_url=self._url,
             headers={
@@ -327,6 +337,8 @@ class NetBoxClient:
             record_indices=list(record_indices),
             applied=is_write,
             explain=False,
+            profile=self._profile_name,
+            redaction=self._redaction,
         )
         log_dir = default_paths().logs_dir
         write_last_request(entry, path=log_dir / "last-request.json")

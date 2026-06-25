@@ -22,6 +22,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from nsc.config.models import AuditRedaction
 from nsc.config.settings import ensure_private_dir
 from nsc.model.command_model import HttpMethod
 from nsc.output.headers import SENSITIVE_HEADERS
@@ -66,6 +67,8 @@ class AuditEntry(_Frozen):
     record_indices: list[int] = Field(default_factory=list)
     applied: bool = False
     explain: bool = False
+    profile: str | None = None
+    redaction: AuditRedaction = AuditRedaction.SAFE
 
 
 def redact_headers(headers: dict[str, str]) -> dict[str, str]:
@@ -120,8 +123,26 @@ def truncate_body(body: Any, *, cap_bytes: int = DEFAULT_BODY_CAP_BYTES) -> tupl
     return {"_truncated": True, "_size_bytes": len(serialized)}, True
 
 
+def _to_dict_full(entry: AuditEntry) -> dict[str, Any]:
+    """`audit_redaction: full` line: routing metadata only, no body/header/query.
+
+    Compliance escalation — omitting bodies entirely (not truncating) removes
+    every channel a secret could ride on: request/response bodies, headers, and
+    query string. Only `status_code` is taken from the response object.
+    """
+    return {
+        "method": entry.method.value,
+        "url": entry.url,
+        "status_code": entry.response_status_code,
+        "timestamp": entry.timestamp,
+        "profile": entry.profile,
+    }
+
+
 def _to_dict(entry: AuditEntry) -> dict[str, Any]:
     """Serialize to the wire shape documented in spec §4.3."""
+    if entry.redaction is AuditRedaction.FULL:
+        return _to_dict_full(entry)
     req_body, req_trunc = truncate_body(redact_body(entry.request_body, entry.sensitive_paths))
     resp_body, resp_trunc = truncate_body(entry.response_body)
     return {

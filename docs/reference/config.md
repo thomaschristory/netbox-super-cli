@@ -11,7 +11,7 @@ All fields below describe `~/.nsc/config.yaml`.
 |---|---|---|
 | `default_profile` | `str | None` | `None` |
 | `profiles` | `dict[str, Profile]` | `{}` |
-| `defaults` | `<class 'Defaults'>` | `Defaults(output=<OutputFormat.TABLE: 'table'>, page_size=50, timeout=30.0, schema_refresh=<SchemaRefresh.DAILY: 'daily'>, color_mode=<ColorMode.AUTO: 'auto'>)` |
+| `defaults` | `<class 'Defaults'>` | `Defaults(output=<OutputFormat.TABLE: 'table'>, page_size=50, timeout=30.0, schema_refresh=<SchemaRefresh.DAILY: 'daily'>, color_mode=<ColorMode.AUTO: 'auto'>, audit_redaction=<AuditRedaction.SAFE: 'safe'>)` |
 | `columns` | `dict[str, dict[str, list[str]]]` | `{}` |
 
 ## `Profile`
@@ -34,3 +34,4 @@ All fields below describe `~/.nsc/config.yaml`.
 | `timeout` | `<class 'float'>` | `30.0` |
 | `schema_refresh` | `<enum 'SchemaRefresh'>` | `<SchemaRefresh.DAILY: 'daily'>` |
 | `color_mode` | `<enum 'ColorMode'>` | `<ColorMode.AUTO: 'auto'>` |
+| `audit_redaction` | `<enum 'AuditRedaction'>` | `<AuditRedaction.SAFE: 'safe'>` |

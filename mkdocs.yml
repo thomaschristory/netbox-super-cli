@@ -61,6 +61,7 @@ nav:
       - Working with plugins: guides/working-with-plugins.md
       - Output formats: guides/output-formats.md
       - Writes and safety: guides/writes-and-safety.md
+      - Audit log: guides/audit-log.md
       - CI and automation: guides/ci-and-automation.md
       - Using with AI agents: guides/using-with-ai-agents.md
   - Reference:
