@@ -19,6 +19,7 @@ from nsc.aliases import (
     ResolvedAlias,
     UnknownAlias,
     resolve,
+    suggest_plural,
 )
 from nsc.cli.handlers import handle_delete, handle_get, handle_list
 from nsc.cli.runtime import RuntimeContext, emit_envelope
@@ -130,7 +131,12 @@ def register(app: typer.Typer) -> None:  # noqa: PLR0915
             env = ambiguous_alias_envelope(verb="ls", term=term, candidates=result.candidates)
             raise typer.Exit(_emit_alias_envelope(env, runtime))
         if isinstance(result, UnknownAlias):
-            env = unknown_alias_envelope(verb="ls", term=term, reason=result.reason)
+            env = unknown_alias_envelope(
+                verb="ls",
+                term=term,
+                reason=result.reason,
+                suggestion=suggest_plural(AliasVerb.LS, term, runtime.command_model),
+            )
             raise typer.Exit(_emit_alias_envelope(env, runtime))
         assert isinstance(result, ResolvedAlias)
         handle_list(
@@ -171,7 +177,12 @@ def register(app: typer.Typer) -> None:  # noqa: PLR0915
             env = ambiguous_alias_envelope(verb="rm", term=term, candidates=result.candidates)
             raise typer.Exit(_emit_alias_envelope(env, runtime))
         if isinstance(result, UnknownAlias):
-            env = unknown_alias_envelope(verb="rm", term=term, reason=result.reason)
+            env = unknown_alias_envelope(
+                verb="rm",
+                term=term,
+                reason=result.reason,
+                suggestion=suggest_plural(AliasVerb.RM, term, runtime.command_model),
+            )
             raise typer.Exit(_emit_alias_envelope(env, runtime))
         assert isinstance(result, ResolvedAlias)
 
@@ -227,7 +238,12 @@ def register(app: typer.Typer) -> None:  # noqa: PLR0915
             env = ambiguous_alias_envelope(verb="get", term=term, candidates=result.candidates)
             raise typer.Exit(_emit_alias_envelope(env, runtime))
         if isinstance(result, UnknownAlias):
-            env = unknown_alias_envelope(verb="get", term=term, reason=result.reason)
+            env = unknown_alias_envelope(
+                verb="get",
+                term=term,
+                reason=result.reason,
+                suggestion=suggest_plural(AliasVerb.GET, term, runtime.command_model),
+            )
             raise typer.Exit(_emit_alias_envelope(env, runtime))
         assert isinstance(result, ResolvedAlias)
 

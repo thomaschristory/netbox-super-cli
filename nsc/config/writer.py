@@ -27,6 +27,8 @@ from ruamel.yaml.comments import CommentedMap, TaggedScalar
 from ruamel.yaml.constructor import BaseConstructor
 from ruamel.yaml.nodes import ScalarNode
 
+from nsc.config.settings import ensure_private_dir
+
 _log = logging.getLogger(__name__)
 _FILE_MODE = 0o600
 
@@ -39,7 +41,7 @@ def atomic_write(path: Path, text: str) -> None:
     before or during `os.replace`, the original file is untouched and
     the temp file is cleaned up.
     """
-    path.parent.mkdir(parents=True, exist_ok=True)
+    ensure_private_dir(path.parent)
     fd, tmp_path = tempfile.mkstemp(
         prefix=f".{path.name}.",
         suffix=".tmp",
@@ -69,7 +71,7 @@ def acquire_lock(path: Path) -> Iterator[None]:
     truncate the target file via locking.
     """
     lock_path = path.with_suffix(path.suffix + ".lock")
-    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    ensure_private_dir(lock_path.parent)
     try:
         import fcntl  # noqa: PLC0415  # platform-conditional: absent on Windows.
     except ImportError:
