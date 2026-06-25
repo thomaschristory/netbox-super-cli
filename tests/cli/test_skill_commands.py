@@ -50,13 +50,34 @@ def test_install_apply_codex_writes_to_agents_skills(home: Path) -> None:
     assert dest.exists()
 
 
-def test_install_dry_run_gemini_prints_manual_instructions(home: Path) -> None:
+def test_install_apply_gemini_writes_to_gemini_skills(home: Path) -> None:
+    """Gemini CLI loads from $HOME/.gemini/skills/ (confirmed 2026-06-25)."""
+    runner = CliRunner()
+    result = runner.invoke(app, ["skill", "install", "--target", "gemini", "--apply"])
+
+    assert result.exit_code == 0, result.output
+    dest = home / ".gemini" / "skills" / "netbox-super-cli" / "SKILL.md"
+    assert dest.exists()
+
+
+def test_install_apply_copilot_writes_to_copilot_skills(home: Path) -> None:
+    """Copilot CLI loads from $HOME/.copilot/skills/ (confirmed 2026-06-25)."""
+    runner = CliRunner()
+    result = runner.invoke(app, ["skill", "install", "--target", "copilot", "--apply"])
+
+    assert result.exit_code == 0, result.output
+    dest = home / ".copilot" / "skills" / "netbox-super-cli" / "SKILL.md"
+    assert dest.exists()
+
+
+def test_install_dry_run_gemini_prints_would_write(home: Path) -> None:
     runner = CliRunner()
     result = runner.invoke(app, ["skill", "install", "--target", "gemini"])
 
     assert result.exit_code == 0, result.output
-    assert "GEMINI.md" in result.output or "Gemini" in result.output
-    assert "would write to" not in result.output
+    assert "would write to" in result.output
+    assert ".gemini/skills/netbox-super-cli/SKILL.md" in result.output
+    assert not (home / ".gemini" / "skills" / "netbox-super-cli" / "SKILL.md").exists()
 
 
 def test_install_apply_overwrites_existing_file(home: Path) -> None:
@@ -96,15 +117,16 @@ def test_install_json_output_apply(home: Path) -> None:
     assert Path(payload["destination"]).exists()
 
 
-def test_install_json_output_manual_target(home: Path) -> None:
+@pytest.mark.parametrize("target", ["gemini", "copilot"])
+def test_install_json_output_resolves_path(home: Path, target: str) -> None:
     runner = CliRunner()
-    result = runner.invoke(app, ["skill", "install", "--target", "copilot", "--output", "json"])
+    result = runner.invoke(app, ["skill", "install", "--target", target, "--output", "json"])
 
     assert result.exit_code == 0, result.output
     payload = json.loads(result.output)
-    assert payload["manual"] is True
-    assert payload["destination"] is None
-    assert "instructions" in payload
+    assert payload["manual"] is False
+    assert payload["destination"].endswith("skills/netbox-super-cli/SKILL.md")
+    assert "instructions" not in payload
 
 
 @pytest.mark.parametrize("target", ["claude-code", "codex", "gemini", "copilot"])

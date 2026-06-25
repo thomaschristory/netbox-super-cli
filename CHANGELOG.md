@@ -48,11 +48,17 @@ mode — plus a round of state-directory, workflow, and supply-chain hardening.
   (github-actions ecosystem, weekly).
 - **E2E CI matrix over NetBox v4.5 and v4.6** ([#4]). The end-to-end job now
   runs against both NetBox lines (`fail-fast: false`, per-version labels).
+- **`nsc skill install` now supports Gemini and Copilot CLI** ([#7]). Their
+  user-scoped Skill paths (`~/.gemini/skills/`, `~/.copilot/skills/`) are now
+  confirmed and documented, so `--target gemini` / `--target copilot` resolve to
+  a real install path instead of printing manual instructions. A quarterly CI
+  job opens a tracking issue to re-check the four per-platform conventions.
 
 [#6]: https://github.com/thomaschristory/netbox-super-cli/issues/6
 [#3]: https://github.com/thomaschristory/netbox-super-cli/issues/3
 [#2]: https://github.com/thomaschristory/netbox-super-cli/issues/2
 [#5]: https://github.com/thomaschristory/netbox-super-cli/issues/5
+[#7]: https://github.com/thomaschristory/netbox-super-cli/issues/7
 [#90]: https://github.com/thomaschristory/netbox-super-cli/issues/90
 [#9]: https://github.com/thomaschristory/netbox-super-cli/issues/9
 [#12]: https://github.com/thomaschristory/netbox-super-cli/issues/12
