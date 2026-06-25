@@ -10,6 +10,18 @@ on:
   pull_request_review:
     types: [submitted]
 
+# Least-privilege default for the whole workflow; the single `claude` job
+# below re-declares the same scopes explicitly. The action only reads PRs
+# and issues here (no auto-commit/comment requested), so write scopes are
+# intentionally withheld — id-token: write is the sole write, required for
+# the action's OIDC handshake.
+permissions:
+  contents: read
+  pull-requests: read
+  issues: read
+  id-token: write
+  actions: read # Required for Claude to read CI results on PRs
+
 jobs:
   claude:
     # Only trusted authors (repo owner/members/collaborators) can invoke the
