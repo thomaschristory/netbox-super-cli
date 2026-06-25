@@ -35,6 +35,10 @@ mode — plus a round of state-directory, workflow, and supply-chain hardening.
 
 ### Changed
 
+- **Faster command-tree registration / startup**. The static command-option
+  specs (global read flags and write flags) are now built once at import and
+  shared across all commands instead of being rebuilt per command, recovering a
+  startup-time regression introduced when `--workers` was added.
 - **`~/.nsc` state root hardened to `0700`** ([#90]). Defense-in-depth on the
   state directory itself; config and audit files were already `0600` and
   `logs/` already `0700`.
