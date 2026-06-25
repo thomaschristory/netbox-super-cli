@@ -123,8 +123,16 @@ def _first_non_option(args: list[str]) -> str | None:
 
 
 def _is_completion_mode() -> bool:
-    """True when Click is driving shell completion (`_NSC_COMPLETE` is set)."""
-    return any(k == "_NSC_COMPLETE" or k.endswith("_COMPLETE") for k in os.environ)
+    """True only when Click is driving shell completion for *this* program.
+
+    Click sets `_{PROG_NAME}_COMPLETE` (prog name uppercased, non-alphanumerics
+    -> `_`). Our two console scripts are `nsc` and `netbox-super-cli`, so the
+    only vars Click can set are `_NSC_COMPLETE` and `_NETBOX_SUPER_CLI_COMPLETE`.
+    Match those EXACTLY: a broad `endswith("_COMPLETE")` scan misfires on any
+    unrelated env var ending in `_COMPLETE`, wrongly taking the cache-only
+    fast-path on normal invocations and skipping schema bootstrap.
+    """
+    return bool(os.environ.get("_NSC_COMPLETE") or os.environ.get("_NETBOX_SUPER_CLI_COMPLETE"))
 
 
 def _completion_command_model(args: list[str]) -> Any:
@@ -193,10 +201,17 @@ class _BootstrappingGroup(TyperGroup):
         # The `get_ctx` factory is never invoked in completion mode, so a
         # raising stub is safe.
         if _is_completion_mode() and subcommand not in _META_COMMANDS:
-            cached = _completion_command_model(args)
-            if cached is not None:
-                register_dynamic_commands(app, cached, _completion_ctx_unavailable)
-                self._sync_dynamic_groups()
+            # Click does NOT wrap `make_context` during completion, so any raise
+            # here crashes the completion subprocess. Swallow registration
+            # failures and fall through to the normal `make_context` so
+            # completion degrades gracefully instead of crashing the shell.
+            try:
+                cached = _completion_command_model(args)
+                if cached is not None:
+                    register_dynamic_commands(app, cached, _completion_ctx_unavailable)
+                    self._sync_dynamic_groups()
+            except Exception:
+                pass
             return super().make_context(info_name, args, parent, **extra)
 
         if subcommand not in _META_COMMANDS:

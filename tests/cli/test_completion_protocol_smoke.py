@@ -22,6 +22,7 @@ import pytest
 from typer._completion_classes import BashComplete
 from typer.main import get_command
 
+from nsc.cli import app as app_mod
 from nsc.cli.app import app
 from nsc.config.settings import Paths
 from nsc.model.command_model import (
@@ -151,3 +152,45 @@ def test_completion_with_missing_cache_does_not_crash(
     # No cache, no config: completion returns nothing but never raises.
     assert _completions(["ls"], "dev") == []
     assert _completions(["--profile"], "") == []
+
+
+def test_foreign_complete_env_var_does_not_activate_completion_mode(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An unrelated env var ending in `_COMPLETE` must NOT trip the cache-only
+    completion fast-path. Only the program's own Click vars
+    (`_NSC_COMPLETE` / `_NETBOX_SUPER_CLI_COMPLETE`) may activate it."""
+    monkeypatch.delenv("_NSC_COMPLETE", raising=False)
+    monkeypatch.delenv("_NETBOX_SUPER_CLI_COMPLETE", raising=False)
+    monkeypatch.setenv("FOO_COMPLETE", "1")
+    monkeypatch.setenv("WEIRD_COMPLETE", "yes")
+    assert app_mod._is_completion_mode() is False
+
+    monkeypatch.setenv("_NSC_COMPLETE", "complete")
+    assert app_mod._is_completion_mode() is True
+    monkeypatch.delenv("_NSC_COMPLETE")
+    monkeypatch.setenv("_NETBOX_SUPER_CLI_COMPLETE", "complete")
+    assert app_mod._is_completion_mode() is True
+
+
+def test_completion_fast_path_registration_failure_degrades_gracefully(
+    stubbed_home: Paths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """If the cache-only registration raises during completion, Click does not
+    wrap `make_context`, so any escape would crash the completion subprocess.
+    The fast-path must swallow the error and fall through to the normal path —
+    completion degrades (empty/partial) instead of crashing the shell."""
+
+    def _boom(*args: object, **kwargs: object) -> None:
+        raise RuntimeError("simulated registration failure")
+
+    monkeypatch.setattr(app_mod, "register_dynamic_commands", _boom)
+    # The dynamic-tree completion path depends on `register_dynamic_commands`
+    # inside `make_context`. With it raising, the fast-path must swallow the
+    # error and fall through to the normal `make_context`: no exception escapes
+    # into the shell. Completion degrades — the dynamic `dcim` subtree never
+    # registers, so the enum values (`active`, ...) are simply absent rather
+    # than crashing the completion subprocess.
+    values = _completions(["dcim", "devices", "list", "--status"], "")
+    assert "active" not in values
+    assert "decommissioning" not in values

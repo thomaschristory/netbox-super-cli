@@ -54,32 +54,6 @@ def profile_candidates(paths: Paths, *, incomplete: str) -> list[str]:
     return sorted(name for name in config.profiles if name.lower().startswith(needle))
 
 
-def _find_operation_by_path(model: CommandModel, path: str) -> object | None:
-    for _tag, _resource, op in model.iter_operations():
-        if op.path == path:
-            return op
-    return None
-
-
-def enum_candidates(
-    model: CommandModel | None, *, path: str, field: str, incomplete: str
-) -> list[str]:
-    """Enum values for query parameter `field` of the operation at `path`
-    (e.g. `--status` -> active/decommissioning/...), filtered by prefix."""
-    if model is None:
-        return []
-    needle = incomplete.lower()
-    for tag in model.tags.values():
-        for resource in tag.resources.values():
-            op = resource.list_op
-            if op is None or op.path != path:
-                continue
-            for param in op.parameters:
-                if param.name == field and param.enum:
-                    return [v for v in param.enum if v.lower().startswith(needle)]
-    return []
-
-
 def cache_dir_profile_names(paths: Paths) -> list[str]:
     """Profile subdirectory names present under the cache dir. Used as a last
     resort when no config/flag/env pins a profile."""

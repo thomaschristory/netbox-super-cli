@@ -160,27 +160,10 @@ def test_profile_candidates_missing_config_returns_empty(tmp_path: Path) -> None
     assert providers.profile_candidates(paths, incomplete="") == []
 
 
-# --- enum completion ------------------------------------------------------
-
-
-def test_enum_candidates_for_status_field() -> None:
-    model = _model()
-    vals = providers.enum_candidates(
-        model, path="/api/dcim/devices/", field="status", incomplete=""
-    )
-    assert vals == ["active", "decommissioning", "offline", "planned"]
-    assert providers.enum_candidates(
-        model, path="/api/dcim/devices/", field="status", incomplete="dec"
-    ) == ["decommissioning"]
-
-
-def test_enum_candidates_unknown_field_returns_empty() -> None:
-    model = _model()
-    assert (
-        providers.enum_candidates(model, path="/api/dcim/devices/", field="name", incomplete="")
-        == []
-    )
-    assert providers.enum_candidates(None, path="/x/", field="status", incomplete="") == []
+# Enum completion (`--status <TAB>`) is exercised end-to-end in
+# tests/cli/test_completion_protocol_smoke.py::test_enum_status_completion, which
+# drives the real dynamic command tree and Click's native `Choice` completion —
+# the actual production path. There is no standalone provider for it.
 
 
 # --- cheap cache probe ----------------------------------------------------

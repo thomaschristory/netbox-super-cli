@@ -17,6 +17,7 @@ never drags in the full app cold-start path.
 from __future__ import annotations
 
 import os
+import warnings
 from typing import Any
 
 from nsc.completion import providers
@@ -24,6 +25,25 @@ from nsc.completion.cache_probe import load_cached_model_for_profile, resolve_co
 from nsc.config.loader import ConfigParseError, load_config
 from nsc.config.settings import default_paths
 from nsc.model.command_model import CommandModel
+
+# Typer >= 0.12 deprecates `shell_complete=` in favour of `autocompletion=`, and
+# emits this DeprecationWarning every time it builds a Click param that uses it —
+# i.e. on EVERY normal invocation, hundreds of times across the test suite, and
+# under `-W error::DeprecationWarning` it would turn even `nsc ls --help` into a
+# crash. We cannot migrate to `autocompletion=` yet: Typer's `autocompletion`
+# shim discards the Click `ctx` that our resource-name callbacks need to recover
+# the active `--profile` from argv, so the dynamic completion would lose its
+# profile context. This filter is narrowly scoped to Typer's exact message (not
+# a blanket DeprecationWarning suppression). Revisit when Typer exposes a
+# ctx-aware completion hook and we can drop `shell_complete=`.
+# This module is imported by every site that registers a `shell_complete=`
+# param (`nsc.cli.app` and `nsc.cli.aliases_commands`), so registering the
+# filter here keeps it localized to the completion concern.
+warnings.filterwarnings(
+    "ignore",
+    message=r".*only the parameter 'autocompletion' is supported.*",
+    category=DeprecationWarning,
+)
 
 
 def _active_model(args: list[str]) -> CommandModel | None:
