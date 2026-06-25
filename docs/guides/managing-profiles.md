@@ -96,3 +96,9 @@ NSC_URL=https://other NSC_TOKEN=$TOK nsc dcim devices list   # env vars also wor
 ```
 
 Override precedence (highest first): CLI flag > env var > config profile.
+
+## Shell completion
+
+With shell completion installed, `nsc --profile <TAB>` completes configured
+profile names (read from the cached command-model and config — no network at
+TAB time).

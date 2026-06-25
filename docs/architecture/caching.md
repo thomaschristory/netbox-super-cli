@@ -70,3 +70,12 @@ nsc cache prune --apply              # actually delete
 nsc cache prune --max-age 30 --apply
 nsc cache prune --output json        # structured envelope
 ```
+
+## Shell completion reads the cache
+
+Dynamic shell completion (`nsc/completion/`) is backed by this same on-disk
+cache. At TAB time the completion providers probe the cached command-model for
+the active profile (`<profile>/<schema-hash>.json`) — never the network — so
+resource-name, profile, and enum suggestions are cheap. A missing or corrupt
+cache degrades to no suggestions rather than blocking the prompt; the cache is
+populated by the first real command (or `nsc login --fetch-schema`).

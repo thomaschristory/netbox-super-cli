@@ -8,8 +8,15 @@ because the schema — not hand-written code — defines the surface.
 
 - **Plugins just work.** New endpoints from any installed plugin appear as commands automatically.
 - **Multi-instance.** Named profiles per NetBox instance, plus env-var overrides.
-- **Safe by default.** Writes preview as dry-runs unless you pass `--apply`.
+- **Safe by default.** Writes preview as dry-runs unless you pass `--apply`. An
+  `audit_redaction: full` mode strips every request/response body from the audit
+  log, leaving only `{method, url, status_code, timestamp, profile}`.
+- **Fast bulk writes.** `--workers N` runs up to N concurrent requests on a
+  bulk write (default `1`, max `32`), with per-record error handling intact.
 - **Agent-friendly.** Deterministic command shape, machine-readable JSON output, stable error envelope with documented exit codes.
+- **Curated aliases + completion.** `nsc ls/get/rm/search` over any resource —
+  with singular forms for common ones (`nsc ls device`) — and dynamic shell
+  completion of resource, profile, and enum values from the cached schema.
 - **Interactive TUI.** `nsc tui` opens a keyboard-driven UI to browse, filter, edit, bulk-edit and search — see the [Interactive TUI guide](guides/interactive-tui.md).
 
 ## Three killer examples

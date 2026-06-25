@@ -49,6 +49,12 @@ endpoints — without per-plugin code in `nsc`**.
 
 A short curated alias layer sits on top: `nsc ls`, `nsc get`, `nsc rm`, `nsc search`.
 
+For the curated resources — `device`, `prefix`, `tenant`, `vlan`, `site`,
+`rack`, `interface`, `cable`, `tag` — the singular works identically to the
+plural: `nsc ls device` is the same as `nsc ls devices` (likewise for `get` and
+`rm` where supported). A non-curated singular that doesn't resolve suggests the
+plural instead ("Did you mean `devices`?").
+
 ## Dry-run / apply
 
 Writes default to dry-run. The CLI shows the resolved request and exits 0

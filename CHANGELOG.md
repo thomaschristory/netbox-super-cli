@@ -2,6 +2,73 @@
 
 All notable changes to netbox-super-cli are tracked here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) loosely. From v1.0.0 onward, releases follow [Semantic Versioning](https://semver.org/) and the version in `pyproject.toml` matches the git tag. Pre-1.0 milestones (Phase 1-5) were pinned by tag while `pyproject.toml` stayed at `0.0.1`.
 
+## v1.3.0 — 2026-06-25
+
+Minor release. A batch of user-facing features — singular alias forms, parallel
+bulk writes, dynamic shell completion, and a strict `audit_redaction: full`
+mode — plus a round of state-directory, workflow, and supply-chain hardening.
+
+### Added
+
+- **Singular alias forms** ([#6]). `nsc ls device` now resolves like
+  `nsc ls devices` for a curated set of nine resources: `device`, `prefix`,
+  `tenant`, `vlan`, `site`, `rack`, `interface`, `cable`, and `tag`. A
+  non-curated singular that does not resolve suggests the plural
+  (e.g. "Did you mean `devices`?") rather than guessing.
+- **`--workers N` on bulk writes** ([#3]). Bulk write commands
+  (`create --ndjson`, `update --ndjson`, …) accept `--workers N` to run up to N
+  concurrent in-flight requests (default `1`, max `32`). Per-record
+  `--on-error` semantics are preserved, and the audit log stays one well-formed
+  line per record (writes are thread-safe). With `--on-error stop`, the bound
+  applies to *new* submissions — in-flight requests (up to N) are allowed to
+  complete.
+- **Dynamic shell completion** ([#2]). Completion now reads the cached schema to
+  complete dynamic values: `nsc ls dev<TAB>` →
+  `devices device-roles device-types`; `nsc --profile <TAB>` → profile names;
+  `nsc <tag> <resource> list --status <TAB>` → enum values. This complements the
+  existing static `--install-completion` stubs.
+- **`audit_redaction: full` config mode** ([#5]). A new strict redaction mode
+  redacts ALL request/response bodies, leaving only
+  `{method, url, status_code, timestamp, profile}` per audit line. The `url` is
+  sanitized — the query string and any `user:pass@` credentials are stripped.
+  The default stays `safe`.
+
+### Changed
+
+- **Faster command-tree registration / startup**. The static command-option
+  specs (global read flags and write flags) are now built once at import and
+  shared across all commands instead of being rebuilt per command, recovering a
+  startup-time regression introduced when `--workers` was added.
+- **`~/.nsc` state root hardened to `0700`** ([#90]). Defense-in-depth on the
+  state directory itself; config and audit files were already `0600` and
+  `logs/` already `0700`.
+- **CI runners on Node.js 24** ([#9]). Bumped `actions/checkout` to v5,
+  `astral-sh/setup-uv` to v7, and `deploy-pages` to v5.
+- **Least-privilege workflow permissions** ([#12]). Every GitHub Actions
+  workflow now declares an explicit least-privilege `permissions:` block.
+- **Release workflow actions pinned to commit SHAs** ([#16]). `release.yml`
+  pins `checkout` and `setup-uv` to commit SHAs (the PyPA publish action stays
+  on its floating tag per PyPA guidance); added `.github/dependabot.yml`
+  (github-actions ecosystem, weekly).
+- **E2E CI matrix over NetBox v4.5 and v4.6** ([#4]). The end-to-end job now
+  runs against both NetBox lines (`fail-fast: false`, per-version labels).
+- **`nsc skill install` now supports Gemini and Copilot CLI** ([#7]). Their
+  user-scoped Skill paths (`~/.gemini/skills/`, `~/.copilot/skills/`) are now
+  confirmed and documented, so `--target gemini` / `--target copilot` resolve to
+  a real install path instead of printing manual instructions. A quarterly CI
+  job opens a tracking issue to re-check the four per-platform conventions.
+
+[#6]: https://github.com/thomaschristory/netbox-super-cli/issues/6
+[#3]: https://github.com/thomaschristory/netbox-super-cli/issues/3
+[#2]: https://github.com/thomaschristory/netbox-super-cli/issues/2
+[#5]: https://github.com/thomaschristory/netbox-super-cli/issues/5
+[#7]: https://github.com/thomaschristory/netbox-super-cli/issues/7
+[#90]: https://github.com/thomaschristory/netbox-super-cli/issues/90
+[#9]: https://github.com/thomaschristory/netbox-super-cli/issues/9
+[#12]: https://github.com/thomaschristory/netbox-super-cli/issues/12
+[#16]: https://github.com/thomaschristory/netbox-super-cli/issues/16
+[#4]: https://github.com/thomaschristory/netbox-super-cli/issues/4
+
 ## v1.2.1 — 2026-06-25
 
 Patch release. Fixes foreign-key handling in the interactive TUI.

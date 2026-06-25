@@ -15,7 +15,11 @@ endpoint list to go stale.
 - `nsc` is on PATH after `pip install netbox-super-cli`.
 - Config lives at `~/.nsc/config.yaml`.
 - Audit log lives at `~/.nsc/logs/audit.jsonl` (one JSON-line per request/response;
-  passwords are redacted).
+  passwords are redacted). `defaults.audit_redaction` controls how much is
+  kept: `safe` (default) masks sensitive headers/fields but keeps bodies;
+  `full` drops all bodies/headers/query and leaves only
+  `{method, url, status_code, timestamp, profile}` (url stripped of query and
+  `user:pass@`).
 - Cache lives at `~/.nsc/cache/<profile>/<schema-hash>.json`.
 
 ## Command shape
@@ -51,6 +55,11 @@ Plus interactive meta-commands (not aliases):
 - `nsc login` — verify / create / rotate a profile's token.
 - `nsc commands --schema <path-or-url>` — dump the entire generated command
   tree as JSON (useful for discovery; `--schema` is required here).
+
+With shell completion installed, TAB now expands resource names, profiles
+(`nsc --profile <TAB>`), and `--status` enum values. Completion reads the
+on-disk cache only — no network call at TAB time — and silently offers
+nothing if the cache is missing.
 
 ## Dry-run / apply discipline
 
@@ -192,6 +201,16 @@ operation.
   ```
 - **Generate the NDJSON once** with whatever scripting tool you prefer
   (`jq`, Python, awk). Don't re-run `list` between every patch.
+- **Speed up large bulk writes with `--workers N`.** Bulk write commands
+  accept `--workers N` (default **1**, max **32**) to keep N requests in
+  flight at once instead of one-at-a-time:
+  ```bash
+  nsc dcim interfaces update -f changes.ndjson --workers 8 --apply
+  ```
+  Per-record `--on-error` semantics are unchanged at any worker count, and
+  the audit log stays intact — appends are serialized so each record is
+  still exactly one well-formed JSON line. Start at the default and raise
+  it only when the record count is large; respect the 32 ceiling.
 
 ### Schema fetches
 

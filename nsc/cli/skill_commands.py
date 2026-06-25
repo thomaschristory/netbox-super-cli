@@ -64,28 +64,25 @@ def _resolve_codex() -> _Resolution:
 
 
 def _resolve_gemini() -> _Resolution:
+    # Per geminicli.com/docs/cli/skills/ (confirmed 2026-06-25): Gemini CLI
+    # loads user-scoped skills from $HOME/.gemini/skills/<name>/SKILL.md. It
+    # also accepts the agent-neutral ~/.agents/skills/ interop alias.
     return _Resolution(
         target=_Target.GEMINI,
-        path=None,
-        manual_instructions=(
-            "Gemini CLI does not document a programmatic Skill install path "
-            "as of this nsc release. To use the bundled Skill: paste its "
-            "content into a project-scoped GEMINI.md or your Gemini system "
-            "prompt."
-        ),
+        path=_home() / ".gemini" / "skills" / BUNDLE_NAME / "SKILL.md",
+        manual_instructions=None,
     )
 
 
 def _resolve_copilot() -> _Resolution:
+    # Per docs.github.com/.../copilot-cli/customize-copilot/add-skills (confirmed
+    # 2026-06-25): GitHub Copilot CLI loads user-scoped skills from
+    # $HOME/.copilot/skills/<name>/SKILL.md. It also accepts the agent-neutral
+    # ~/.agents/skills/ interop alias.
     return _Resolution(
         target=_Target.COPILOT,
-        path=None,
-        manual_instructions=(
-            "GitHub Copilot CLI does not document a stable user-scoped Skill "
-            "install path as of this nsc release. To use the bundled Skill: "
-            "paste its content into .github/copilot-instructions.md or your "
-            "team's Copilot configuration."
-        ),
+        path=_home() / ".copilot" / "skills" / BUNDLE_NAME / "SKILL.md",
+        manual_instructions=None,
     )
 
 
