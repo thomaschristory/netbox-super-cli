@@ -1,0 +1,48 @@
+name: skill-convention-review
+
+# Quarterly reminder to re-check the four per-platform Skill-install conventions
+# hard-coded in nsc/cli/skill_commands.py `_RESOLVERS`. Opens a tracking issue so
+# a maintainer re-reads each canonical source and updates code+docs on drift.
+
+on:
+  schedule:
+    # 09:00 UTC on the 1st of Feb/May/Aug/Nov.
+    - cron: "0 9 1 2,5,8,11 *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  open-tracking-issue:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Open quarterly convention re-check issue
+        run: |
+          gh issue create \
+            --repo "${{ github.repository }}" \
+            --title "Quarterly: re-check Skill install conventions" \
+            --body "$(cat <<'EOF'
+          Quarterly re-check of the four per-platform Skill-install conventions
+          hard-coded in `nsc/cli/skill_commands.py` `_RESOLVERS`. Re-read each
+          canonical source below and confirm the documented user-scoped path is
+          still current.
+
+          - [ ] **claude-code** — https://code.claude.com/docs/en/skills
+          - [ ] **codex** — https://developers.openai.com/codex/skills
+          - [ ] **gemini** — https://geminicli.com/docs/cli/skills/
+          - [ ] **copilot** — https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/add-skills
+
+          If any convention drifted, update all of:
+
+          - `nsc/cli/skill_commands.py` (the relevant `_resolve_*` resolver)
+          - `docs/guides/using-with-ai-agents.md` (per-target path table)
+          - `skills/netbox-super-cli/SKILL.md` (if it lists per-target paths)
+          - `CHANGELOG.md` (note the change under the unreleased section)
+
+          Close this issue once all four are confirmed (and any drift is shipped).
+          EOF
+          )"

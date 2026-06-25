@@ -45,16 +45,15 @@ the resolved destination path.
 |--------------|------------|----------------------------------------------------------------|
 | claude-code  | confirmed  | `~/.claude/skills/netbox-super-cli/SKILL.md`                   |
 | codex        | confirmed  | `~/.agents/skills/netbox-super-cli/SKILL.md`                   |
-| gemini       | manual     | (no programmatic install; prints manual instructions)          |
-| copilot      | manual     | (no programmatic install; prints manual instructions)          |
+| gemini       | confirmed  | `~/.gemini/skills/netbox-super-cli/SKILL.md`                   |
+| copilot      | confirmed  | `~/.copilot/skills/netbox-super-cli/SKILL.md`                  |
 
-For targets marked `manual`, `nsc skill install --target <t>` prints
-actionable instructions (exit 0) instead of writing a guessed path.
-The bundled Skill content is at `skills/netbox-super-cli/SKILL.md` in
-this repo and inside the installed wheel; for `manual` targets, paste
-its content into your tool's project-scoped configuration (e.g.
-`GEMINI.md` for Gemini CLI, `.github/copilot-instructions.md` for
-GitHub Copilot CLI).
+Gemini CLI and GitHub Copilot CLI also accept the agent-neutral
+`~/.agents/skills/` interop alias (the same prefix Codex uses), so a
+single export to `~/.agents/skills/` can be shared across all three;
+`nsc skill install` writes to each tool's primary path above. The
+bundled Skill content is at `skills/netbox-super-cli/SKILL.md` in this
+repo and inside the installed wheel.
 
 ## Agent prompts that work well
 
