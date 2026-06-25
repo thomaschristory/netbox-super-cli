@@ -3,7 +3,7 @@
 #
 # 1. Wait until Django is serving the unauthenticated login page at $NSC_URL/login/
 #    (proxy for "migrations and gunicorn are up"). 5-minute deadline; cold-start
-#    of NetBox 4.5.9 takes ~90–180 s on CI.
+#    of NetBox 4.5/4.6 takes ~90–180 s on CI.
 # 2. Create a deterministic v1 admin API token via `docker exec`, replacing any
 #    previously-bootstrapped token. Required because NetBox 4.5+ generates a
 #    random v2 token at bootstrap and never reveals the secret half — the

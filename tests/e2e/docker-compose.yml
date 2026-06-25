@@ -5,13 +5,16 @@
 # SUPERUSER_API_TOKEN") for the full story. In short: NetBox 4.5+ defaults to
 # v2 tokens which can't be pinned to a known plaintext via env var, so
 # wait_for_netbox.sh creates the v1 token via `docker exec` once Django is up.
-# v1 tokens remain valid for authentication in 4.5.x.
+# v1 tokens remain valid for authentication in 4.5.x and 4.6.x.
 # Bound to 127.0.0.1:8080 — never publish to 0.0.0.0; this stack runs as
 # DEBUG=true and is intentionally insecure.
 
 services:
   netbox:
-    image: netboxcommunity/netbox:v4.5.9
+    # Pin via NETBOX_IMAGE (the CI matrix overrides it per NetBox minor);
+    # the default keeps `just e2e` working unparametrized against the latest
+    # 4.5 patch, which matches the bundled OpenAPI snapshot.
+    image: ${NETBOX_IMAGE:-netboxcommunity/netbox:v4.5.10}
     depends_on:
       - postgres
       - redis

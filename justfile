@@ -44,7 +44,8 @@ update:
 bench:
     NSC_BENCH=1 uv run pytest tests/benchmarks/ -v -s
 
-# Run live-NetBox e2e suite (requires Docker)
+# Run live-NetBox e2e suite (requires Docker). Override the NetBox image with
+# NETBOX_IMAGE=netboxcommunity/netbox:v4.6.3 just e2e
 e2e:
     docker compose -f tests/e2e/docker-compose.yml up -d
     tests/e2e/wait_for_netbox.sh

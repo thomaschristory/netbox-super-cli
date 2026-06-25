@@ -20,8 +20,19 @@ permissions:
 
 jobs:
   e2e:
+    name: e2e (${{ matrix.netbox-version }})
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        # Latest patch of each supported NetBox minor. A regression on one
+        # version surfaces as a per-dimension failure rather than a sweeping red.
+        netbox-version:
+          - v4.5.10
+          - v4.6.3
+    env:
+      NETBOX_IMAGE: netboxcommunity/netbox:${{ matrix.netbox-version }}
     steps:
       - uses: actions/checkout@v5
       - uses: astral-sh/setup-uv@v7
