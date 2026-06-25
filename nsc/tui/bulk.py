@@ -28,17 +28,20 @@ def bulk_diff(
     selected: list[dict[str, object]],
     bulk_set: dict[str, object],
     sensitive_paths: tuple[str, ...],
+    new_displays: dict[str, str] | None = None,
 ) -> list[RecordChange]:
     """Compute the per-record patch and diff rows for a uniform bulk ``set``.
 
     Order of ``selected`` is preserved. A field whose new value equals a
     record's current value contributes no patch entry and no row for that
     record, so heterogeneous current values yield different changed subsets.
+    ``new_displays`` maps a field to the human label of its chosen FK value so
+    the diff renders the name rather than the id.
     """
     changes: list[RecordChange] = []
     for record in selected:
         patch = compute_patch(record, bulk_set)
-        rows = diff_rows(record, patch, sensitive_paths)
+        rows = diff_rows(record, patch, sensitive_paths, new_displays)
         changes.append(RecordChange(record_id=record.get("id"), patch=patch, rows=rows))
     return changes
 

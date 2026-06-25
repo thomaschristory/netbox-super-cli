@@ -23,7 +23,7 @@ from nsc.model.command_model import CommandModel, Resource
 from nsc.output.flatten import flatten
 from nsc.tui._bindings import textual_bindings
 from nsc.tui.errors import api_error_message
-from nsc.tui.fk import resolve_fk_target
+from nsc.tui.fk import is_fk_value, resolve_fk_target
 from nsc.tui.forms import SET_NULL, WidgetSpec, compute_patch, diff_rows, field_to_widget
 from nsc.tui.relations import RelatedView, related_views
 from nsc.tui.view import detail_path
@@ -69,6 +69,7 @@ class DetailScreen(Screen[None]):
         self._specs: dict[str, WidgetSpec] = {}
         self._rows: list[_FieldRow] = []
         self.staged: dict[str, Any] = {}
+        self._fk_labels: dict[str, str] = {}
         self._editing: str | None = None
         self._relations: list[RelatedView] = related_views(model, resource_name)
         self.title = f"{resource_name} #{record.get('id', '?')}"
@@ -129,8 +130,11 @@ class DetailScreen(Screen[None]):
             staged = self.staged[row.name]
             if staged is SET_NULL:
                 return "(null)"
-            # Never echo a just-typed secret back into the on-screen table.
-            return "****" if sensitive and staged != "" else str(staged)
+            # Never echo a just-typed secret; a picked FK stages a bare id, so
+            # show its chosen label rather than the number.
+            return (
+                "****" if sensitive and staged != "" else self._fk_labels.get(row.name, str(staged))
+            )
         if row.editable:
             value = self._record.get(row.name)
             if isinstance(value, dict):
@@ -199,6 +203,7 @@ class DetailScreen(Screen[None]):
         def _stage(result: tuple[int, str] | None) -> None:
             if result is not None:
                 self.staged[name] = result[0]
+                self._fk_labels[name] = result[1]
                 self._refresh_rows()
 
         self.app.push_screen(RecordPicker(self._client, target.list_op, target.current_id), _stage)
@@ -236,9 +241,12 @@ class DetailScreen(Screen[None]):
         self._table.focus()
 
     def _is_fk(self, name: str, spec: WidgetSpec) -> bool:
-        if spec.kind != "number" or spec.is_float or spec.sensitive:
+        # Writable FK fields type as oneOf[int, brief] -> UNKNOWN -> `text`, so a
+        # `number`-only gate would miss real relations. Key off the record's
+        # nested object instead; exclude enum/bool/secret/float.
+        if spec.kind in ("select", "switch", "masked") or spec.is_float:
             return False
-        return name.endswith("_id") or isinstance(self._record.get(name), dict)
+        return name.endswith("_id") or is_fk_value(self._record.get(name))
 
     # --- save ------------------------------------------------------------
     def action_save_all(self) -> None:
@@ -254,7 +262,7 @@ class DetailScreen(Screen[None]):
             if confirmed:
                 self._apply_patch(patch)
 
-        rows = diff_rows(self._record, patch, self._sensitive)
+        rows = diff_rows(self._record, patch, self._sensitive, self._fk_labels)
         self.app.push_screen(DiffModal(rows), _on_confirm)
 
     def _apply_patch(self, patch: dict[str, Any]) -> None:

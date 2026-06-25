@@ -5,7 +5,7 @@ from typing import Any
 import pytest
 from textual.app import App, ComposeResult
 from textual.coordinate import Coordinate
-from textual.widgets import DataTable, Input, Static, Tab, Tabs
+from textual.widgets import DataTable, Input, ListView, Static, Tab, Tabs
 
 from nsc.http.errors import NetBoxAPIError
 from nsc.model.command_model import (
@@ -541,3 +541,93 @@ async def test_delete_reloads_underlying_list() -> None:
         await pilot.pause()
         assert isinstance(app.screen, ListScreen)
         assert app.client.paginate_count == before + 1
+
+
+# ---- text-kind FK detection + chosen-name display (issue #97) ---------------
+
+
+def _fk_model() -> CommandModel:
+    update_op = Operation(
+        operation_id="dcim_devices_partial_update",
+        http_method="PATCH",
+        path="/api/dcim/devices/{id}/",
+        request_body=RequestBodyShape(
+            top_level="object",
+            fields={"role": FieldShape(primitive=PrimitiveType.UNKNOWN)},
+        ),
+    )
+    devices = Resource(name="devices", update_op=update_op)
+    roles = Resource(
+        name="device-roles",
+        list_op=Operation(
+            operation_id="dcim_device_roles_list",
+            http_method="GET",
+            path="/api/dcim/device-roles/",
+        ),
+    )
+    tag = Tag(name="dcim", resources={"devices": devices, "device-roles": roles})
+    return CommandModel(info_title="t", info_version="1", schema_hash="h", tags={"dcim": tag})
+
+
+class _FkPickClient(_SpyClient):
+    def paginate(
+        self, path: str, params: dict[str, Any] | None = None, *, limit: int | None = None
+    ) -> Any:
+        return iter([{"id": 9, "display": "Leaf Switch"}])
+
+
+class _FkDetailApp(App[None]):
+    def __init__(self) -> None:
+        super().__init__()
+        self.client = _FkPickClient()
+
+    def compose(self) -> ComposeResult:
+        yield Static("")
+
+    async def on_mount(self) -> None:
+        model = _fk_model()
+        resource = model.tags["dcim"].resources["devices"]
+        record = {
+            "id": 7,
+            "role": {
+                "id": 2,
+                "url": "https://nb/api/dcim/device-roles/2/",
+                "display": "Top of Rack Switch",
+            },
+        }
+        await self.push_screen(
+            DetailScreen(model, self.client, "dcim", "devices", resource, record)
+        )
+
+
+@pytest.mark.asyncio
+async def test_text_kind_fk_opens_picker_and_shows_chosen_name() -> None:
+    app = _FkDetailApp()
+    async with app.run_test(size=(120, 60)) as pilot:
+        await pilot.pause()
+        screen = _detail(app)
+        screen._table.move_cursor(row=0)  # the "role" FK field
+        screen.action_edit_field()
+        await pilot.pause()
+        # UNKNOWN-primitive FK is detected from the nested value -> picker, not text input.
+        picker = app.screen
+        assert isinstance(picker, RecordPicker)
+        picker.query_one(ListView).index = 0  # Leaf Switch -> id 9
+        await pilot.pause()
+        await pilot.press("enter")
+        await pilot.pause()
+        assert screen.staged.get("role") == 9
+        # The table renders the chosen name, not the bare id.
+        rendered = [
+            str(screen._table.get_cell_at(Coordinate(r, 1))) for r in range(screen._table.row_count)
+        ]
+        assert any("Leaf Switch" in cell for cell in rendered)
+        # The save diff renders the name on both sides.
+        screen.action_save_all()
+        await pilot.pause()
+        modal = app.screen
+        assert isinstance(modal, DiffModal)
+        rows = modal._rows
+        role_row = next(r for r in rows if r.field == "role")
+        assert role_row.old_display == "Top of Rack Switch"
+        assert role_row.new_display == "Leaf Switch"

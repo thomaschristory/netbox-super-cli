@@ -4,7 +4,7 @@ import pytest
 from pydantic import ValidationError
 
 from nsc.model.command_model import FieldShape, PrimitiveType
-from nsc.tui.forms import WidgetSpec, field_to_widget
+from nsc.tui.forms import DiffRow, WidgetSpec, diff_rows, field_to_widget, fk_display
 
 
 def test_enum_maps_to_select_carrying_choices() -> None:
@@ -88,3 +88,45 @@ def test_widget_spec_is_frozen() -> None:
     assert isinstance(spec, WidgetSpec)
     with pytest.raises(ValidationError):
         spec.kind = "select"  # type: ignore[misc]
+
+
+def test_fk_display_prefers_display_over_id() -> None:
+    assert fk_display({"id": 12, "display": "Top of Rack Switch", "name": "tor"}) == (
+        "Top of Rack Switch"
+    )
+
+
+def test_fk_display_falls_back_to_name_then_slug_then_id() -> None:
+    assert fk_display({"id": 12, "name": "tor", "slug": "tor-sw"}) == "tor"
+    assert fk_display({"id": 12, "slug": "tor-sw"}) == "tor-sw"
+    assert fk_display({"id": 12}) == "12"
+
+
+def test_fk_display_ignores_empty_label_values() -> None:
+    # An empty/None label must not shadow a usable lower-priority one.
+    assert fk_display({"id": 12, "display": "", "name": "tor"}) == "tor"
+    assert fk_display({"id": 12, "display": None, "name": None}) == "12"
+
+
+def test_fk_display_passes_through_non_dict() -> None:
+    assert fk_display("active") == "active"
+    assert fk_display(7) == "7"
+
+
+def test_diff_rows_renders_fk_old_value_as_name() -> None:
+    original = {"role": {"id": 12, "display": "Top of Rack Switch"}}
+    rows = diff_rows(original, {"role": 5}, ())
+    assert rows == [DiffRow(field="role", old_display="Top of Rack Switch", new_display="5")]
+
+
+def test_diff_rows_new_display_override_used_for_new_value() -> None:
+    original = {"role": {"id": 12, "display": "Top of Rack Switch"}}
+    rows = diff_rows(original, {"role": 5}, (), {"role": "Leaf Switch"})
+    assert rows == [
+        DiffRow(field="role", old_display="Top of Rack Switch", new_display="Leaf Switch")
+    ]
+
+
+def test_diff_rows_override_absent_falls_back_to_str() -> None:
+    rows = diff_rows({"status": "active"}, {"status": "offline"}, (), {"role": "x"})
+    assert rows == [DiffRow(field="status", old_display="active", new_display="offline")]

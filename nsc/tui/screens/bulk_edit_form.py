@@ -21,8 +21,13 @@ from textual.widgets import Button, Footer, Header, Input, Label, ProgressBar, S
 from nsc.model.command_model import CommandModel, Operation
 from nsc.tui._bindings import textual_bindings
 from nsc.tui.bulk import RecordChange, shared_values
-from nsc.tui.forms import SET_NULL, WidgetSpec, field_to_widget
+from nsc.tui.fk import is_fk_value, resolve_fk_target
+from nsc.tui.forms import SET_NULL, WidgetSpec, field_to_widget, fk_display
 from nsc.tui.view import detail_path
+
+# Sentinel: a picker FK opted in with neither a pick nor a shared value
+# contributes nothing, so it never nulls the relation.
+_NO_SEED = object()
 
 
 class _Client(Protocol):
@@ -62,6 +67,8 @@ class BulkEditForm(Screen[None]):
         self._specs: dict[str, WidgetSpec] = {}
         self._values: dict[str, Any] = {}
         self._included: set[str] = set()
+        self._fk_kinds: dict[str, str] = {}
+        self._fk_labels: dict[str, str] = {}
         body = update_op.request_body
         field_names = list(body.fields) if body is not None else []
         # Shared current value per field, to seed the widgets (does NOT opt the
@@ -99,7 +106,47 @@ class BulkEditForm(Screen[None]):
             if spec.nullable:
                 yield Button("∅", id=f"setnull-{name}", classes="bulk-setnull")
 
+    def _is_fk(self, name: str, spec: WidgetSpec) -> bool:
+        if spec.kind in ("select", "switch", "masked") or spec.is_float:
+            return False
+        return name.endswith("_id") or any(
+            is_fk_value(record.get(name)) for record in self._selected
+        )
+
+    def _fk_nested_value(self, name: str) -> Any:
+        """A representative nested FK object across the selection, for resolution."""
+        for record in self._selected:
+            value = record.get(name)
+            if is_fk_value(value):
+                return value
+        return None
+
+    def _fk_seed_label(self, name: str) -> str:
+        shared_id = self._shared.get(name)
+        if shared_id is None:
+            return ""
+        for record in self._selected:
+            value = record.get(name)
+            if isinstance(value, dict) and value.get("id") == shared_id:
+                return fk_display(value)
+        return str(shared_id)
+
+    def _compose_fk(self, name: str) -> ComposeResult:
+        target = resolve_fk_target(name, self._fk_nested_value(name), self._model)
+        self._fk_kinds[name] = target.kind
+        shared_id = self._shared.get(name)
+        if target.kind == "raw_id":
+            text = "" if shared_id is None else str(shared_id)
+            yield Input(value=text, id=f"field-{name}")
+            if target.hint:
+                yield Label(target.hint, classes="bulk-fk-hint")
+            return
+        yield Button(f"{name}: {self._fk_seed_label(name)}", id=f"fk-{name}", classes="bulk-fk")
+
     def _compose_widget(self, name: str, spec: WidgetSpec) -> ComposeResult:
+        if self._is_fk(name, spec):
+            yield from self._compose_fk(name)
+            return
         shared = self._shared.get(name)
         if spec.kind == "select":
             options = [(choice, choice) for choice in spec.choices]
@@ -126,12 +173,15 @@ class BulkEditForm(Screen[None]):
 
     def _coerce_input(self, name: str, raw: str) -> Any:
         spec = self._specs.get(name)
-        if spec is None or spec.kind != "number":
+        numeric = (spec is not None and spec.kind == "number") or self._fk_kinds.get(
+            name
+        ) == "raw_id"
+        if not numeric:
             return raw
         if raw == "":
             return None
         try:
-            return float(raw) if spec.is_float else int(raw)
+            return float(raw) if spec is not None and spec.is_float else int(raw)
         except ValueError:
             return raw
 
@@ -140,7 +190,10 @@ class BulkEditForm(Screen[None]):
         if include is not None:
             if event.value:
                 self._included.add(include)
-                self._values.setdefault(include, self._read_widget_value(include))
+                if include not in self._values:
+                    seed = self._read_widget_value(include)
+                    if seed is not _NO_SEED:
+                        self._values[include] = seed
             else:
                 self._included.discard(include)
             return
@@ -150,6 +203,9 @@ class BulkEditForm(Screen[None]):
 
     def _read_widget_value(self, name: str) -> Any:
         spec = self._specs.get(name)
+        if self._fk_kinds.get(name) == "picker":
+            shared_id = self._shared.get(name)
+            return shared_id if shared_id is not None else _NO_SEED
         if spec is not None and spec.kind == "select":
             value = self.query_one(f"#field-{name}", Select).value
             return None if value is Select.NULL else value
@@ -173,6 +229,27 @@ class BulkEditForm(Screen[None]):
         name = self._strip(ident, "setnull-")
         if name is not None:
             self._values[name] = SET_NULL
+            # Drop any picked label so the diff can't show a name while the
+            # patch nulls the relation.
+            self._fk_labels.pop(name, None)
+            return
+        fk = self._strip(ident, "fk-")
+        if fk is not None:
+            self._open_picker(fk)
+
+    def _open_picker(self, name: str) -> None:
+        target = resolve_fk_target(name, self._fk_nested_value(name), self._model)
+        if target.list_op is None:
+            return
+        from nsc.tui.screens.record_picker import RecordPicker  # noqa: PLC0415
+
+        def _stage(result: tuple[int, str] | None) -> None:
+            if result is not None:
+                self._values[name] = result[0]
+                self._fk_labels[name] = result[1]
+                self.query_one(f"#fk-{name}", Button).label = f"{name}: {result[1]}"
+
+        self.app.push_screen(RecordPicker(self._client, target.list_op, target.current_id), _stage)
 
     def action_preview(self) -> None:
         from nsc.tui.bulk import bulk_diff  # noqa: PLC0415
@@ -180,7 +257,7 @@ class BulkEditForm(Screen[None]):
 
         body = self._op.request_body
         sensitive = body.sensitive_paths if body is not None else ()
-        changes = bulk_diff(self._selected, self.bulk_set, sensitive)
+        changes = bulk_diff(self._selected, self.bulk_set, sensitive, self._fk_labels)
 
         def _on_confirm(confirmed: bool | None) -> None:
             if confirmed:
