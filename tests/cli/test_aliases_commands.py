@@ -46,6 +46,20 @@ def test_ls_devices_invokes_list_endpoint() -> None:
 
 
 @respx.mock
+def test_ls_curated_singular_device_invokes_list_endpoint() -> None:
+    _mock_schema(respx.mock)
+    route = respx.get("https://nb.example/api/dcim/devices/").mock(
+        return_value=httpx.Response(
+            200, json={"count": 0, "next": None, "previous": None, "results": []}
+        )
+    )
+    result = CliRunner().invoke(app, ["ls", "device", "--output", "json"])
+    assert result.exit_code == 0, (result.stdout, result.stderr)
+    assert route.called
+    assert json.loads(result.stdout) == []
+
+
+@respx.mock
 def test_ls_unknown_resource_exits_14() -> None:
     _mock_schema(respx.mock)
     result = CliRunner().invoke(app, ["ls", "nonexistent", "--output", "json"])
@@ -53,6 +67,17 @@ def test_ls_unknown_resource_exits_14() -> None:
     payload = json.loads(result.stdout)
     assert payload["type"] == "unknown_alias"
     assert payload["details"]["term"] == "nonexistent"
+
+
+@respx.mock
+def test_ls_non_curated_singular_suggests_plural() -> None:
+    """`nsc ls power-panel` (not curated) → unknown, but suggests `power-panels`."""
+    _mock_schema(respx.mock)
+    result = CliRunner().invoke(app, ["ls", "power-panel", "--output", "json"])
+    assert result.exit_code == 14, (result.exit_code, result.stdout)
+    payload = json.loads(result.stdout)
+    assert payload["details"]["suggestion"] == "power-panels"
+    assert "Did you mean `power-panels`?" in payload["error"]
 
 
 @respx.mock
