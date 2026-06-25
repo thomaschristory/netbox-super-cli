@@ -218,8 +218,11 @@ indefinitely until manually refreshed), `weekly` (7-day TTL).
   change with NetBox versions.
 - DO NOT authenticate per-command. Configure a profile (`nsc init` then
   `nsc login`) once at session start; `--profile <name>` switches between them.
-- DO NOT assume singular resource names. Plural-only is the v1 stance:
-  `nsc ls devices`, not `nsc ls device`.
+- DO NOT assume every resource name has a singular alias. Resource names are
+  plural (`nsc ls devices`). Curated singular forms also work for the common
+  resources — `device, prefix, tenant, vlan, site, rack, interface, cable, tag`
+  (so `nsc ls device` == `nsc ls devices`) — but outside that list, use the
+  plural. An unknown singular suggests its plural when one exists.
 
 ## Profile management
 
