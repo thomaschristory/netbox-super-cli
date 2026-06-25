@@ -39,7 +39,7 @@ jobs:
     # prerequisites).
     steps:
       - name: Checkout (full history for changelog notes)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
@@ -51,7 +51,7 @@ jobs:
           # main. Tags pushed from a topic branch (or any unmerged commit)
           # would otherwise publish from un-reviewed code. This guard rejects
           # any tag whose commit is not reachable from origin/main.
-          # actions/checkout@v4 with fetch-depth: 0 fetches the tag's full
+          # actions/checkout@v5 with fetch-depth: 0 fetches the tag's full
           # history but does not populate origin/main as a ref locally; we
           # fetch it explicitly here.
           git fetch origin main
@@ -62,7 +62,7 @@ jobs:
           echo "Tag $GITHUB_REF_NAME ($GITHUB_SHA) is on main."
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v3
+        uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
 
