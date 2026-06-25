@@ -14,6 +14,7 @@ This is the contributor guide for AI agents (and humans!) modifying this repo. T
 - `nsc/cache/` — disk cache for generated command-models.
 - `nsc/auth/` — login verification helpers (pre-flight probes, token rotate).
 - `nsc/aliases/` — curated alias resolver (`ls`, `get`, `rm`, `search`). Framework-free.
+- `nsc/completion/` — dynamic shell-completion: framework-free providers + cheap on-disk cache probe + Typer `shell_complete` callbacks.
 - `nsc/skill/` — bundle-path helper for the portable `SKILL.md` shipped in the wheel.
 - `nsc/schemas/bundled/` — versioned NetBox OpenAPI snapshots, fallback when offline.
 

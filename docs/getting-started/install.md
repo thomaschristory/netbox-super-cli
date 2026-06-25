@@ -50,8 +50,16 @@ nsc --install-completion=pwsh
 
 Restart your shell, then verify with `nsc <TAB><TAB>`.
 
-> Dynamic completion (resource names, profile names, filter keys) is on the
-> post-1.0 roadmap.
+### Dynamic completion
+
+Once completion is installed, TAB expands real values from the cached schema —
+no network call at TAB time:
+
+```sh
+nsc ls dev<TAB>                  # → devices device-roles device-types
+nsc --profile <TAB>             # → profile names from ~/.nsc/config.yaml
+nsc dcim devices list --status <TAB>   # → schema enum values for that filter
+```
 
 ## Requirements
 

@@ -47,6 +47,24 @@ nsc dcim devices create -f devices.ndjson --on-error continue --apply   # don't 
 `--on-error continue` collects per-record failures, reports them in a summary
 envelope, and exits with the worst error type's code.
 
+### Parallel bulk writes (`--workers`)
+
+When `nsc` loops record-by-record (no bulk endpoint, or `--no-bulk`),
+`--workers N` runs up to N concurrent in-flight requests:
+
+```sh
+nsc dcim devices create -f devices.ndjson --workers 8 --apply
+```
+
+The default is `1` (sequential — unchanged behaviour); the maximum is **32**
+(a higher value is rejected). The per-record `--on-error continue`/`stop`
+semantics are preserved, and the audit log still gets one well-formed JSON line
+per record.
+
+Note that `--on-error stop` bounds only *new* submissions: in-flight requests
+(up to N) still complete. So when the record count is ≤ `--workers`, every
+record is sent regardless of `stop`.
+
 ## Input formats
 
 | Extension | Format |

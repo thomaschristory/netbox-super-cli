@@ -22,6 +22,17 @@
 - Pagination helper that follows `next` URLs (used by `--all`).
 - Audit log appender at `~/.nsc/logs/audit.jsonl` — written for writes
   always, and for any request when `--debug` is set.
+
+## Concurrency (`--workers N`)
+
+Bulk write commands accept `--workers N` (default 1, max 32) to keep up to N
+requests in flight. Concurrency is **thread-based**: a `ThreadPoolExecutor`
+fans the per-record loop out over the single sync `httpx.Client` — there is no
+async path. Per-record `--on-error` semantics are preserved regardless of
+worker count. Audit appends are serialized by a module-level lock
+(`_APPEND_LOCK` in `nsc/http/audit.py`) wrapped around the whole
+open/write/close, so concurrent workers can never interleave a partial line —
+each record is one well-formed JSON line.
 - A "last request" snapshot at `~/.nsc/logs/last-request.json`
   (overwritten every call, regardless of `--debug`) — handy for triage.
 
@@ -55,9 +66,26 @@ Each line of `audit.jsonl` is a JSON object with:
 - `duration_ms`, `attempt_n`, `final_attempt`, `error_kind`
 - `dry_run`, `preflight_blocked`, `record_indices`, `applied`, `explain`
 
+## Redaction modes
+
+Redaction is applied when each entry is serialized (`nsc/http/audit.py`), so a
+failed retry never unredacts. The `defaults.audit_redaction` config setting
+selects the mode:
+
+- `safe` (default) — the full audit shape above, with sensitive headers and
+  `sensitive_paths` body fields masked to `"<redacted>"` and bodies over 256 KB
+  truncated.
+- `full` — compliance escalation that drops every body, header, and query
+  string entirely. Each line keeps exactly five keys —
+  `{method, url, status_code, timestamp, profile}` — and `url` is sanitized to
+  scheme + host[:port] + path so neither query params nor `user:pass@` userinfo
+  can leak through the one remaining string field.
+
 The audit file is append-only and rotates to `audit.jsonl.1` at 10 MB; it is
 created owner-only (`0600`) inside a `0700` logs directory, and failed writes do
-NOT unredact. See
+NOT unredact. The state root (`~/.nsc`) and its subdirectories are clamped to
+`0700` via a shared `ensure_private_dir()` (`nsc/config/settings.py`) used by
+both the config writer and the audit-dir code. See
 [Writes and safety](../guides/writes-and-safety.md) for the full redaction
 contract.
 
