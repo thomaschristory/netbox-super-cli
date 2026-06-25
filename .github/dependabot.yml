@@ -1,0 +1,16 @@
+version: 2
+
+updates:
+  # Keep GitHub Actions pinned to commit SHAs maintainable: when an upstream
+  # action ships a new release, Dependabot opens a PR bumping the SHA and
+  # updates the trailing `# vX.Y.Z` comment to the new semver. `directory: "/"`
+  # monitors every workflow under .github/workflows/. Actions left on a
+  # floating tag by design (e.g. pypa/gh-action-pypi-publish@release/v1) are
+  # not bumped because they have no SHA to advance.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "ci"
