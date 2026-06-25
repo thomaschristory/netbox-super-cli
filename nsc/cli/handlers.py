@@ -532,6 +532,8 @@ def _emit_dry_run_audit(
             record_indices=list(r.record_indices),
             applied=False,
             explain=ctx.explain,
+            profile=ctx.resolved_profile.name,
+            redaction=ctx.config.defaults.audit_redaction,
         )
         append_audit_jsonl(entry, path=log_dir / "audit.jsonl")
     _ = preflight  # currently consumed only via preflight_blocked
