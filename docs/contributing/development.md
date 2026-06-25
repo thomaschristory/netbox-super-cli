@@ -41,6 +41,23 @@ just docs-build    # build the site, fail on broken links / missing nav
 underlying issue and create a new commit. If `ruff format` modifies a file
 during the hook, re-`git add` and re-commit.
 
+## CI
+
+GitHub Actions mirrors the local `just` targets, plus an end-to-end suite:
+
+- **E2E is multi-version.** The e2e workflow runs a matrix over NetBox **4.5
+  and 4.6** (latest patch of each minor) with `fail-fast: false`, so a
+  regression on one version surfaces as a per-dimension failure rather than a
+  sweeping red.
+- **Runners are on Node.js 24** — the JS-based actions are pinned to their
+  Node-24 majors (`actions/checkout@v5`, `astral-sh/setup-uv@v7`,
+  `actions/deploy-pages@v5`).
+- **Least-privilege permissions.** Every workflow declares an explicit
+  top-level `permissions:` block; the release workflow additionally SHA-pins
+  its actions (the PyPA publish action excepted).
+- **Dependabot** watches the `github-actions` ecosystem on a weekly schedule
+  (`.github/dependabot.yml`) so action pins stay current.
+
 ## Where the design lives
 
 - `docs/superpowers/specs/` — design specs (gitignored; local-only).
