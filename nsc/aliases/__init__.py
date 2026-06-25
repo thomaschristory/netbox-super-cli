@@ -8,17 +8,21 @@ rule as `nsc.model`. Consumers (`nsc/cli/aliases_commands.py`) call
 from __future__ import annotations
 
 from nsc.aliases.resolver import (
+    CURATED_SINGULARS,
     AliasVerb,
     AmbiguousAlias,
     ResolvedAlias,
     UnknownAlias,
     resolve,
+    suggest_plural,
 )
 
 __all__ = [
+    "CURATED_SINGULARS",
     "AliasVerb",
     "AmbiguousAlias",
     "ResolvedAlias",
     "UnknownAlias",
     "resolve",
+    "suggest_plural",
 ]

@@ -74,6 +74,20 @@ def test_unknown_alias_envelope_for_missing_resource() -> None:
     assert "nsc commands" in payload["error"]
 
 
+def test_unknown_alias_envelope_with_suggestion() -> None:
+    env = unknown_alias_envelope(verb="ls", term="widget", suggestion="widgets")
+    payload = json.loads(render_to_json(env))
+    assert payload["details"]["suggestion"] == "widgets"
+    assert "Did you mean `widgets`?" in payload["error"]
+
+
+def test_unknown_alias_envelope_without_suggestion_omits_field() -> None:
+    env = unknown_alias_envelope(verb="ls", term="widget")
+    payload = json.loads(render_to_json(env))
+    assert "suggestion" not in payload["details"]
+    assert "Did you mean" not in payload["error"]
+
+
 def test_unknown_alias_envelope_for_missing_search_endpoint() -> None:
     env = unknown_alias_envelope(
         verb="search",
