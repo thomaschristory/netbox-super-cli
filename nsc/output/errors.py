@@ -288,8 +288,13 @@ def summary_envelope(
     Returns:
         ErrorEnvelope whose `type` equals the worst failure type by
         precedence, with `details.partial_progress = {success, failed, remaining}`.
-        On "stop" sets `record_index` to the first failure's index. On "continue"
+        On "stop" sets `record_index` to the lowest failing index. On "continue"
         adds `details.failures: [{record_index, type, status_code, error}, ...]`.
+
+    Determinism: under `--workers > 1` the caller's `failures` list arrives in
+    completion order, which varies run-to-run. The surfaced "first failure"
+    (stop mode) is therefore chosen by lowest `record_index`, not list position,
+    so two identical runs report the same `record_index`/`error`/`status_code`.
     """
     if not failures:
         raise ValueError("summary_envelope requires at least one failure")
@@ -309,7 +314,10 @@ def summary_envelope(
     }
 
     if on_error == "stop":
-        first = failures[0]
+        first = min(
+            failures,
+            key=lambda f: f.record_index if f.record_index is not None else -1,
+        )
         return ErrorEnvelope(
             error=first.error,
             type=chosen_type,

@@ -26,6 +26,7 @@ from nsc.cli.writes.confirmation import (
     refuse_all_on_writes,
     refuse_bulk_and_no_bulk_together,
     refuse_delete_without_id,
+    refuse_invalid_workers,
     refuse_unknown_on_error,
     refuse_unsupported_bulk,
 )
@@ -254,6 +255,7 @@ def _handle_write(
             operation_id=operation.operation_id,
         )
         refuse_unknown_on_error(ctx.on_error)
+        refuse_invalid_workers(ctx.workers)
 
         is_delete = operation.http_method is HttpMethod.DELETE
         if is_delete:
@@ -454,6 +456,7 @@ def _execute_loop(
         send_one=_send_one_loop,
         audit_attempt=_audit_one,
         to_envelope=_to_envelope,
+        workers=ctx.workers,
     )
 
     failures: list[ErrorEnvelope] = []

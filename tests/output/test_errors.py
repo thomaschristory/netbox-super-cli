@@ -206,6 +206,36 @@ def test_summary_envelope_stop_shape() -> None:
     assert env.details["on_error"] == "stop"
 
 
+def test_summary_envelope_stop_picks_lowest_index_regardless_of_order() -> None:
+    # Under --workers > 1 the failures list arrives in completion order, which
+    # is non-deterministic. The surfaced "first failure" must be the lowest
+    # record_index, independent of list position.
+    low = ErrorEnvelope(
+        error="low failed",
+        type=ErrorType.VALIDATION,
+        status_code=400,
+        record_index=2,
+        operation_id="x_create",
+    )
+    high = ErrorEnvelope(
+        error="high failed",
+        type=ErrorType.VALIDATION,
+        status_code=400,
+        record_index=7,
+        operation_id="x_create",
+    )
+    # high first in the list (as if it completed first under concurrency).
+    env = summary_envelope(
+        attempted=8,
+        failures=[high, low],
+        on_error="stop",
+        operation_id="x_create",
+        total_records=10,
+    )
+    assert env.record_index == 2
+    assert env.error == "low failed"
+
+
 def test_summary_envelope_raises_on_empty_failures() -> None:
     with pytest.raises(ValueError, match=r"summary_envelope requires at least one failure"):
         summary_envelope(
