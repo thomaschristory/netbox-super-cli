@@ -273,8 +273,8 @@ def _to_typed_option(p: Parameter) -> inspect.Parameter:
     )
 
 
-def _global_flag_params() -> list[inspect.Parameter]:
-    return [
+def _build_global_flag_params() -> tuple[inspect.Parameter, ...]:
+    return (
         inspect.Parameter(
             name="output",
             kind=inspect.Parameter.KEYWORD_ONLY,
@@ -311,11 +311,11 @@ def _global_flag_params() -> list[inspect.Parameter]:
             annotation=list[str] | None,
             default=typer.Option(None, "--filter"),
         ),
-    ]
+    )
 
 
-def _write_flag_params() -> list[inspect.Parameter]:
-    return [
+def _build_write_flag_params() -> tuple[inspect.Parameter, ...]:
+    return (
         inspect.Parameter(
             name="output",
             kind=inspect.Parameter.KEYWORD_ONLY,
@@ -451,7 +451,24 @@ def _write_flag_params() -> list[inspect.Parameter]:
                 ),
             ),
         ),
-    ]
+    )
+
+
+# These flag specs are identical for every command (they do not depend on the
+# operation), so build them once at import and share the immutable tuples across
+# all registered command signatures. `inspect.Parameter` is immutable and Typer
+# only reads the `OptionInfo` specs, so sharing is safe; tuples make accidental
+# mutation fail loudly.
+_GLOBAL_FLAG_PARAMS: tuple[inspect.Parameter, ...] = _build_global_flag_params()
+_WRITE_FLAG_PARAMS: tuple[inspect.Parameter, ...] = _build_write_flag_params()
+
+
+def _global_flag_params() -> tuple[inspect.Parameter, ...]:
+    return _GLOBAL_FLAG_PARAMS
+
+
+def _write_flag_params() -> tuple[inspect.Parameter, ...]:
+    return _WRITE_FLAG_PARAMS
 
 
 def _python_type(p: Parameter) -> Any:
