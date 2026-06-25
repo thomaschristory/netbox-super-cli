@@ -64,6 +64,13 @@ def test_append_tightens_preexisting_world_readable_dir(tmp_path: Path) -> None:
     assert stat.S_IMODE(log_dir.stat().st_mode) == 0o700
 
 
+def test_append_clamps_created_state_root_to_0700(tmp_path: Path) -> None:
+    """The `~/.nsc` root created as a side effect of writing `logs/` is owner-only."""
+    root = tmp_path / ".nsc"
+    append_audit_jsonl(_entry(), path=root / "logs" / "audit.jsonl")
+    assert stat.S_IMODE(root.stat().st_mode) == 0o700
+
+
 def test_file_created_0600_by_open_mode_not_just_chmod(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
