@@ -74,16 +74,26 @@ def refuse_unsupported_bulk(err: UnsupportedBulkError, *, operation_id: str) -> 
     )
 
 
+MAX_WORKERS = 32
+
+
 def refuse_invalid_workers(value: int) -> None:
-    if value >= 1:
-        return
-    raise ClientError(
-        client_envelope(
-            f"--workers must be >= 1, got {value}",
-            flag="--workers",
-            value=str(value),
+    if value < 1:
+        raise ClientError(
+            client_envelope(
+                f"--workers must be >= 1, got {value}",
+                flag="--workers",
+                value=str(value),
+            )
         )
-    )
+    if value > MAX_WORKERS:
+        raise ClientError(
+            client_envelope(
+                f"--workers must be <= {MAX_WORKERS}, got {value}",
+                flag="--workers",
+                value=str(value),
+            )
+        )
 
 
 def refuse_unknown_on_error(value: str) -> None:
@@ -99,6 +109,7 @@ def refuse_unknown_on_error(value: str) -> None:
 
 
 __all__ = [
+    "MAX_WORKERS",
     "refuse_all_on_writes",
     "refuse_bulk_and_no_bulk_together",
     "refuse_delete_without_id",

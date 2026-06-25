@@ -198,10 +198,12 @@ def run_loop(
     a thread pool (the NetBox client is sync httpx, so threads — not asyncio —
     are the right mechanism). Each record's send/retry/audit is independent.
 
-    On `on_error="stop"` the loop stops submitting new work after the first
+    On `on_error="stop"` the loop stops submitting *new* work after the first
     failure; in-flight requests are allowed to complete (cancelling them would
     leave partially-applied writes whose outcome the audit log could not
-    record). On `"continue"` every request is attempted.
+    record). Because up to `workers` requests dispatch in the first wave,
+    `stop` cannot prevent any send when `len(requests) <= workers` — all of
+    them are already in flight. On `"continue"` every request is attempted.
 
     Audit fires once per attempted request (success and failure). Under
     concurrency the audit *callback* may run from worker threads; the injected

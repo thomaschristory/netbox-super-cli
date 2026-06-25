@@ -443,8 +443,11 @@ def _write_flag_params() -> list[inspect.Parameter]:
                 1,
                 "--workers",
                 help=(
-                    "Concurrent in-flight requests for the per-record loop (must be >= 1). "
-                    "1 (default) runs sequentially. Only affects looped (non-bulk) writes."
+                    "Concurrent in-flight requests for the per-record loop (1-32). "
+                    "1 (default) runs sequentially. Only affects looped (non-bulk) "
+                    "writes. With --on-error stop, concurrency only bounds *new* "
+                    "submissions: in-flight requests (up to --workers) still "
+                    "complete, so if record count <= workers all records are sent."
                 ),
             ),
         ),

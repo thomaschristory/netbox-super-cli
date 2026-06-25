@@ -708,3 +708,86 @@ def test_workers_continue_attempts_every_record_under_concurrency(tmp_path: Path
     }
     indices = sorted(f["record_index"] for f in parsed["details"]["failures"])
     assert indices == [3, 7]
+
+
+@respx.mock
+def test_workers_above_cap_returns_client_error(tmp_path: Path) -> None:
+    _mock_schema(respx.mock)
+    payload = _payload(tmp_path, _bulk_records(3))
+    result = CliRunner().invoke(
+        app,
+        [
+            "dcim",
+            "devices",
+            "create",
+            "-f",
+            str(payload),
+            "--apply",
+            "--no-bulk",
+            "--workers",
+            "100000",
+            "--output",
+            "json",
+        ],
+    )
+    assert result.exit_code == EXIT_CODES[ErrorType.CLIENT]
+    parsed = json.loads(result.stdout)
+    assert parsed["type"] == "client"
+    assert parsed["details"]["flag"] == "--workers"
+    assert "<= 32" in parsed["error"]
+
+
+def _run_stop_under_concurrency(tmp_path: Path) -> dict[str, Any]:
+    """Run --workers 4 --on-error stop over 12 records where records 5 and 9
+    fail (400). Returns the parsed top-level error envelope."""
+    bad = {5, 9}
+
+    def responder(request: httpx.Request) -> httpx.Response:
+        idx = int(json.loads(request.content)["name"].split("-")[1])
+        if idx in bad:
+            return httpx.Response(400, json={"name": ["bad"]})
+        return httpx.Response(201, json={"id": idx})
+
+    respx.post("https://nb.example/api/dcim/devices/").mock(side_effect=responder)
+    payload = _payload(tmp_path, _bulk_records(12))
+    result = CliRunner().invoke(
+        app,
+        [
+            "dcim",
+            "devices",
+            "create",
+            "-f",
+            str(payload),
+            "--apply",
+            "--no-bulk",
+            "--on-error",
+            "stop",
+            "--workers",
+            "4",
+            "--output",
+            "json",
+        ],
+    )
+    assert result.exit_code == EXIT_CODES[ErrorType.VALIDATION], (
+        result.stdout,
+        result.stderr,
+    )
+    return json.loads(result.stdout)  # type: ignore[no-any-return]
+
+
+@respx.mock
+def test_workers_stop_surfaces_lowest_index_failure_deterministically(
+    tmp_path: Path,
+) -> None:
+    # The surfaced top-level failure under concurrency must be the LOWEST
+    # failing record_index, stable across repeated runs (not completion order).
+    seen: set[int] = set()
+    for _ in range(8):
+        respx.reset()
+        _mock_schema(respx.mock)
+        parsed = _run_stop_under_concurrency(tmp_path)
+        assert parsed["type"] == "validation"
+        assert parsed["details"]["on_error"] == "stop"
+        seen.add(parsed["record_index"])
+    # record 5 is the lowest failing index; it must win every single run.
+    assert seen == {5}
