@@ -74,6 +74,18 @@ def refuse_unsupported_bulk(err: UnsupportedBulkError, *, operation_id: str) -> 
     )
 
 
+def refuse_invalid_workers(value: int) -> None:
+    if value >= 1:
+        return
+    raise ClientError(
+        client_envelope(
+            f"--workers must be >= 1, got {value}",
+            flag="--workers",
+            value=str(value),
+        )
+    )
+
+
 def refuse_unknown_on_error(value: str) -> None:
     if value in _SUPPORTED_ON_ERROR:
         return
@@ -90,6 +102,7 @@ __all__ = [
     "refuse_all_on_writes",
     "refuse_bulk_and_no_bulk_together",
     "refuse_delete_without_id",
+    "refuse_invalid_workers",
     "refuse_unknown_format_for_writes",
     "refuse_unknown_on_error",
     "refuse_unsupported_bulk",

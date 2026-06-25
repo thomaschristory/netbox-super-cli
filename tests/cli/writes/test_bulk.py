@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import threading
+import time
 from collections.abc import Callable
 from typing import Literal
 
@@ -283,6 +285,139 @@ def test_run_loop_continue_attempts_every_record() -> None:
     # All five attempts audited (3 successes, 2 failures).
     assert [a[0] for a in audited] == [0, 1, 2, 3, 4]
     assert [a[1] for a in audited] == [False, True, False, True, True]
+
+
+def test_run_loop_rejects_workers_below_one() -> None:
+    with pytest.raises(ValueError, match=r"workers must be >= 1"):
+        run_loop(
+            [_req(0)],
+            operation=None,  # type: ignore[arg-type]
+            on_error="continue",
+            send_one=_ok,
+            audit_attempt=lambda *_a: None,
+            to_envelope=_to_envelope,
+            workers=0,
+        )
+
+
+def test_run_loop_workers_one_is_sequential_in_order() -> None:
+    audited: list[tuple[int, bool]] = []
+
+    def audit(req: ResolvedRequest, _resp: dict | None, err: Exception | None) -> None:
+        audited.append((req.record_indices[0], err is None))
+
+    result = run_loop(
+        [_req(i) for i in range(4)],
+        operation=None,  # type: ignore[arg-type]
+        on_error="continue",
+        send_one=_ok,
+        audit_attempt=audit,
+        to_envelope=_to_envelope,
+        workers=1,
+    )
+    assert result.attempted == 4
+    assert result.successes == 4
+    # workers=1 preserves input order exactly (byte-for-byte sequential).
+    assert [a[0] for a in audited] == [0, 1, 2, 3]
+    assert [a.request.record_indices[0] for a in result.attempts] == [0, 1, 2, 3]
+
+
+def test_run_loop_concurrent_continue_attempts_every_record() -> None:
+    audited: list[tuple[int, bool]] = []
+    lock = threading.Lock()
+
+    def audit(req: ResolvedRequest, _resp: dict | None, err: Exception | None) -> None:
+        with lock:
+            audited.append((req.record_indices[0], err is None))
+
+    def mixed(_op: object, request: ResolvedRequest) -> dict[str, object]:
+        idx = request.record_indices[0]
+        if idx in (3, 7):
+            raise _SimulatedFailure(
+                ErrorEnvelope(
+                    error="bad",
+                    type=ErrorType.VALIDATION,
+                    status_code=400,
+                    record_index=idx,
+                    operation_id="x_create",
+                )
+            )
+        return {"id": idx}
+
+    result = run_loop(
+        [_req(i) for i in range(10)],
+        operation=None,  # type: ignore[arg-type]
+        on_error="continue",
+        send_one=mixed,
+        audit_attempt=audit,
+        to_envelope=_to_envelope,
+        workers=4,
+    )
+    assert result.attempted == 10
+    assert result.successes == 8
+    # Order is not guaranteed under concurrency; compare as sets.
+    assert {f.record_index for f in result.failures} == {3, 7}
+    assert {a[0] for a in audited} == set(range(10))
+
+
+def test_run_loop_concurrent_is_faster_than_sequential() -> None:
+    def slow(_op: object, _request: ResolvedRequest) -> dict[str, object]:
+        time.sleep(0.05)
+        return {"id": 1}
+
+    requests = [_req(i) for i in range(8)]
+
+    start = time.monotonic()
+    run_loop(
+        requests,
+        operation=None,  # type: ignore[arg-type]
+        on_error="continue",
+        send_one=slow,
+        audit_attempt=lambda *_a: None,
+        to_envelope=_to_envelope,
+        workers=8,
+    )
+    concurrent_elapsed = time.monotonic() - start
+
+    # 8 records * 50ms sequential = 400ms; with 8 workers it should be ~50ms.
+    assert concurrent_elapsed < 0.20
+
+
+def test_run_loop_concurrent_stop_halts_submission_after_failure() -> None:
+    sent: list[int] = []
+    lock = threading.Lock()
+
+    def send(_op: object, request: ResolvedRequest) -> dict[str, object]:
+        idx = request.record_indices[0]
+        with lock:
+            sent.append(idx)
+        if idx == 0:
+            raise _SimulatedFailure(
+                ErrorEnvelope(
+                    error="bad",
+                    type=ErrorType.VALIDATION,
+                    status_code=400,
+                    record_index=0,
+                    operation_id="x_create",
+                )
+            )
+        time.sleep(0.02)
+        return {"id": idx}
+
+    result = run_loop(
+        [_req(i) for i in range(100)],
+        operation=None,  # type: ignore[arg-type]
+        on_error="stop",
+        send_one=send,
+        audit_attempt=lambda *_a: None,
+        to_envelope=_to_envelope,
+        workers=2,
+    )
+    # On stop, the first failure halts new submission; in-flight tasks finish.
+    # We must not have dispatched all 100 records.
+    assert len(sent) < 100
+    assert any(f.record_index == 0 for f in result.failures)
+    assert result.attempted == len(result.attempts)
 
 
 def test_loop_attempt_records_carry_response_or_envelope() -> None:

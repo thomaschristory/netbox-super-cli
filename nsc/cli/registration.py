@@ -205,6 +205,7 @@ def _build_write_closure(
         bulk: bool | None = kwargs.pop("bulk", None)
         no_bulk: bool | None = kwargs.pop("no_bulk", None)
         on_error: str = kwargs.pop("on_error", "stop")
+        workers: int = kwargs.pop("workers", 1)
         ctx = get_ctx()
         update: dict[str, Any] = {
             "compact": compact,
@@ -218,6 +219,7 @@ def _build_write_closure(
             "bulk": bulk,
             "no_bulk": no_bulk,
             "on_error": on_error,
+            "workers": workers,
         }
         if output:
             update["output_format"] = OutputFormat(output)
@@ -430,6 +432,19 @@ def _write_flag_params() -> list[inspect.Parameter]:
                 help=(
                     "stop|continue. stop: abort on first failure (default). "
                     "continue: attempt every record; final exit code = worst error type."
+                ),
+            ),
+        ),
+        inspect.Parameter(
+            name="workers",
+            kind=inspect.Parameter.KEYWORD_ONLY,
+            annotation=int,
+            default=typer.Option(
+                1,
+                "--workers",
+                help=(
+                    "Concurrent in-flight requests for the per-record loop (must be >= 1). "
+                    "1 (default) runs sequentially. Only affects looped (non-bulk) writes."
                 ),
             ),
         ),

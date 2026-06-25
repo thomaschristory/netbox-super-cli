@@ -217,6 +217,7 @@ class RuntimeContext(BaseModel):
     bulk: bool | None = None
     no_bulk: bool | None = None
     on_error: Literal["stop", "continue"] = "stop"
+    workers: int = 1
 
     def resolve_columns(self, tag: str, resource: str, operation: Operation) -> list[str] | None:
         if self.columns_override is not None:
