@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Annotated, Any
+import os
+from typing import Annotated, Any, NoReturn
 
 import typer
 from typer.core import TyperGroup
@@ -30,6 +31,12 @@ from nsc.cli.runtime import (
     emit_envelope,
     map_error,
 )
+from nsc.completion.cache_probe import (
+    load_cached_model_for_profile,
+    resolve_completion_profile,
+)
+from nsc.completion.callbacks import shell_complete_profile
+from nsc.completion.providers import cache_dir_profile_names
 from nsc.config import default_paths
 from nsc.config.loader import ConfigParseError, load_config
 from nsc.config.models import Config, OutputFormat
@@ -115,6 +122,45 @@ def _first_non_option(args: list[str]) -> str | None:
     return None
 
 
+def _is_completion_mode() -> bool:
+    """True only when Click is driving shell completion for *this* program.
+
+    Click sets `_{PROG_NAME}_COMPLETE` (prog name uppercased, non-alphanumerics
+    -> `_`). Our two console scripts are `nsc` and `netbox-super-cli`, so the
+    only vars Click can set are `_NSC_COMPLETE` and `_NETBOX_SUPER_CLI_COMPLETE`.
+    Match those EXACTLY: a broad `endswith("_COMPLETE")` scan misfires on any
+    unrelated env var ending in `_COMPLETE`, wrongly taking the cache-only
+    fast-path on normal invocations and skipping schema bootstrap.
+    """
+    return bool(os.environ.get("_NSC_COMPLETE") or os.environ.get("_NETBOX_SUPER_CLI_COMPLETE"))
+
+
+def _completion_command_model(args: list[str]) -> Any:
+    """Cheap cache-only `CommandModel` for completion. Reads the on-disk cache
+    for the resolved profile; falls back to the sole cache dir. Returns `None`
+    (and the dynamic tree is simply absent from completion) on any problem —
+    completion must never raise into the user's shell."""
+    try:
+        config = load_config(default_paths().config_file)
+    except ConfigParseError:
+        return None
+    paths = default_paths()
+    profile = resolve_completion_profile(config, args=args, env=dict(os.environ))
+    if profile is None:
+        dirs = cache_dir_profile_names(paths)
+        if len(dirs) == 1:
+            profile = dirs[0]
+    if profile is None:
+        return None
+    return load_cached_model_for_profile(paths, profile)
+
+
+def _completion_ctx_unavailable() -> NoReturn:
+    """`get_ctx` stub for completion-registered commands. Never called during
+    completion (Click only inspects params), so reaching it is a bug."""
+    raise RuntimeError("runtime context is unavailable during shell completion")
+
+
 class _BootstrappingGroup(TyperGroup):
     """TyperGroup subclass that registers dynamic commands before dispatch.
 
@@ -149,6 +195,25 @@ class _BootstrappingGroup(TyperGroup):
 
         subcommand = _first_non_option(args)
 
+        # During shell completion (`_NSC_COMPLETE` set by Click), never fetch a
+        # schema: build the dynamic tree from the on-disk cache only, so enum
+        # options (`--status`) can complete without network or a full bootstrap.
+        # The `get_ctx` factory is never invoked in completion mode, so a
+        # raising stub is safe.
+        if _is_completion_mode() and subcommand not in _META_COMMANDS:
+            # Click does NOT wrap `make_context` during completion, so any raise
+            # here crashes the completion subprocess. Swallow registration
+            # failures and fall through to the normal `make_context` so
+            # completion degrades gracefully instead of crashing the shell.
+            try:
+                cached = _completion_command_model(args)
+                if cached is not None:
+                    register_dynamic_commands(app, cached, _completion_ctx_unavailable)
+                    self._sync_dynamic_groups()
+            except Exception:
+                pass
+            return super().make_context(info_name, args, parent, **extra)
+
         if subcommand not in _META_COMMANDS:
             overrides = _extract_global_overrides(args)
             debug = "--debug" in args
@@ -169,21 +234,24 @@ class _BootstrappingGroup(TyperGroup):
             _invocation["runtime"] = runtime
             # `app` is defined after this class; by call time it is available.
             register_dynamic_commands(app, runtime.command_model, lambda: runtime)
-            # Sync newly added Typer sub-apps into this Click group's commands
-            # dict. Typer builds its Click group once at invocation time from
-            # `app.registered_groups`; commands added inside `make_context`
-            # would otherwise be invisible to `resolve_command`.
-            for group_info in app.registered_groups:
-                sub = get_group_from_info(
-                    group_info,
-                    pretty_exceptions_short=app.pretty_exceptions_short,
-                    rich_markup_mode=app.rich_markup_mode,
-                    suggest_commands=app.suggest_commands,
-                )
-                if sub.name and sub.name not in self.commands:
-                    self.commands[sub.name] = sub
+            self._sync_dynamic_groups()
 
         return super().make_context(info_name, args, parent, **extra)
+
+    def _sync_dynamic_groups(self) -> None:
+        # Sync newly added Typer sub-apps into this Click group's commands
+        # dict. Typer builds its Click group once at invocation time from
+        # `app.registered_groups`; commands added inside `make_context`
+        # would otherwise be invisible to `resolve_command`.
+        for group_info in app.registered_groups:
+            sub = get_group_from_info(
+                group_info,
+                pretty_exceptions_short=app.pretty_exceptions_short,
+                rich_markup_mode=app.rich_markup_mode,
+                suggest_commands=app.suggest_commands,
+            )
+            if sub.name and sub.name not in self.commands:
+                self.commands[sub.name] = sub
 
     def resolve_command(self, ctx: Any, args: list[str]) -> tuple[str | None, Any, list[str]]:
         # Surface a bootstrap error when the requested command was not registered
@@ -226,7 +294,10 @@ def _root(
             help="Show the nsc version and exit.",
         ),
     ] = False,
-    profile: Annotated[str | None, typer.Option("--profile")] = None,
+    profile: Annotated[
+        str | None,
+        typer.Option("--profile", shell_complete=shell_complete_profile),
+    ] = None,
     url: Annotated[str | None, typer.Option("--url")] = None,
     token: Annotated[str | None, typer.Option("--token")] = None,
     insecure: Annotated[bool | None, typer.Option("--insecure/--no-insecure")] = None,
