@@ -37,12 +37,21 @@ class ColorMode(StrEnum):
     OFF = "off"
 
 
+class AuditRedaction(StrEnum):
+    # SAFE redacts only known secrets (passwords/tokens) in bodies; FULL omits
+    # every body, leaving routing metadata only — stricter compliance, harder
+    # debugging. SAFE is the default for backward compatibility.
+    SAFE = "safe"
+    FULL = "full"
+
+
 class Defaults(_Frozen):
     output: OutputFormat = OutputFormat.TABLE
     page_size: int = 50
     timeout: float = 30.0
     schema_refresh: SchemaRefresh = SchemaRefresh.DAILY
     color_mode: ColorMode = ColorMode.AUTO
+    audit_redaction: AuditRedaction = AuditRedaction.SAFE
 
 
 class Profile(_Frozen):

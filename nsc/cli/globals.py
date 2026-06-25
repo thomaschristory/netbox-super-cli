@@ -42,7 +42,12 @@ def build_runtime_context(state: GlobalState) -> RuntimeContext:
         is_tty=sys.stdout.isatty(),
         default=state.config.defaults.output,
     )
-    client = NetBoxClient(profile, debug=state.debug)  # type: ignore[arg-type]
+    client = NetBoxClient(
+        profile,  # type: ignore[arg-type]
+        debug=state.debug,
+        redaction=state.config.defaults.audit_redaction,
+        profile_name=profile.name,
+    )
     return RuntimeContext(
         resolved_profile=profile,
         config=state.config,
