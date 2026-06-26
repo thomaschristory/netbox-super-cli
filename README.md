@@ -65,7 +65,9 @@ nsc tui devices    # jump straight into the devices list
 Highlights: a collapsible resource picker, a web-UI-style filter builder (`/`),
 inline record editing with a confirm-diff save, schema-derived relationship
 drill-down, bulk edit with a per-record preview, a persisted column chooser
-(`f`), and global search (`Ctrl`+`F`). Full walkthrough in the
+(`f`) that lists each custom field individually, and global search (`Ctrl`+`F`).
+The same dotted paths work on the CLI: `nsc ls devices --columns id,name,custom_fields.rack_role`.
+Full walkthrough in the
 [Interactive TUI guide](https://thomaschristory.github.io/netbox-super-cli/guides/interactive-tui/).
 
 ## Reading
