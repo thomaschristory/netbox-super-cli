@@ -99,6 +99,21 @@ This is a local, per-config convenience and is unrelated to NetBox's
 server-side saved filters (`extras saved-filters`), which store web-UI query
 strings.
 
+### Object colors
+
+NetBox assigns colors to roles, tags, and similar fields. In table output `nsc`
+renders those values in their NetBox-defined colors:
+
+```sh
+uv run nsc dcim devices list                      # colored when stdout is a TTY
+uv run nsc dcim devices list --no-object-colors   # plain text
+```
+
+Toggle it independently of `--color` with the `object_colors` setting
+(`auto`/`on`/`off`) or the `--object-colors/--no-object-colors` flag. `off`,
+`NO_COLOR`, and non-TTY output are always respected, so piped or redirected
+output stays uncolored.
+
 ## Writing
 
 ```sh

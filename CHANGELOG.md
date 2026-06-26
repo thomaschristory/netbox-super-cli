@@ -2,6 +2,38 @@
 
 All notable changes to netbox-super-cli are tracked here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) loosely. From v1.0.0 onward, releases follow [Semantic Versioning](https://semver.org/) and the version in `pyproject.toml` matches the git tag. Pre-1.0 milestones (Phase 1-5) were pinned by tag while `pyproject.toml` stayed at `0.0.1`.
 
+## v1.4.0 — 2026-06-26
+
+Minor release. Three user-facing features for the interactive TUI and table
+output: individually selectable custom-field columns, local saved searches, and
+NetBox-native object colors.
+
+### Added
+
+- **Individually selectable custom fields** ([#121], closes [#118]). The TUI
+  column chooser (`f` — Fields) now expands `custom_fields` into one toggleable
+  column per custom field (`custom_fields.<name>`) instead of a single opaque
+  object. On the CLI, `--columns custom_fields.<name>` selects an individual
+  custom field (now documented).
+- **Saved searches** ([#123], closes [#119]). Named filter sets persist per
+  resource. In the TUI filter builder, `Ctrl+W` saves the current filters under
+  a name and `Ctrl+O` opens a picker to apply one (`d` deletes an entry). On the
+  CLI, `--saved <name>` re-applies a saved filter set on `list`; explicit
+  `--filter` and typed options take precedence over saved values. Names
+  containing `.` (or whitespace) are rejected to keep the config file well-formed.
+- **NetBox object colors** ([#122], closes [#120]). Role, tag, and other
+  color-bearing fields render in their NetBox-defined colors in table output. A
+  new `object_colors` setting (`auto`/`on`/`off`) and the
+  `--object-colors/--no-object-colors` flag toggle this independently of
+  `--color`; `off`, `NO_COLOR`, and non-TTY output are always respected.
+
+[#118]: https://github.com/thomaschristory/netbox-super-cli/issues/118
+[#119]: https://github.com/thomaschristory/netbox-super-cli/issues/119
+[#120]: https://github.com/thomaschristory/netbox-super-cli/issues/120
+[#121]: https://github.com/thomaschristory/netbox-super-cli/pull/121
+[#122]: https://github.com/thomaschristory/netbox-super-cli/pull/122
+[#123]: https://github.com/thomaschristory/netbox-super-cli/pull/123
+
 ## v1.3.1 — 2026-06-25
 
 Patch release. CI maintenance only — no runtime or user-facing changes.
