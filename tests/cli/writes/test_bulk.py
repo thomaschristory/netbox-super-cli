@@ -367,20 +367,25 @@ def test_run_loop_concurrent_is_faster_than_sequential() -> None:
 
     requests = [_req(i) for i in range(8)]
 
-    start = time.monotonic()
-    run_loop(
-        requests,
-        operation=None,  # type: ignore[arg-type]
-        on_error="continue",
-        send_one=slow,
-        audit_attempt=lambda *_a: None,
-        to_envelope=_to_envelope,
-        workers=8,
-    )
-    concurrent_elapsed = time.monotonic() - start
+    def _elapsed(workers: int) -> float:
+        start = time.monotonic()
+        run_loop(
+            requests,
+            operation=None,  # type: ignore[arg-type]
+            on_error="continue",
+            send_one=slow,
+            audit_attempt=lambda *_a: None,
+            to_envelope=_to_envelope,
+            workers=workers,
+        )
+        return time.monotonic() - start
 
-    # 8 records * 50ms sequential = 400ms; with 8 workers it should be ~50ms.
-    assert concurrent_elapsed < 0.20
+    # Assert the speedup as a ratio against a measured sequential baseline:
+    # an absolute wall-clock threshold flakes on slow/loaded CI runners
+    # (8 * 50ms ≈ 400ms sequential vs ≈ 50ms across 8 workers).
+    sequential = _elapsed(1)
+    concurrent = _elapsed(8)
+    assert concurrent < sequential / 2
 
 
 def test_run_loop_concurrent_stop_halts_submission_after_failure() -> None:
