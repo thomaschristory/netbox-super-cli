@@ -35,6 +35,7 @@ class _FakeRuntime:
         self.command_model = object()
         self.client = object()
         self.config = _FakeConfig()
+        self.object_colors = False
 
 
 def test_invoking_tui_calls_run_tui_with_resource(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -48,6 +49,7 @@ def test_invoking_tui_calls_run_tui_with_resource(monkeypatch: pytest.MonkeyPatc
         initial_resource: str | None = None,
         save_columns: Any = None,
         column_prefs: Any = None,
+        object_colors: bool = False,
     ) -> None:
         calls.append((model, client, initial_resource))
 

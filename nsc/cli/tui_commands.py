@@ -60,6 +60,7 @@ def register(app: typer.Typer) -> None:
             initial_resource=resource,
             save_columns=_save_columns,
             column_prefs=column_prefs,
+            object_colors=runtime.object_colors,
         )
 
     # `tui` is canonical; `interactive` and `i` are hidden aliases for the same

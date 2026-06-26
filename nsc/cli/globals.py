@@ -10,10 +10,11 @@ from nsc.cli.runtime import (
     CLIOverrides,
     RuntimeContext,
     resolve_color,
+    resolve_object_colors,
     resolve_profile,
 )
 from nsc.config import default_paths
-from nsc.config.models import Config
+from nsc.config.models import Config, ObjectColorMode
 from nsc.http.client import NetBoxClient
 from nsc.output.render import select_format
 from nsc.schema.source import resolve_command_model
@@ -48,6 +49,8 @@ def build_runtime_context(state: GlobalState) -> RuntimeContext:
         redaction=state.config.defaults.audit_redaction,
         profile_name=profile.name,
     )
+    color = resolve_color(state.config.defaults.color_mode, is_tty=sys.stdout.isatty())
+    object_color_mode = _resolve_object_color_mode(state)
     return RuntimeContext(
         resolved_profile=profile,
         config=state.config,
@@ -56,9 +59,17 @@ def build_runtime_context(state: GlobalState) -> RuntimeContext:
         output_format=output,
         debug=state.debug,
         page_size=state.config.defaults.page_size,
-        color=resolve_color(state.config.defaults.color_mode, is_tty=sys.stdout.isatty()),
+        color=color,
         color_stderr=resolve_color(state.config.defaults.color_mode, is_tty=sys.stderr.isatty()),
+        object_colors=resolve_object_colors(object_color_mode, color=color),
     )
+
+
+def _resolve_object_color_mode(state: GlobalState) -> ObjectColorMode:
+    override = state.overrides.object_colors
+    if override is None:
+        return state.config.defaults.object_colors
+    return ObjectColorMode.ON if override else ObjectColorMode.OFF
 
 
 __all__ = [

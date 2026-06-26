@@ -32,6 +32,7 @@ class NscTuiApp(App[None]):
         initial_resource: str | None = None,
         save_columns: Callable[[str, str, list[str]], None] | None = None,
         column_prefs: dict[str, dict[str, list[str]]] | None = None,
+        object_colors: bool = False,
     ) -> None:
         super().__init__()
         self._model = model
@@ -39,6 +40,7 @@ class NscTuiApp(App[None]):
         self._initial_resource = initial_resource
         self._save_columns = save_columns
         self._column_prefs = column_prefs or {}
+        self.object_colors = object_colors
 
     def columns_for(self, tag: str, resource: str) -> list[str] | None:
         """Saved visible columns for a resource, if any (read by ListScreen)."""
@@ -99,6 +101,7 @@ def run_tui(
     initial_resource: str | None = None,
     save_columns: Callable[[str, str, list[str]], None] | None = None,
     column_prefs: dict[str, dict[str, list[str]]] | None = None,
+    object_colors: bool = False,
 ) -> None:
     NscTuiApp(
         model,
@@ -106,4 +109,5 @@ def run_tui(
         initial_resource=initial_resource,
         save_columns=save_columns,
         column_prefs=column_prefs,
+        object_colors=object_colors,
     ).run()

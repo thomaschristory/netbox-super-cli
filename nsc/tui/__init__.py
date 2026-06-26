@@ -17,6 +17,7 @@ def run_tui(
     initial_resource: str | None = None,
     save_columns: Callable[[str, str, list[str]], None] | None = None,
     column_prefs: dict[str, dict[str, list[str]]] | None = None,
+    object_colors: bool = False,
 ) -> None:
     """Lazy entrypoint so importing `nsc.tui` never imports Textual eagerly."""
     from nsc.tui.app import run_tui as _run  # noqa: PLC0415  # deferred: keeps Textual lazy.
@@ -27,4 +28,5 @@ def run_tui(
         initial_resource=initial_resource,
         save_columns=save_columns,
         column_prefs=column_prefs,
+        object_colors=object_colors,
     )
