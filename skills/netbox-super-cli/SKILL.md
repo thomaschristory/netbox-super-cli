@@ -91,6 +91,11 @@ sets the default format (a `--output/-o` flag still wins over it).
 nsc ls devices --output json | jq '.[] | select(.status.value == "active")'
 ```
 
+Pick columns with `--columns` (comma-separated), including individual custom
+fields via dotted paths: `nsc ls devices --columns id,name,custom_fields.rack_role`.
+In the TUI the column chooser (`f` in a list view) lists each custom field as
+its own toggleable row.
+
 Errors come back as JSON envelopes (on stderr by default; on stdout when
 `--output json` is set). The envelope shape is locked:
 
