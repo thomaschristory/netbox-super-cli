@@ -3,6 +3,9 @@ contact_links:
   - name: 📖 Documentation
     url: https://thomaschristory.github.io/netbox-super-cli/
     about: Guides, the CLI/TUI reference, and configuration docs — please check here first.
+  - name: 💬 Questions & usage help
+    url: https://github.com/thomaschristory/netbox-super-cli/discussions
+    about: Ask how-to questions, share setups, or propose ideas before filing a feature request.
   - name: 🔐 Security vulnerability
     url: https://github.com/thomaschristory/netbox-super-cli/security/advisories/new
     about: Report a security issue privately. Please do NOT open a public issue for vulnerabilities.
