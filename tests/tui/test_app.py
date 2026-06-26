@@ -67,6 +67,53 @@ async def test_save_columns_updates_in_memory_prefs() -> None:
 
 
 @pytest.mark.asyncio
+async def test_saved_searches_for_reads_memory() -> None:
+    app = NscTuiApp(
+        _model(),
+        _FakeClient(),
+        initial_resource="devices",
+        saved_searches={"dcim": {"devices": {"active-sw": {"status": "active"}}}},
+    )
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        assert app.saved_searches_for("dcim", "devices") == {"active-sw": {"status": "active"}}
+        assert app.saved_searches_for("dcim", "racks") == {}
+
+
+@pytest.mark.asyncio
+async def test_save_search_updates_memory_and_callback() -> None:
+    calls: list[tuple[str, str, str, dict[str, str]]] = []
+    app = NscTuiApp(
+        _model(),
+        _FakeClient(),
+        initial_resource="devices",
+        save_search=lambda t, r, n, p: calls.append((t, r, n, p)),
+    )
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        app.save_search("dcim", "devices", "active-sw", {"status": "active"})
+        assert app.saved_searches_for("dcim", "devices") == {"active-sw": {"status": "active"}}
+        assert calls == [("dcim", "devices", "active-sw", {"status": "active"})]
+
+
+@pytest.mark.asyncio
+async def test_delete_search_updates_memory_and_callback() -> None:
+    calls: list[tuple[str, str, str]] = []
+    app = NscTuiApp(
+        _model(),
+        _FakeClient(),
+        initial_resource="devices",
+        saved_searches={"dcim": {"devices": {"active-sw": {"status": "active"}}}},
+        delete_search=lambda t, r, n: calls.append((t, r, n)),
+    )
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        app.delete_search("dcim", "devices", "active-sw")
+        assert app.saved_searches_for("dcim", "devices") == {}
+        assert calls == [("dcim", "devices", "active-sw")]
+
+
+@pytest.mark.asyncio
 async def test_ctrl_f_opens_global_search_from_any_screen() -> None:
     app = NscTuiApp(_model(), _FakeClient(), initial_resource="devices")
     async with app.run_test() as pilot:

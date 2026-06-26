@@ -83,6 +83,22 @@ uv run nsc circuits providers list --output csv
 uv run nsc ipam prefixes list --filter created__gte=2026-01-01 --output yaml
 ```
 
+### Saved searches
+
+Filter sets you save from the TUI (Ctrl+W in the filter builder) are stored
+locally under `saved_searches` in `~/.nsc/config.yaml`, keyed by tag/resource.
+Re-apply one on the CLI with `--saved`:
+
+```sh
+uv run nsc dcim devices list --saved active-switches
+# explicit --filter / typed options override the saved values:
+uv run nsc dcim devices list --saved active-switches --status offline
+```
+
+This is a local, per-config convenience and is unrelated to NetBox's
+server-side saved filters (`extras saved-filters`), which store web-UI query
+strings.
+
 ## Writing
 
 ```sh

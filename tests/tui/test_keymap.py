@@ -7,6 +7,7 @@ from nsc.tui.keymap import KEYMAP, KeyBinding, bindings_for, help_groups
 from nsc.tui.screens.bulk_edit_form import BulkEditForm
 from nsc.tui.screens.detail import DetailScreen
 from nsc.tui.screens.edit_form import EditForm
+from nsc.tui.screens.filter import FilterScreen
 from nsc.tui.screens.list import ListScreen
 
 
@@ -15,7 +16,7 @@ def test_every_binding_has_required_fields() -> None:
         assert b.keys, "binding must declare at least one key"
         assert b.action
         assert b.description
-        assert b.context in {"global", "list", "detail", "edit", "bulk"}
+        assert b.context in {"global", "list", "detail", "edit", "bulk", "filter"}
 
 
 def test_bindings_for_filters_by_context_and_includes_global() -> None:
@@ -29,7 +30,7 @@ def test_bindings_for_filters_by_context_and_includes_global() -> None:
 
 def test_help_groups_are_keyed_by_context_and_nonempty() -> None:
     groups = help_groups()
-    assert set(groups) == {"global", "list", "detail", "edit", "bulk"}
+    assert set(groups) == {"global", "list", "detail", "edit", "bulk", "filter"}
     assert all(len(v) >= 1 for v in groups.values())
 
 
@@ -48,10 +49,11 @@ _OWNER_FOR_CONTEXT = {
     "detail": (NscTuiApp, DetailScreen),
     "edit": (NscTuiApp, EditForm),
     "bulk": (NscTuiApp, BulkEditForm),
+    "filter": (NscTuiApp, FilterScreen),
 }
 
 
-@pytest.mark.parametrize("context", ["global", "list", "detail", "edit", "bulk"])
+@pytest.mark.parametrize("context", ["global", "list", "detail", "edit", "bulk", "filter"])
 def test_every_action_resolves_to_a_method(context: str) -> None:
     owners = _OWNER_FOR_CONTEXT[context]
     for b in bindings_for(context):
@@ -61,7 +63,7 @@ def test_every_action_resolves_to_a_method(context: str) -> None:
         )
 
 
-@pytest.mark.parametrize("context", ["global", "list", "detail", "edit", "bulk"])
+@pytest.mark.parametrize("context", ["global", "list", "detail", "edit", "bulk", "filter"])
 def test_no_key_maps_to_two_actions_in_a_context(context: str) -> None:
     seen: dict[str, str] = {}
     for b in bindings_for(context):
