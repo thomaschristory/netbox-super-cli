@@ -11,6 +11,8 @@ from nsc.cli import tui_commands
 from nsc.cli.app import app as real_app
 from nsc.cli.tui_commands import _runtime_from_ctx, register
 from nsc.config import settings
+from nsc.config.loader import load_config
+from nsc.config.saved_searches import InvalidSavedSearchName
 
 
 def test_tui_help_lists_resource_argument() -> None:
@@ -28,6 +30,7 @@ def _help_app() -> typer.Typer:
 class _FakeConfig:
     def __init__(self) -> None:
         self.columns: dict[str, dict[str, list[str]]] = {}
+        self.saved_searches: dict[str, dict[str, dict[str, dict[str, str]]]] = {}
 
 
 class _FakeRuntime:
@@ -50,6 +53,9 @@ def test_invoking_tui_calls_run_tui_with_resource(monkeypatch: pytest.MonkeyPatc
         save_columns: Any = None,
         column_prefs: Any = None,
         object_colors: bool = False,
+        saved_searches: Any = None,
+        save_search: Any = None,
+        delete_search: Any = None,
     ) -> None:
         calls.append((model, client, initial_resource))
 
@@ -95,6 +101,69 @@ def test_save_columns_persists_to_config(tmp_path: Any, monkeypatch: pytest.Monk
     assert "dcim:" in text
     assert "devices:" in text
     assert "name" in text
+
+
+def test_save_search_persists_to_config(tmp_path: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text("")
+
+    class _Paths:
+        @property
+        def config_file(self) -> Any:
+            return config_file
+
+    monkeypatch.setattr(settings, "default_paths", _Paths)
+
+    tui_commands._save_search("dcim", "devices", "active-sw", {"status": "active"})
+
+    text = config_file.read_text()
+    assert "saved_searches:" in text
+    assert "active-sw" in text
+    assert "status" in text
+    assert "active" in text
+
+
+def test_delete_search_removes_from_config(tmp_path: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text("")
+
+    class _Paths:
+        @property
+        def config_file(self) -> Any:
+            return config_file
+
+    monkeypatch.setattr(settings, "default_paths", _Paths)
+
+    tui_commands._save_search("dcim", "devices", "active-sw", {"status": "active"})
+    tui_commands._delete_search("dcim", "devices", "active-sw")
+
+    text = config_file.read_text()
+    assert "active-sw" not in text
+    # Pruning empty parents leaves no orphaned saved_searches tree.
+    assert "saved_searches" not in text
+
+
+def test_save_search_dotted_name_does_not_corrupt_config(
+    tmp_path: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text("")
+
+    class _Paths:
+        @property
+        def config_file(self) -> Any:
+            return config_file
+
+    monkeypatch.setattr(settings, "default_paths", _Paths)
+
+    # A dotted name must be rejected at persist time, not split into a nested
+    # map that later fails Config.model_validate and bricks every nsc run.
+    with pytest.raises(InvalidSavedSearchName):
+        tui_commands._save_search("dcim", "devices", "prod.v2", {"status": "active"})
+
+    # The config file is untouched and still loads cleanly.
+    assert config_file.read_text() == ""
+    load_config(config_file)
 
 
 def test_malformed_ctx_obj_exits_2() -> None:

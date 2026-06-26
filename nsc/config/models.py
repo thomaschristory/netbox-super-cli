@@ -78,3 +78,7 @@ class Config(_Frozen):
     profiles: dict[str, Profile] = Field(default_factory=dict)
     defaults: Defaults = Field(default_factory=Defaults)
     columns: dict[str, dict[str, list[str]]] = Field(default_factory=dict)
+    # Local, named filter sets keyed `<tag>.<resource>.<name> = {filter_key: value}`.
+    # The leaf dict is exactly a `FilterState.as_params()` payload so a saved search
+    # round-trips through the TUI filter screen and the CLI `--saved` flag alike.
+    saved_searches: dict[str, dict[str, dict[str, dict[str, str]]]] = Field(default_factory=dict)

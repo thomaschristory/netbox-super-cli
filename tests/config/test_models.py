@@ -49,6 +49,24 @@ def test_config_holds_columns_per_tag_and_resource() -> None:
     assert c.columns["dcim"]["devices"] == ["id", "name", "site"]
 
 
+def test_config_saved_searches_defaults_to_empty() -> None:
+    assert Config().saved_searches == {}
+
+
+def test_config_holds_saved_searches_per_tag_resource_and_name() -> None:
+    c = Config.model_validate(
+        {
+            "saved_searches": {
+                "dcim": {"devices": {"active-sw": {"status": "active", "role": "switch"}}}
+            }
+        }
+    )
+    assert c.saved_searches["dcim"]["devices"]["active-sw"] == {
+        "status": "active",
+        "role": "switch",
+    }
+
+
 def test_output_format_values() -> None:
     assert {f.value for f in OutputFormat} == {"table", "json", "jsonl", "yaml", "csv"}
 

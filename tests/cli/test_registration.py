@@ -347,3 +347,77 @@ def test_runtime_context_carries_bulk_and_on_error_defaults() -> None:
     assert ctx.bulk is None
     assert ctx.no_bulk is None
     assert ctx.on_error == "stop"
+
+
+def _ctx_with_saved(client: Any, saved: dict[str, Any]) -> RuntimeContext:
+    return RuntimeContext(
+        resolved_profile=ResolvedProfile(
+            name="prod",
+            url="https://nb.example/",
+            token="t",
+            verify_ssl=True,
+            timeout=5.0,
+            schema_url=None,
+        ),
+        config=Config(saved_searches={"dcim": {"devices": saved}}),
+        command_model=MagicMock(),
+        client=client,
+        output_format=OutputFormat.JSON,
+        fetch_all=True,
+    )
+
+
+def test_list_saved_resolves_into_filters() -> None:
+    app = typer.Typer()
+    client = MagicMock()
+    client.paginate.return_value = iter([])
+    model = _model_with_list_op([])
+    ctx = _ctx_with_saved(client, {"active-sw": {"status": "active", "role": "switch"}})
+    register_dynamic_commands(app, model, lambda: ctx)
+    result = CliRunner().invoke(app, ["dcim", "devices", "list", "--saved", "active-sw"])
+    assert result.exit_code == 0, result.output
+    client.paginate.assert_called_once_with(
+        "/api/dcim/devices/", {"status": "active", "role": "switch"}
+    )
+
+
+def test_explicit_filter_overrides_saved() -> None:
+    app = typer.Typer()
+    client = MagicMock()
+    client.paginate.return_value = iter([])
+    model = _model_with_list_op([])
+    ctx = _ctx_with_saved(client, {"active-sw": {"status": "active"}})
+    register_dynamic_commands(app, model, lambda: ctx)
+    result = CliRunner().invoke(
+        app, ["dcim", "devices", "list", "--saved", "active-sw", "--filter", "status=offline"]
+    )
+    assert result.exit_code == 0, result.output
+    client.paginate.assert_called_once_with("/api/dcim/devices/", {"status": "offline"})
+
+
+def test_explicit_typed_option_overrides_saved() -> None:
+    app = typer.Typer()
+    client = MagicMock()
+    client.paginate.return_value = iter([])
+    model = _model_with_list_op(
+        [Parameter(name="status", location=ParameterLocation.QUERY, primitive=PrimitiveType.STRING)]
+    )
+    ctx = _ctx_with_saved(client, {"active-sw": {"status": "active"}})
+    register_dynamic_commands(app, model, lambda: ctx)
+    result = CliRunner().invoke(
+        app, ["dcim", "devices", "list", "--saved", "active-sw", "--status", "offline"]
+    )
+    assert result.exit_code == 0, result.output
+    client.paginate.assert_called_once_with("/api/dcim/devices/", {"status": "offline"})
+
+
+def test_unknown_saved_name_exits_2() -> None:
+    app = typer.Typer()
+    client = MagicMock()
+    client.paginate.return_value = iter([])
+    model = _model_with_list_op([])
+    ctx = _ctx_with_saved(client, {"active-sw": {"status": "active"}})
+    register_dynamic_commands(app, model, lambda: ctx)
+    result = CliRunner().invoke(app, ["dcim", "devices", "list", "--saved", "nope"])
+    assert result.exit_code == 2
+    client.paginate.assert_not_called()

@@ -16,6 +16,8 @@ from nsc.tui.screens.list import ListScreen
 from nsc.tui.screens.picker import ResourcePicker
 from nsc.tui.widgets.help import HelpOverlay
 
+SavedSearchMap = dict[str, dict[str, dict[str, dict[str, str]]]]
+
 
 class NscTuiApp(App[None]):
     BINDINGS: ClassVar[list[BindingType]] = textual_bindings("global")
@@ -33,6 +35,9 @@ class NscTuiApp(App[None]):
         save_columns: Callable[[str, str, list[str]], None] | None = None,
         column_prefs: dict[str, dict[str, list[str]]] | None = None,
         object_colors: bool = False,
+        saved_searches: SavedSearchMap | None = None,
+        save_search: Callable[[str, str, str, dict[str, str]], None] | None = None,
+        delete_search: Callable[[str, str, str], None] | None = None,
     ) -> None:
         super().__init__()
         self._model = model
@@ -41,6 +46,9 @@ class NscTuiApp(App[None]):
         self._save_columns = save_columns
         self._column_prefs = column_prefs or {}
         self.object_colors = object_colors
+        self._saved_searches: SavedSearchMap = saved_searches or {}
+        self._save_search = save_search
+        self._delete_search = delete_search
 
     def columns_for(self, tag: str, resource: str) -> list[str] | None:
         """Saved visible columns for a resource, if any (read by ListScreen)."""
@@ -52,6 +60,22 @@ class NscTuiApp(App[None]):
         self._column_prefs.setdefault(tag, {})[resource] = list(columns)
         if self._save_columns is not None:
             self._save_columns(tag, resource, columns)
+
+    def saved_searches_for(self, tag: str, resource: str) -> dict[str, dict[str, str]]:
+        """Named saved filter sets for a resource (read by FilterScreen)."""
+        return self._saved_searches.get(tag, {}).get(resource, {})
+
+    def save_search(self, tag: str, resource: str, name: str, params: dict[str, str]) -> None:
+        # Update the in-memory map too so the picker reflects the new entry
+        # immediately, without a relaunch.
+        self._saved_searches.setdefault(tag, {}).setdefault(resource, {})[name] = dict(params)
+        if self._save_search is not None:
+            self._save_search(tag, resource, name, params)
+
+    def delete_search(self, tag: str, resource: str, name: str) -> None:
+        self._saved_searches.get(tag, {}).get(resource, {}).pop(name, None)
+        if self._delete_search is not None:
+            self._delete_search(tag, resource, name)
 
     def on_mount(self) -> None:
         ref = self._resolve_initial()
@@ -102,6 +126,9 @@ def run_tui(
     save_columns: Callable[[str, str, list[str]], None] | None = None,
     column_prefs: dict[str, dict[str, list[str]]] | None = None,
     object_colors: bool = False,
+    saved_searches: SavedSearchMap | None = None,
+    save_search: Callable[[str, str, str, dict[str, str]], None] | None = None,
+    delete_search: Callable[[str, str, str], None] | None = None,
 ) -> None:
     NscTuiApp(
         model,
@@ -110,4 +137,7 @@ def run_tui(
         save_columns=save_columns,
         column_prefs=column_prefs,
         object_colors=object_colors,
+        saved_searches=saved_searches,
+        save_search=save_search,
+        delete_search=delete_search,
     ).run()
