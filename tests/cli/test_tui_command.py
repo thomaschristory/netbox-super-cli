@@ -28,6 +28,7 @@ def _help_app() -> typer.Typer:
 class _FakeConfig:
     def __init__(self) -> None:
         self.columns: dict[str, dict[str, list[str]]] = {}
+        self.saved_searches: dict[str, dict[str, dict[str, dict[str, str]]]] = {}
 
 
 class _FakeRuntime:
@@ -48,6 +49,9 @@ def test_invoking_tui_calls_run_tui_with_resource(monkeypatch: pytest.MonkeyPatc
         initial_resource: str | None = None,
         save_columns: Any = None,
         column_prefs: Any = None,
+        saved_searches: Any = None,
+        save_search: Any = None,
+        delete_search: Any = None,
     ) -> None:
         calls.append((model, client, initial_resource))
 
@@ -93,6 +97,46 @@ def test_save_columns_persists_to_config(tmp_path: Any, monkeypatch: pytest.Monk
     assert "dcim:" in text
     assert "devices:" in text
     assert "name" in text
+
+
+def test_save_search_persists_to_config(tmp_path: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text("")
+
+    class _Paths:
+        @property
+        def config_file(self) -> Any:
+            return config_file
+
+    monkeypatch.setattr(settings, "default_paths", _Paths)
+
+    tui_commands._save_search("dcim", "devices", "active-sw", {"status": "active"})
+
+    text = config_file.read_text()
+    assert "saved_searches:" in text
+    assert "active-sw" in text
+    assert "status" in text
+    assert "active" in text
+
+
+def test_delete_search_removes_from_config(tmp_path: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text("")
+
+    class _Paths:
+        @property
+        def config_file(self) -> Any:
+            return config_file
+
+    monkeypatch.setattr(settings, "default_paths", _Paths)
+
+    tui_commands._save_search("dcim", "devices", "active-sw", {"status": "active"})
+    tui_commands._delete_search("dcim", "devices", "active-sw")
+
+    text = config_file.read_text()
+    assert "active-sw" not in text
+    # Pruning empty parents leaves no orphaned saved_searches tree.
+    assert "saved_searches" not in text
 
 
 def test_malformed_ctx_obj_exits_2() -> None:

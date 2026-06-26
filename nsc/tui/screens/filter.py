@@ -34,6 +34,10 @@ class FilterScreen(ModalScreen[dict[str, str]]):
         Binding("down", "app.focus_next", "Next field", show=False),
         # ctrl+s (not ctrl+a, which inputs capture as cursor-home) applies.
         Binding("ctrl+s", "apply", "Apply"),
+        # ctrl+w saves the current state under a name; ctrl+o loads a saved one.
+        # Both avoid the printable keys the input-heavy form consumes.
+        Binding("ctrl+w", "save_search", "Save search"),
+        Binding("ctrl+o", "load_search", "Load saved"),
     ]
 
     def __init__(
@@ -42,10 +46,15 @@ class FilterScreen(ModalScreen[dict[str, str]]):
         client: Any,
         operation: Operation,
         current: dict[str, str],
+        *,
+        tag: str | None = None,
+        resource: str | None = None,
     ) -> None:
         super().__init__()
         self._model = model
         self._client = client
+        self._tag = tag
+        self._resource = resource
         self._common = common_filters(operation)
         self._searchable = searchable_filters(operation)
         self._fk_names = {p.name for p in self._common if self._is_fk(p.name)}
@@ -80,7 +89,7 @@ class FilterScreen(ModalScreen[dict[str, str]]):
                 yield Button("Apply  ⌃s", id="apply", variant="primary")
                 yield Button("Clear", id="clear")
             yield Label(
-                "↓/Tab next field · Shift+Tab back · Enter pick · ⌃s apply · Esc cancel",
+                "↓/Tab next · Enter pick · ⌃s apply · ⌃w save · ⌃o load · Esc cancel",
                 id="filter-hint",
             )
 
@@ -250,3 +259,44 @@ class FilterScreen(ModalScreen[dict[str, str]]):
 
     def action_cancel(self) -> None:
         self.dismiss(None)
+
+    def action_save_search(self) -> None:
+        if self._tag is None or self._resource is None:
+            return
+        if not callable(getattr(self.app, "save_search", None)):
+            return
+        from nsc.tui.screens.saved_search_picker import SavedSearchNamePrompt  # noqa: PLC0415
+
+        def _save(name: str | None) -> None:
+            if not name or not name.strip():
+                return
+            self.app.save_search(  # type: ignore[attr-defined]
+                self._tag, self._resource, name.strip(), self.state.as_params()
+            )
+
+        self.app.push_screen(SavedSearchNamePrompt(), _save)
+
+    def action_load_search(self) -> None:
+        if self._tag is None or self._resource is None:
+            return
+        reader = getattr(self.app, "saved_searches_for", None)
+        if not callable(reader):
+            return
+        saved: dict[str, dict[str, str]] = reader(self._tag, self._resource)
+        if not saved:
+            self.notify("No saved searches for this resource yet.")
+            return
+        from nsc.tui.screens.saved_search_picker import SavedSearchPicker  # noqa: PLC0415
+
+        def _load(name: str | None) -> None:
+            if name is None:
+                return
+            params = saved.get(name)
+            if params is None:
+                return
+            self.state = FilterState.from_params(params)
+            self._fk_display.clear()
+            self._sync_common_fields()
+            self._refresh_chips()
+
+        self.app.push_screen(SavedSearchPicker(sorted(saved)), _load)

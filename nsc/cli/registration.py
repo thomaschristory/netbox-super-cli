@@ -120,8 +120,37 @@ def _register_write(
 
 
 _GLOBAL_FLAG_NAMES: frozenset[str] = frozenset(
-    {"output", "compact", "columns", "limit", "all_", "filter_"}
+    {"output", "compact", "columns", "limit", "all_", "filter_", "saved"}
 )
+
+
+def _resolve_saved_filters(
+    ctx: RuntimeContext,
+    tag_name: str,
+    resource_name: str,
+    saved_name: str | None,
+    explicit_filters: list[tuple[str, str]],
+    typed_kwargs: dict[str, Any],
+) -> list[tuple[str, str]]:
+    """Layer a `--saved` filter set under explicit `--filter` and typed options.
+
+    Saved params are the base; explicit `--filter` pairs and any non-None typed
+    query option (already in ``typed_kwargs``) win. Order matters: ``handle_list``
+    overlays ``ctx.filters`` onto the typed-option params, so saved keys that the
+    user also set via a typed flag must be dropped here to let the flag win.
+    """
+    if saved_name is None:
+        return explicit_filters
+    from nsc.config.saved_searches import get_saved_search  # noqa: PLC0415
+
+    saved = get_saved_search(ctx.config, tag_name, resource_name, saved_name)
+    if saved is None:
+        raise typer.BadParameter(
+            f"no saved search named {saved_name!r} for {tag_name}/{resource_name}"
+        )
+    typed_keys = {k for k, v in typed_kwargs.items() if v is not None}
+    base = [(k, v) for k, v in saved.items() if k not in typed_keys]
+    return base + explicit_filters
 
 
 def _build_read_closure(
@@ -151,17 +180,19 @@ def _build_read_closure(
         limit = kwargs.pop("limit", None)
         fetch_all = kwargs.pop("all_", False)
         filters_raw: list[str] = kwargs.pop("filter_", None) or []
+        saved_name: str | None = kwargs.pop("saved", None)
         ctx = get_ctx()
+        explicit_filters = [
+            (item.split("=", 1)[0], item.split("=", 1)[1]) for item in filters_raw if "=" in item
+        ]
         update: dict[str, Any] = {
             "compact": compact,
             "columns_override": columns_csv.split(",") if columns_csv else None,
             "limit": limit,
             "fetch_all": fetch_all,
-            "filters": [
-                (item.split("=", 1)[0], item.split("=", 1)[1])
-                for item in filters_raw
-                if "=" in item
-            ],
+            "filters": _resolve_saved_filters(
+                ctx, tag_name, resource_name, saved_name, explicit_filters, kwargs
+            ),
         }
         if output:
             update["output_format"] = OutputFormat(output)
@@ -310,6 +341,20 @@ def _build_global_flag_params() -> tuple[inspect.Parameter, ...]:
             kind=inspect.Parameter.KEYWORD_ONLY,
             annotation=list[str] | None,
             default=typer.Option(None, "--filter"),
+        ),
+        inspect.Parameter(
+            name="saved",
+            kind=inspect.Parameter.KEYWORD_ONLY,
+            annotation=str | None,
+            default=typer.Option(
+                None,
+                "--saved",
+                help=(
+                    "Apply a LOCAL named filter set saved from the TUI (config "
+                    "`saved_searches`). Explicit --filter/typed options override it. "
+                    "Unrelated to NetBox server-side saved filters."
+                ),
+            ),
         ),
     )
 

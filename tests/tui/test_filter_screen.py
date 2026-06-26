@@ -55,10 +55,23 @@ class _FakeClient:
 
 
 class _FilterApp(App[None]):
-    def __init__(self, current: dict[str, str] | None = None) -> None:
+    def __init__(
+        self,
+        current: dict[str, str] | None = None,
+        *,
+        saved: dict[str, dict[str, str]] | None = None,
+    ) -> None:
         super().__init__()
         self.result: dict[str, str] | None = None
         self._current = current or {}
+        self._saved = saved or {}
+        self.save_calls: list[tuple[str, str, str, dict[str, str]]] = []
+
+    def saved_searches_for(self, tag: str, resource: str) -> dict[str, dict[str, str]]:
+        return self._saved
+
+    def save_search(self, tag: str, resource: str, name: str, params: dict[str, str]) -> None:
+        self.save_calls.append((tag, resource, name, params))
 
     def compose(self) -> ComposeResult:
         yield Static("")
@@ -67,7 +80,17 @@ class _FilterApp(App[None]):
         def _cb(result: dict[str, str] | None) -> None:
             self.result = result
 
-        await self.push_screen(FilterScreen(_model(), _FakeClient(), _op(), self._current), _cb)
+        await self.push_screen(
+            FilterScreen(
+                _model(),
+                _FakeClient(),
+                _op(),
+                self._current,
+                tag="dcim",
+                resource="devices",
+            ),
+            _cb,
+        )
 
 
 @pytest.mark.asyncio
@@ -371,3 +394,51 @@ async def test_fk_picker_stages_id_and_labels_chip_with_display() -> None:
         assert screen.state.as_params() == {"manufacturer_id": "8"}
         labels = {str(label.render()) for label in screen.query_one("#chips").query(Label)}
         assert "manufacturer_id = Cisco" in labels
+
+
+@pytest.mark.asyncio
+async def test_save_search_invokes_app_callback() -> None:
+    app = _FilterApp({"status": "active"})
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        screen = app.screen
+        assert isinstance(screen, FilterScreen)
+        screen.action_save_search()
+        await pilot.pause()
+        prompt = app.screen
+        prompt.dismiss("active-sw")
+        await pilot.pause()
+        assert app.save_calls == [("dcim", "devices", "active-sw", {"status": "active"})]
+
+
+@pytest.mark.asyncio
+async def test_save_search_blank_name_is_noop() -> None:
+    app = _FilterApp({"status": "active"})
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        screen = app.screen
+        assert isinstance(screen, FilterScreen)
+        screen.action_save_search()
+        await pilot.pause()
+        prompt = app.screen
+        prompt.dismiss("   ")
+        await pilot.pause()
+        assert app.save_calls == []
+
+
+@pytest.mark.asyncio
+async def test_load_saved_search_repopulates_state_and_chips() -> None:
+    app = _FilterApp(saved={"active-sw": {"status": "active", "name": "sw1"}})
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        screen = app.screen
+        assert isinstance(screen, FilterScreen)
+        screen.action_load_search()
+        await pilot.pause()
+        picker = app.screen
+        picker.dismiss("active-sw")
+        await pilot.pause()
+        assert screen.state.as_params() == {"status": "active", "name": "sw1"}
+        labels = {str(label.render()) for label in screen.query_one("#chips").query(Label)}
+        assert "status = active" in labels
+        assert "name = sw1" in labels

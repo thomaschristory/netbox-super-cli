@@ -23,6 +23,7 @@ _TITLES = {
     "detail": "Detail view",
     "edit": "Edit form",
     "bulk": "Bulk edit form",
+    "filter": "Filter builder",
 }
 _DISMISS_KEYS = {"escape", "q", "enter", "question_mark"}
 

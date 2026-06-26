@@ -161,7 +161,15 @@ class ListScreen(Screen[None]):
                 self.apply_filters(result)
 
         self.app.push_screen(
-            FilterScreen(self._model, self._client, self._op, dict(self._extra_filters)), _apply
+            FilterScreen(
+                self._model,
+                self._client,
+                self._op,
+                dict(self._extra_filters),
+                tag=self._tag,
+                resource=self._resource_name,
+            ),
+            _apply,
         )
 
     def apply_filters(self, params: dict[str, str]) -> None:

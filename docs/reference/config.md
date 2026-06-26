@@ -13,6 +13,7 @@ All fields below describe `~/.nsc/config.yaml`.
 | `profiles` | `dict[str, Profile]` | `{}` |
 | `defaults` | `<class 'Defaults'>` | `Defaults(output=<OutputFormat.TABLE: 'table'>, page_size=50, timeout=30.0, schema_refresh=<SchemaRefresh.DAILY: 'daily'>, color_mode=<ColorMode.AUTO: 'auto'>, audit_redaction=<AuditRedaction.SAFE: 'safe'>)` |
 | `columns` | `dict[str, dict[str, list[str]]]` | `{}` |
+| `saved_searches` | `dict[str, dict[str, dict[str, dict[str, str]]]]` | `{}` |
 
 ## `Profile`
 
