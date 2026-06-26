@@ -17,6 +17,7 @@ def render(
     stream: TextIO = sys.stdout,
     compact: bool = False,
     color: bool = False,
+    object_colors: bool = False,
 ) -> None:
     if format is OutputFormat.JSON:
         json_.render(data, stream=stream, compact=compact)
@@ -27,7 +28,7 @@ def render(
     elif format is OutputFormat.CSV:
         csv_.render(data, stream=stream, columns=columns)
     elif format is OutputFormat.TABLE:
-        table.render(data, stream=stream, columns=columns, color=color)
+        table.render(data, stream=stream, columns=columns, color=color, object_colors=object_colors)
     else:  # pragma: no cover  (StrEnum exhaustively covered above)
         raise ValueError(f"unknown output format: {format!r}")
 

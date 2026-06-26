@@ -15,7 +15,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, HttpUrl, SkipValidation
 
 from nsc.cache.store import ADHOC_PROFILE
-from nsc.config.models import ColorMode, Config, OutputFormat, Profile
+from nsc.config.models import ColorMode, Config, ObjectColorMode, OutputFormat, Profile
 from nsc.config.settings import default_paths
 from nsc.http.client import NetBoxClient
 from nsc.http.errors import NetBoxAPIError, NetBoxClientError
@@ -52,6 +52,7 @@ class CLIOverrides(_Frozen):
     schema_override: str | None = None
     refresh_schema: bool = False
     output: str | None = None
+    object_colors: bool | None = None
 
 
 class ResolvedProfile(_Frozen):
@@ -186,6 +187,22 @@ def resolve_color(mode: ColorMode, *, is_tty: bool) -> bool:
     return is_tty
 
 
+def resolve_object_colors(mode: ObjectColorMode, *, color: bool) -> bool:
+    """Resolve whether NetBox-native object colors render.
+
+    Always gated by the global `color` resolution (no ANSI when color is off),
+    but can be disabled independently: OFF turns object colors off while status
+    coloring stays on; ON/AUTO follow `color`.
+
+    Contract: ON is deliberately *not* a force — it stays identical to AUTO so
+    that `--object-colors` (and `NSC_OBJECT_COLORS=on`) can never override the
+    no-color decision (`--no-color`, `NO_COLOR`, non-tty). Only OFF diverges.
+    """
+    if mode is ObjectColorMode.OFF:
+        return False
+    return color
+
+
 class RuntimeContext(BaseModel):
     """Per-invocation runtime state.
 
@@ -208,6 +225,7 @@ class RuntimeContext(BaseModel):
     compact: bool = False
     color: bool = False
     color_stderr: bool = False
+    object_colors: bool = False
     apply: bool = False
     explain: bool = False
     strict: bool = False

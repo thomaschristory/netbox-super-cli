@@ -4,7 +4,10 @@ from __future__ import annotations
 
 from typing import Any
 
+from rich.text import Text
+
 from nsc.model.command_model import Operation
+from nsc.output.colors import ColoredValue
 from nsc.output.flatten import flatten
 
 _FALLBACK = ["id"]
@@ -32,15 +35,35 @@ def detail_path(list_path: str, record_id: object) -> str:
     return f"{base}{record_id}/"
 
 
-def build_rows(records: list[dict[str, Any]], columns: list[str]) -> list[list[str]]:
-    rows: list[list[str]] = []
+def build_rows(
+    records: list[dict[str, Any]],
+    columns: list[str],
+    *,
+    object_colors: bool = False,
+) -> list[list[str | Text]]:
+    rows: list[list[str | Text]] = []
     for record in records:
-        flat = flatten(record, columns=columns)
+        flat = flatten(record, columns=columns, with_colors=object_colors)
         rows.append([_cell(flat.get(col)) for col in columns])
     return rows
 
 
-def _cell(value: Any) -> str:
+def _colored_text(value: ColoredValue) -> Text:
+    if value.color is None:
+        return Text(value.text)
+    return Text(value.text, style=f"#{value.color}")
+
+
+def _cell(value: Any) -> str | Text:
     if value is None:
         return ""
+    if isinstance(value, ColoredValue):
+        return _colored_text(value)
+    if isinstance(value, list) and value and all(isinstance(v, ColoredValue) for v in value):
+        out = Text()
+        for i, item in enumerate(value):
+            if i:
+                out.append(", ")
+            out.append_text(_colored_text(item))
+        return out
     return str(value)

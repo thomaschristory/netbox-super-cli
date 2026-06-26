@@ -3,8 +3,13 @@ from __future__ import annotations
 import pytest
 from pydantic import HttpUrl
 
-from nsc.cli.runtime import ResolvedProfile, RuntimeContext, resolve_color
-from nsc.config.models import ColorMode, Config, OutputFormat
+from nsc.cli.runtime import (
+    ResolvedProfile,
+    RuntimeContext,
+    resolve_color,
+    resolve_object_colors,
+)
+from nsc.config.models import ColorMode, Config, ObjectColorMode, OutputFormat
 from nsc.http.client import NetBoxClient
 from nsc.model.command_model import CommandModel
 
@@ -53,3 +58,22 @@ def test_resolve_color(mode: ColorMode, is_tty: bool, expected: bool) -> None:
 def test_runtime_context_accepts_color_field() -> None:
     ctx = _base_ctx()
     assert ctx.color is False
+
+
+def test_runtime_context_object_colors_defaults_false() -> None:
+    assert _base_ctx().object_colors is False
+
+
+@pytest.mark.parametrize(
+    "mode, color, expected",
+    [
+        (ObjectColorMode.AUTO, True, True),
+        (ObjectColorMode.AUTO, False, False),
+        (ObjectColorMode.OFF, True, False),
+        (ObjectColorMode.OFF, False, False),
+        (ObjectColorMode.ON, True, True),
+        (ObjectColorMode.ON, False, False),
+    ],
+)
+def test_resolve_object_colors(mode: ObjectColorMode, color: bool, expected: bool) -> None:
+    assert resolve_object_colors(mode, color=color) == expected

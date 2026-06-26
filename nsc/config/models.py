@@ -37,6 +37,15 @@ class ColorMode(StrEnum):
     OFF = "off"
 
 
+class ObjectColorMode(StrEnum):
+    # Render NetBox-native hex colors (role/tag/…) independently of status
+    # coloring. Still gated by the global color resolution, so OFF never yields
+    # ANSI but ON/AUTO only color when color is otherwise enabled.
+    AUTO = "auto"
+    ON = "on"
+    OFF = "off"
+
+
 class AuditRedaction(StrEnum):
     # SAFE redacts only known secrets (passwords/tokens) in bodies; FULL omits
     # every body, leaving routing metadata only — stricter compliance, harder
@@ -51,6 +60,7 @@ class Defaults(_Frozen):
     timeout: float = 30.0
     schema_refresh: SchemaRefresh = SchemaRefresh.DAILY
     color_mode: ColorMode = ColorMode.AUTO
+    object_colors: ObjectColorMode = ObjectColorMode.AUTO
     audit_redaction: AuditRedaction = AuditRedaction.SAFE
 
 

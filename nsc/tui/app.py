@@ -34,6 +34,7 @@ class NscTuiApp(App[None]):
         initial_resource: str | None = None,
         save_columns: Callable[[str, str, list[str]], None] | None = None,
         column_prefs: dict[str, dict[str, list[str]]] | None = None,
+        object_colors: bool = False,
         saved_searches: SavedSearchMap | None = None,
         save_search: Callable[[str, str, str, dict[str, str]], None] | None = None,
         delete_search: Callable[[str, str, str], None] | None = None,
@@ -44,6 +45,7 @@ class NscTuiApp(App[None]):
         self._initial_resource = initial_resource
         self._save_columns = save_columns
         self._column_prefs = column_prefs or {}
+        self.object_colors = object_colors
         self._saved_searches: SavedSearchMap = saved_searches or {}
         self._save_search = save_search
         self._delete_search = delete_search
@@ -123,6 +125,7 @@ def run_tui(
     initial_resource: str | None = None,
     save_columns: Callable[[str, str, list[str]], None] | None = None,
     column_prefs: dict[str, dict[str, list[str]]] | None = None,
+    object_colors: bool = False,
     saved_searches: SavedSearchMap | None = None,
     save_search: Callable[[str, str, str, dict[str, str]], None] | None = None,
     delete_search: Callable[[str, str, str], None] | None = None,
@@ -133,6 +136,7 @@ def run_tui(
         initial_resource=initial_resource,
         save_columns=save_columns,
         column_prefs=column_prefs,
+        object_colors=object_colors,
         saved_searches=saved_searches,
         save_search=save_search,
         delete_search=delete_search,

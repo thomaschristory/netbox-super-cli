@@ -89,7 +89,7 @@ class ListScreen(Screen[None]):
         return self._selection
 
     @property
-    def _table(self) -> DataTable[str]:
+    def _table(self) -> DataTable[Any]:
         return self.query_one("#rows", DataTable)
 
     def on_mount(self) -> None:
@@ -138,7 +138,9 @@ class ListScreen(Screen[None]):
         sample = records[0] if records else None
         columns = choose_columns(self._op, self._columns_config, sample)
         table.add_columns(_MARKER_HEADER, *columns)
-        for record, row in zip(records, build_rows(records, columns), strict=True):
+        object_colors = bool(getattr(self.app, "object_colors", False))
+        rows = build_rows(records, columns, object_colors=object_colors)
+        for record, row in zip(records, rows, strict=True):
             table.add_row(self._marker_for(record.get("id")), *row)
         self._records = records
         self._columns = columns

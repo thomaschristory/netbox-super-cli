@@ -3,7 +3,15 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from nsc.config.models import ColorMode, Config, Defaults, OutputFormat, Profile, SchemaRefresh
+from nsc.config.models import (
+    ColorMode,
+    Config,
+    Defaults,
+    ObjectColorMode,
+    OutputFormat,
+    Profile,
+    SchemaRefresh,
+)
 
 
 def test_defaults_have_sensible_values() -> None:
@@ -70,3 +78,12 @@ def test_defaults_color_mode_is_auto() -> None:
 
 def test_color_mode_values() -> None:
     assert {m.value for m in ColorMode} == {"auto", "on", "off"}
+
+
+def test_defaults_object_colors_default_auto() -> None:
+    assert Defaults().object_colors is ObjectColorMode.AUTO
+
+
+def test_defaults_object_colors_parses_on_off() -> None:
+    assert Defaults(object_colors="on").object_colors is ObjectColorMode.ON
+    assert Defaults(object_colors="off").object_colors is ObjectColorMode.OFF

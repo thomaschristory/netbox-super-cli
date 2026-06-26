@@ -94,6 +94,14 @@ def _extract_global_overrides(args: list[str]) -> CLIOverrides:
             kwargs["refresh_schema"] = True
             i += 1
             continue
+        if a == "--object-colors":
+            kwargs["object_colors"] = True
+            i += 1
+            continue
+        if a == "--no-object-colors":
+            kwargs["object_colors"] = False
+            i += 1
+            continue
         i += 1
     return CLIOverrides(**kwargs)  # type: ignore[arg-type]
 
@@ -310,6 +318,13 @@ def _root(
         ),
     ] = False,
     output: Annotated[str | None, typer.Option("--output", "-o")] = None,
+    object_colors: Annotated[
+        bool | None,
+        typer.Option(
+            "--object-colors/--no-object-colors",
+            help="Render NetBox-native object colors (role/tag/…) in table output.",
+        ),
+    ] = None,
     debug: Annotated[bool, typer.Option("--debug")] = False,
 ) -> None:
     """Root callback — global options live here."""
@@ -321,6 +336,7 @@ def _root(
         schema_override=schema,
         refresh_schema=refresh_schema,
         output=output,
+        object_colors=object_colors,
     )
     try:
         config = load_config(default_paths().config_file)

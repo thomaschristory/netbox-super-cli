@@ -104,6 +104,7 @@ def handle_list(
             stream=_out(stream),
             compact=ctx.compact,
             color=ctx.color,
+            object_colors=ctx.object_colors,
         )
     except (NetBoxAPIError, NetBoxClientError) as exc:
         env = map_error(exc, operation_id=operation.operation_id)
@@ -130,6 +131,7 @@ def handle_get(
             stream=_out(stream),
             compact=ctx.compact,
             color=ctx.color,
+            object_colors=ctx.object_colors,
         )
     except (NetBoxAPIError, NetBoxClientError) as exc:
         env = map_error(exc, operation_id=operation.operation_id)
@@ -616,6 +618,7 @@ def _render_response(
         stream=stream,
         compact=ctx.compact,
         color=ctx.color,
+        object_colors=ctx.object_colors,
     )
 
 

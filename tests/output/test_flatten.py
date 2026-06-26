@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from nsc.output.colors import ColoredValue
 from nsc.output.flatten import flatten
 
 
@@ -115,3 +116,99 @@ def test_flatten_pick_dotted_path_is_traversal_not_literal_key() -> None:
     # The dotted column resolves by traversing nested dicts, matching the
     # documented "drills in" semantics — it does not match a literal dotted key.
     assert flatten({"a": {"b": 5}}, columns=["a.b"]) == {"a.b": 5}
+
+
+# --- with_colors ---
+
+
+def test_flatten_with_colors_preserves_hex_as_colored_value() -> None:
+    record = {"role": {"display": "Router", "color": "4caf50"}}
+    out = flatten(record, columns=["role"], with_colors=True)
+    assert out["role"] == ColoredValue("Router", "4caf50")
+
+
+def test_flatten_with_colors_normalizes_hash_and_case() -> None:
+    record = {"role": {"display": "Router", "color": "#4CAF50"}}
+    out = flatten(record, columns=["role"], with_colors=True)
+    assert out["role"] == ColoredValue("Router", "4caf50")
+
+
+def test_flatten_with_colors_object_without_color_is_plain_string() -> None:
+    record = {"role": {"display": "Router"}}
+    assert flatten(record, columns=["role"], with_colors=True) == {"role": "Router"}
+
+
+def test_flatten_with_colors_invalid_color_falls_back_to_plain() -> None:
+    record = {"role": {"display": "Router", "color": "notahex"}}
+    assert flatten(record, columns=["role"], with_colors=True) == {"role": "Router"}
+
+
+def test_flatten_with_colors_empty_color_falls_back_to_plain() -> None:
+    record = {"role": {"display": "Router", "color": ""}}
+    assert flatten(record, columns=["role"], with_colors=True) == {"role": "Router"}
+
+
+def test_flatten_with_colors_list_of_tags_keeps_per_item_color() -> None:
+    record = {
+        "tags": [
+            {"display": "prod", "color": "ff0000"},
+            {"display": "edge", "color": "00ff00"},
+        ]
+    }
+    out = flatten(record, columns=["tags"], with_colors=True)
+    assert out["tags"] == [
+        ColoredValue("prod", "ff0000"),
+        ColoredValue("edge", "00ff00"),
+    ]
+
+
+def test_flatten_with_colors_list_without_any_color_joins_as_string() -> None:
+    record = {"tags": [{"display": "prod"}, {"display": "edge"}]}
+    out = flatten(record, columns=["tags"], with_colors=True)
+    assert out["tags"] == "prod, edge"
+
+
+def test_flatten_with_colors_mixed_list_promotes_uncolored_to_none() -> None:
+    # When only some list items carry a color, the list must stay uniform:
+    # uncolored items become ColoredValue(text, None) so downstream formatters
+    # (which require homogeneous lists) don't fall through to a raw repr.
+    record = {
+        "tags": [
+            {"display": "prod", "color": "ff0000"},
+            {"display": "edge"},
+        ]
+    }
+    out = flatten(record, columns=["tags"], with_colors=True)
+    assert out["tags"] == [
+        ColoredValue("prod", "ff0000"),
+        ColoredValue("edge", None),
+    ]
+
+
+def test_flatten_with_colors_mixed_list_with_invalid_color_promotes_to_none() -> None:
+    record = {
+        "tags": [
+            {"display": "prod", "color": "ff0000"},
+            {"display": "edge", "color": "notahex"},
+        ]
+    }
+    out = flatten(record, columns=["tags"], with_colors=True)
+    assert out["tags"] == [
+        ColoredValue("prod", "ff0000"),
+        ColoredValue("edge", None),
+    ]
+
+
+def test_flatten_without_colors_unchanged_single_object() -> None:
+    record = {"role": {"display": "Router", "color": "4caf50"}}
+    assert flatten(record, columns=["role"], with_colors=False) == {"role": "Router"}
+
+
+def test_flatten_without_colors_unchanged_list() -> None:
+    record = {
+        "tags": [
+            {"display": "prod", "color": "ff0000"},
+            {"display": "edge", "color": "00ff00"},
+        ]
+    }
+    assert flatten(record, columns=["tags"], with_colors=False) == {"tags": "prod, edge"}

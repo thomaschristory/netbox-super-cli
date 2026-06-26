@@ -4,6 +4,7 @@ import io
 import re
 
 from nsc.config.models import OutputFormat
+from nsc.output.colors import ColoredValue
 from nsc.output.render import render as render_dispatch
 from nsc.output.table import _format_cell, render
 
@@ -136,3 +137,141 @@ def test_render_dispatch_non_table_ignores_color() -> None:
     out = buf.getvalue()
     assert "\x1b[" not in out
     assert "active" in out
+
+
+# --- object colors ---
+
+
+def test_format_cell_colored_value_emits_hex_markup() -> None:
+    result = _format_cell(ColoredValue("Router", "4caf50"), color=True)
+    assert "#4caf50" in result
+    assert "Router" in result
+
+
+def test_format_cell_colored_value_escapes_markup_in_text() -> None:
+    result = _format_cell(ColoredValue("ro[le]", "4caf50"), color=True)
+    assert "#4caf50" in result
+    assert "\\[le]" in result
+
+
+def test_format_cell_colored_value_no_color_strips_markup_but_escapes() -> None:
+    result = _format_cell(ColoredValue("ro[le]", "4caf50"), color=False)
+    assert "#4caf50" not in result
+    assert "\\[le]" in result
+
+
+def test_format_cell_colored_value_list_comma_joined_colored() -> None:
+    result = _format_cell(
+        [ColoredValue("prod", "ff0000"), ColoredValue("edge", "00ff00")], color=True
+    )
+    assert "#ff0000" in result
+    assert "#00ff00" in result
+    assert "prod" in result
+    assert "edge" in result
+
+
+def test_format_cell_colored_value_list_mixed_color_and_none() -> None:
+    # A mixed list (one item colored, one with None) must render cleanly as a
+    # comma-joined string with the colored item styled and the other plain —
+    # never a raw repr like [ColoredValue(...), ...].
+    result = _format_cell([ColoredValue("prod", "ff0000"), ColoredValue("edge", None)], color=True)
+    assert "#ff0000" in result
+    assert "ColoredValue" not in result
+    # Colored item carries hex markup; the None item stays plain; comma-joined.
+    assert result == "[#ff0000]prod[/], edge"
+
+
+def test_render_object_colors_mixed_tag_list_no_raw_repr() -> None:
+    buf = io.StringIO()
+    render(
+        [
+            {
+                "tags": [
+                    {"display": "prod", "color": "ff0000"},
+                    {"display": "edge"},
+                ]
+            }
+        ],
+        stream=buf,
+        columns=["tags"],
+        color=True,
+        object_colors=True,
+    )
+    out = buf.getvalue()
+    plain = strip_ansi(out)
+    assert "ColoredValue" not in out
+    assert "prod" in plain
+    assert "edge" in plain
+
+
+def test_render_object_colors_emits_role_hex() -> None:
+    buf = io.StringIO()
+    render(
+        [{"role": {"display": "Router", "color": "4caf50"}}],
+        stream=buf,
+        columns=["role"],
+        color=True,
+        object_colors=True,
+    )
+    out = buf.getvalue()
+    assert "\x1b[" in out
+    assert "Router" in strip_ansi(out)
+
+
+def test_render_object_colors_off_keeps_status_colors_on() -> None:
+    buf = io.StringIO()
+    render(
+        [{"status": "active", "role": {"display": "Router", "color": "4caf50"}}],
+        stream=buf,
+        columns=["status", "role"],
+        color=True,
+        object_colors=False,
+    )
+    out = buf.getvalue()
+    # status still colored (ANSI present), role rendered as plain text
+    assert "\x1b[" in out
+    plain = strip_ansi(out)
+    assert "active" in plain
+    assert "Router" in plain
+
+
+def test_render_object_colors_requires_color() -> None:
+    buf = io.StringIO()
+    render(
+        [{"role": {"display": "Router [x]", "color": "4caf50"}}],
+        stream=buf,
+        columns=["role"],
+        color=False,
+        object_colors=True,
+    )
+    out = buf.getvalue()
+    assert "\x1b[" not in out
+    assert "[x]" in out
+
+
+def test_render_dispatch_forwards_object_colors() -> None:
+    buf = io.StringIO()
+    render_dispatch(
+        [{"role": {"display": "Router", "color": "4caf50"}}],
+        format=OutputFormat.TABLE,
+        columns=["role"],
+        stream=buf,
+        color=True,
+        object_colors=True,
+    )
+    assert "\x1b[" in buf.getvalue()
+
+
+def test_render_dispatch_non_table_ignores_object_colors() -> None:
+    buf = io.StringIO()
+    render_dispatch(
+        [{"role": {"display": "Router", "color": "4caf50"}}],
+        format=OutputFormat.CSV,
+        columns=["role"],
+        stream=buf,
+        color=True,
+        object_colors=True,
+    )
+    out = buf.getvalue()
+    assert "ColoredValue" not in out
+    assert "Router" in out
