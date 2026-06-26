@@ -8,7 +8,8 @@ chosen one (or None on cancel).
 
 from __future__ import annotations
 
-from typing import ClassVar
+from dataclasses import dataclass
+from typing import ClassVar, Literal
 
 from textual.app import ComposeResult
 from textual.binding import BindingType
@@ -17,7 +18,15 @@ from textual.screen import ModalScreen
 from textual.widgets import Input, Label, ListItem, ListView
 
 _PROMPT_HINT = "Enter save · Esc cancel"
-_PICKER_HINT = "Enter load · Esc cancel"
+_PICKER_HINT = "Enter load · d delete · Esc cancel"
+
+
+@dataclass(frozen=True)
+class SavedSearchChoice:
+    """A picker outcome: load or delete the named saved search."""
+
+    action: Literal["load", "delete"]
+    name: str
 
 
 class SavedSearchNamePrompt(ModalScreen[str]):
@@ -41,9 +50,10 @@ class SavedSearchNamePrompt(ModalScreen[str]):
         self.dismiss("")
 
 
-class SavedSearchPicker(ModalScreen["str | None"]):
+class SavedSearchPicker(ModalScreen["SavedSearchChoice | None"]):
     BINDINGS: ClassVar[list[BindingType]] = [
         ("escape", "cancel", "Cancel"),
+        ("d", "delete", "Delete"),
     ]
 
     def __init__(self, names: list[str]) -> None:
@@ -69,7 +79,14 @@ class SavedSearchPicker(ModalScreen["str | None"]):
     def on_list_view_selected(self, event: ListView.Selected) -> None:
         name = getattr(event.item, "data", None)
         if isinstance(name, str):
-            self.dismiss(name)
+            self.dismiss(SavedSearchChoice("load", name))
+
+    def action_delete(self) -> None:
+        listing = self.query_one("#saved-picker-list", ListView)
+        item = listing.highlighted_child
+        name = getattr(item, "data", None)
+        if isinstance(name, str):
+            self.dismiss(SavedSearchChoice("delete", name))
 
     def action_cancel(self) -> None:
         self.dismiss(None)

@@ -17,6 +17,7 @@ from nsc.model.command_model import (
 )
 from nsc.tui.screens.filter import FilterScreen
 from nsc.tui.screens.record_picker import RecordPicker
+from nsc.tui.screens.saved_search_picker import SavedSearchPicker
 
 
 def _op() -> Operation:
@@ -66,12 +67,21 @@ class _FilterApp(App[None]):
         self._current = current or {}
         self._saved = saved or {}
         self.save_calls: list[tuple[str, str, str, dict[str, str]]] = []
+        self.delete_calls: list[tuple[str, str, str]] = []
+        self.notifications: list[str] = []
 
     def saved_searches_for(self, tag: str, resource: str) -> dict[str, dict[str, str]]:
         return self._saved
 
     def save_search(self, tag: str, resource: str, name: str, params: dict[str, str]) -> None:
         self.save_calls.append((tag, resource, name, params))
+
+    def delete_search(self, tag: str, resource: str, name: str) -> None:
+        self.delete_calls.append((tag, resource, name))
+        self._saved.pop(name, None)
+
+    def notify(self, message: str, **kwargs: Any) -> None:  # type: ignore[override]
+        self.notifications.append(message)
 
     def compose(self) -> ComposeResult:
         yield Static("")
@@ -427,6 +437,23 @@ async def test_save_search_blank_name_is_noop() -> None:
 
 
 @pytest.mark.asyncio
+async def test_save_search_dotted_name_rejected_and_notifies() -> None:
+    app = _FilterApp({"status": "active"})
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        screen = app.screen
+        assert isinstance(screen, FilterScreen)
+        screen.action_save_search()
+        await pilot.pause()
+        prompt = app.screen
+        # A dotted name would corrupt config.yaml via the dotted-path writer.
+        prompt.dismiss("prod.v2")
+        await pilot.pause()
+        assert app.save_calls == []
+        assert app.notifications, "expected a user-facing rejection notice"
+
+
+@pytest.mark.asyncio
 async def test_load_saved_search_repopulates_state_and_chips() -> None:
     app = _FilterApp(saved={"active-sw": {"status": "active", "name": "sw1"}})
     async with app.run_test() as pilot:
@@ -436,9 +463,27 @@ async def test_load_saved_search_repopulates_state_and_chips() -> None:
         screen.action_load_search()
         await pilot.pause()
         picker = app.screen
-        picker.dismiss("active-sw")
+        assert isinstance(picker, SavedSearchPicker)
+        await pilot.press("enter")
         await pilot.pause()
         assert screen.state.as_params() == {"status": "active", "name": "sw1"}
         labels = {str(label.render()) for label in screen.query_one("#chips").query(Label)}
         assert "status = active" in labels
         assert "name = sw1" in labels
+
+
+@pytest.mark.asyncio
+async def test_delete_saved_search_from_picker_invokes_app_callback() -> None:
+    app = _FilterApp(saved={"active-sw": {"status": "active"}, "offline": {"status": "offline"}})
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        screen = app.screen
+        assert isinstance(screen, FilterScreen)
+        screen.action_load_search()
+        await pilot.pause()
+        picker = app.screen
+        assert isinstance(picker, SavedSearchPicker)
+        # The delete key binding is the only way to remove a saved search.
+        await pilot.press("d")
+        await pilot.pause()
+        assert app.delete_calls == [("dcim", "devices", "active-sw")]

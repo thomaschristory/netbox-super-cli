@@ -43,6 +43,7 @@ def _save_columns(tag: str, resource: str, columns: list[str]) -> None:
 
 def _save_search(tag: str, resource: str, name: str, params: dict[str, str]) -> None:
     """Persist a filter set to ``saved_searches.<tag>.<resource>.<name>``."""
+    from nsc.config.saved_searches import validate_saved_search_name  # noqa: PLC0415
     from nsc.config.settings import default_paths  # noqa: PLC0415
     from nsc.config.writer import (  # noqa: PLC0415
         acquire_lock,
@@ -52,6 +53,9 @@ def _save_search(tag: str, resource: str, name: str, params: dict[str, str]) -> 
         set_path,
     )
 
+    # Defensive: a dotted name would split into a nested map under set_path and
+    # corrupt the file. Validate before touching disk so the file is untouched.
+    validate_saved_search_name(name)
     path = default_paths().config_file
     with acquire_lock(path):
         doc = load_round_trip(path)
