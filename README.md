@@ -8,14 +8,13 @@ One binary, any NetBox version, every plugin endpoint — the schema, not hand-w
 
 <br/>
 
-[![PyPI version](https://img.shields.io/pypi/v/netbox-super-cli?style=for-the-badge&logo=pypi&logoColor=white&color=0a7cff&label=PyPI)](https://pypi.org/project/netbox-super-cli/)
-[![Python](https://img.shields.io/pypi/pyversions/netbox-super-cli?style=for-the-badge&logo=python&logoColor=white&color=0a7cff)](https://pypi.org/project/netbox-super-cli/)
-[![Downloads](https://img.shields.io/pypi/dm/netbox-super-cli?style=for-the-badge&logo=python&logoColor=white&color=0a7cff&label=Downloads)](https://pypi.org/project/netbox-super-cli/)
-[![License](https://img.shields.io/badge/License-Apache_2.0-0a7cff?style=for-the-badge)](LICENSE)
-
-[![CI](https://img.shields.io/github/actions/workflow/status/thomaschristory/netbox-super-cli/test.yml?branch=main&style=for-the-badge&logo=githubactions&logoColor=white&label=Tests)](https://github.com/thomaschristory/netbox-super-cli/actions/workflows/test.yml)
-[![Docs](https://img.shields.io/badge/Docs-online-0a7cff?style=for-the-badge&logo=readthedocs&logoColor=white)](https://thomaschristory.github.io/netbox-super-cli/)
-[![Stars](https://img.shields.io/github/stars/thomaschristory/netbox-super-cli?style=for-the-badge&logo=github&logoColor=white&color=0a7cff)](https://github.com/thomaschristory/netbox-super-cli/stargazers)
+[![PyPI version](https://img.shields.io/pypi/v/netbox-super-cli?style=flat-square&logo=pypi&logoColor=white&label=pypi)](https://pypi.org/project/netbox-super-cli/)
+[![Python](https://img.shields.io/pypi/pyversions/netbox-super-cli?style=flat-square&logo=python&logoColor=white)](https://pypi.org/project/netbox-super-cli/)
+[![Downloads](https://img.shields.io/pypi/dm/netbox-super-cli?style=flat-square&label=downloads)](https://pypi.org/project/netbox-super-cli/)
+[![License](https://img.shields.io/badge/license-Apache_2.0-green?style=flat-square)](LICENSE)
+[![Tests](https://img.shields.io/github/actions/workflow/status/thomaschristory/netbox-super-cli/test.yml?branch=main&style=flat-square&label=tests)](https://github.com/thomaschristory/netbox-super-cli/actions/workflows/test.yml)
+[![Docs](https://img.shields.io/badge/docs-online-blue?style=flat-square)](https://thomaschristory.github.io/netbox-super-cli/)
+[![Stars](https://img.shields.io/github/stars/thomaschristory/netbox-super-cli?style=flat-square)](https://github.com/thomaschristory/netbox-super-cli/stargazers)
 
 [**📚 Documentation**](https://thomaschristory.github.io/netbox-super-cli/) &nbsp;·&nbsp; [**🚀 Install**](#install) &nbsp;·&nbsp; [**🖥️ Interactive TUI**](#interactive-tui) &nbsp;·&nbsp; [**🤖 AI Skill**](#bundled-skill-for-ai-agents)
 
