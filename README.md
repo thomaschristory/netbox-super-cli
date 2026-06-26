@@ -1,6 +1,27 @@
-# netbox-super-cli (`nsc`)
+<div align="center">
 
-A Python CLI for [NetBox](https://netbox.dev/) that builds its command tree dynamically from your install's live OpenAPI schema. The same binary works against any NetBox version and exposes plugin-provided endpoints automatically — the schema, not hand-written code, defines the surface.
+# netbox-super-cli&nbsp;·&nbsp;`nsc`
+
+**A Python CLI for [NetBox](https://netbox.dev/) that builds its entire command tree from your install's live OpenAPI schema.**
+
+One binary, any NetBox version, every plugin endpoint — the schema, not hand-written code, defines the surface.
+
+<br/>
+
+[![PyPI version](https://img.shields.io/pypi/v/netbox-super-cli?style=for-the-badge&logo=pypi&logoColor=white&color=0a7cff&label=PyPI)](https://pypi.org/project/netbox-super-cli/)
+[![Python](https://img.shields.io/pypi/pyversions/netbox-super-cli?style=for-the-badge&logo=python&logoColor=white&color=0a7cff)](https://pypi.org/project/netbox-super-cli/)
+[![Downloads](https://img.shields.io/pypi/dm/netbox-super-cli?style=for-the-badge&logo=python&logoColor=white&color=0a7cff&label=Downloads)](https://pypi.org/project/netbox-super-cli/)
+[![License](https://img.shields.io/badge/License-Apache_2.0-0a7cff?style=for-the-badge)](LICENSE)
+
+[![CI](https://img.shields.io/github/actions/workflow/status/thomaschristory/netbox-super-cli/test.yml?branch=main&style=for-the-badge&logo=githubactions&logoColor=white&label=Tests)](https://github.com/thomaschristory/netbox-super-cli/actions/workflows/test.yml)
+[![Docs](https://img.shields.io/badge/Docs-online-0a7cff?style=for-the-badge&logo=readthedocs&logoColor=white)](https://thomaschristory.github.io/netbox-super-cli/)
+[![Stars](https://img.shields.io/github/stars/thomaschristory/netbox-super-cli?style=for-the-badge&logo=github&logoColor=white&color=0a7cff)](https://github.com/thomaschristory/netbox-super-cli/stargazers)
+
+[**📚 Documentation**](https://thomaschristory.github.io/netbox-super-cli/) &nbsp;·&nbsp; [**🚀 Install**](#install) &nbsp;·&nbsp; [**🖥️ Interactive TUI**](#interactive-tui) &nbsp;·&nbsp; [**🤖 AI Skill**](#bundled-skill-for-ai-agents)
+
+</div>
+
+---
 
 > **Docs:** [thomaschristory.github.io/netbox-super-cli](https://thomaschristory.github.io/netbox-super-cli/) — the full guide, including install, first-run, guides, and the auto-generated CLI/config/exit-code reference.
 
