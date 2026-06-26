@@ -193,6 +193,10 @@ def resolve_object_colors(mode: ObjectColorMode, *, color: bool) -> bool:
     Always gated by the global `color` resolution (no ANSI when color is off),
     but can be disabled independently: OFF turns object colors off while status
     coloring stays on; ON/AUTO follow `color`.
+
+    Contract: ON is deliberately *not* a force — it stays identical to AUTO so
+    that `--object-colors` (and `NSC_OBJECT_COLORS=on`) can never override the
+    no-color decision (`--no-color`, `NO_COLOR`, non-tty). Only OFF diverges.
     """
     if mode is ObjectColorMode.OFF:
         return False

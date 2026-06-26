@@ -170,6 +170,40 @@ def test_format_cell_colored_value_list_comma_joined_colored() -> None:
     assert "edge" in result
 
 
+def test_format_cell_colored_value_list_mixed_color_and_none() -> None:
+    # A mixed list (one item colored, one with None) must render cleanly as a
+    # comma-joined string with the colored item styled and the other plain —
+    # never a raw repr like [ColoredValue(...), ...].
+    result = _format_cell([ColoredValue("prod", "ff0000"), ColoredValue("edge", None)], color=True)
+    assert "#ff0000" in result
+    assert "ColoredValue" not in result
+    # Colored item carries hex markup; the None item stays plain; comma-joined.
+    assert result == "[#ff0000]prod[/], edge"
+
+
+def test_render_object_colors_mixed_tag_list_no_raw_repr() -> None:
+    buf = io.StringIO()
+    render(
+        [
+            {
+                "tags": [
+                    {"display": "prod", "color": "ff0000"},
+                    {"display": "edge"},
+                ]
+            }
+        ],
+        stream=buf,
+        columns=["tags"],
+        color=True,
+        object_colors=True,
+    )
+    out = buf.getvalue()
+    plain = strip_ansi(out)
+    assert "ColoredValue" not in out
+    assert "prod" in plain
+    assert "edge" in plain
+
+
 def test_render_object_colors_emits_role_hex() -> None:
     buf = io.StringIO()
     render(

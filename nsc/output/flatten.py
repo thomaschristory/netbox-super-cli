@@ -57,7 +57,10 @@ def _displayify(value: Any, *, with_colors: bool = False) -> Any:
     if isinstance(value, list):
         cells = [_as_cell(v, with_colors=with_colors) for v in value]
         if with_colors and any(isinstance(c, ColoredValue) for c in cells):
-            return cells
+            # Keep the list uniform so downstream formatters (which require a
+            # homogeneous list of ColoredValue) don't reject a mix and emit a
+            # raw repr. Promote plain strings to an uncolored ColoredValue.
+            return [c if isinstance(c, ColoredValue) else ColoredValue(c, None) for c in cells]
         return ", ".join(c.text if isinstance(c, ColoredValue) else c for c in cells)
     return value
 

@@ -168,6 +168,37 @@ def test_flatten_with_colors_list_without_any_color_joins_as_string() -> None:
     assert out["tags"] == "prod, edge"
 
 
+def test_flatten_with_colors_mixed_list_promotes_uncolored_to_none() -> None:
+    # When only some list items carry a color, the list must stay uniform:
+    # uncolored items become ColoredValue(text, None) so downstream formatters
+    # (which require homogeneous lists) don't fall through to a raw repr.
+    record = {
+        "tags": [
+            {"display": "prod", "color": "ff0000"},
+            {"display": "edge"},
+        ]
+    }
+    out = flatten(record, columns=["tags"], with_colors=True)
+    assert out["tags"] == [
+        ColoredValue("prod", "ff0000"),
+        ColoredValue("edge", None),
+    ]
+
+
+def test_flatten_with_colors_mixed_list_with_invalid_color_promotes_to_none() -> None:
+    record = {
+        "tags": [
+            {"display": "prod", "color": "ff0000"},
+            {"display": "edge", "color": "notahex"},
+        ]
+    }
+    out = flatten(record, columns=["tags"], with_colors=True)
+    assert out["tags"] == [
+        ColoredValue("prod", "ff0000"),
+        ColoredValue("edge", None),
+    ]
+
+
 def test_flatten_without_colors_unchanged_single_object() -> None:
     record = {"role": {"display": "Router", "color": "4caf50"}}
     assert flatten(record, columns=["role"], with_colors=False) == {"role": "Router"}
