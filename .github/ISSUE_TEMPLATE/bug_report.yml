@@ -1,0 +1,127 @@
+name: 🐞 Bug report
+description: Something in nsc (the CLI or TUI) behaves incorrectly or crashes.
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for filing a bug! The version numbers and the **exact command** make
+        most issues reproducible — please fill in as much as you can.
+
+        > [!WARNING]
+        > **Redact secrets.** Never paste your `NSC_TOKEN`, API tokens, or any
+        > credential. Replace them with `***`.
+
+  - type: input
+    id: nsc-version
+    attributes:
+      label: nsc version
+      description: Output of `nsc --version`.
+      placeholder: "nsc 1.4.0"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: install-method
+    attributes:
+      label: How did you install nsc?
+      options:
+        - uv tool install
+        - pipx
+        - pip
+        - uvx (ephemeral)
+        - from source / git checkout
+        - other
+    validations:
+      required: true
+
+  - type: input
+    id: python-version
+    attributes:
+      label: Python version
+      description: Output of `python --version` for the interpreter nsc runs under.
+      placeholder: "3.12.x"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - Linux
+        - macOS
+        - Windows
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: netbox-version
+    attributes:
+      label: NetBox version
+      description: The NetBox server version nsc talks to (NetBox UI footer, or `/api/status/`).
+      placeholder: "v4.6.3"
+    validations:
+      required: false
+
+  - type: dropdown
+    id: schema-source
+    attributes:
+      label: Which schema was nsc using?
+      description: nsc generates commands from the OpenAPI schema — a live fetch, the on-disk cache, or the bundled offline snapshot.
+      options:
+        - Live NetBox API
+        - Cached schema
+        - Bundled offline snapshot
+        - Not sure
+    validations:
+      required: false
+
+  - type: textarea
+    id: command
+    attributes:
+      label: Command you ran
+      description: The exact `nsc ...` invocation. Redact tokens.
+      render: shell
+      placeholder: nsc dcim devices list --site-id 42 --output json
+    validations:
+      required: true
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: The actual behavior, including any error message or traceback.
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect to happen?
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs / audit output
+      description: Optional. Anything else that helps — re-run with extra output if useful. Redact secrets first.
+      render: shell
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched existing issues and this isn't a duplicate.
+          required: true
+        - label: I'm on the latest release of nsc, or I noted my version above.
+          required: true
+        - label: I removed any tokens / credentials from the command and logs above.
+          required: true

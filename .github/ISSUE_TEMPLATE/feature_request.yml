@@ -1,0 +1,68 @@
+name: ✨ Feature request
+description: Suggest a new capability or improvement for the CLI, TUI, or output.
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the idea! Describing the **problem** first (not just the
+        solution) helps us find the best fit. nsc is generated from NetBox's
+        OpenAPI schema, so features usually apply across every resource.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Which area?
+      options:
+        - CLI (commands, flags, output)
+        - TUI (interactive browser)
+        - Output / formatting (table, json, jsonl, yaml, csv)
+        - Config / auth / profiles
+        - Shell completion
+        - Schema / code generation
+        - Documentation
+        - Other / not sure
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem are you trying to solve?
+      description: What are you trying to do, and where does nsc get in the way today?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: What would you like nsc to do? A sketch of the command, flag, or UX is great.
+    validations:
+      required: false
+
+  - type: textarea
+    id: example
+    attributes:
+      label: Example usage
+      description: How would it look on the command line (or in the TUI)?
+      render: shell
+      placeholder: nsc dcim devices list --some-new-flag
+    validations:
+      required: false
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched existing issues and this isn't a duplicate.
+          required: true
