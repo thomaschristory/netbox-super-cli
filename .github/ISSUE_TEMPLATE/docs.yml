@@ -1,0 +1,35 @@
+name: 📖 Documentation issue
+description: A gap, error, or confusing part of the docs, README, or bundled SKILL.
+title: "[Docs]: "
+labels: ["documentation"]
+body:
+  - type: textarea
+    id: where
+    attributes:
+      label: Where is the problem?
+      description: A page URL, a file path (e.g. `README.md`, `docs/...`), or a command's `--help` output.
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What's wrong or missing?
+    validations:
+      required: true
+
+  - type: textarea
+    id: suggestion
+    attributes:
+      label: Suggested fix
+      description: Optional — a sentence, a corrected snippet, or a link to the right info.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched existing issues and this isn't a duplicate.
+          required: true
