@@ -12,7 +12,8 @@ from nsc.cli.app import app as real_app
 from nsc.cli.tui_commands import _runtime_from_ctx, register
 from nsc.config import settings
 from nsc.config.loader import load_config
-from nsc.config.saved_searches import InvalidSavedSearchName
+from nsc.config.models import Config
+from nsc.config.saved_searches import ConfigFileSavedSearchStore, InvalidSavedSearchName
 
 
 def test_tui_help_lists_resource_argument() -> None:
@@ -56,6 +57,7 @@ def test_invoking_tui_calls_run_tui_with_resource(monkeypatch: pytest.MonkeyPatc
         saved_searches: Any = None,
         save_search: Any = None,
         delete_search: Any = None,
+        saved_filter_store: Any = None,
     ) -> None:
         calls.append((model, client, initial_resource))
 
@@ -103,18 +105,12 @@ def test_save_columns_persists_to_config(tmp_path: Any, monkeypatch: pytest.Monk
     assert "name" in text
 
 
-def test_save_search_persists_to_config(tmp_path: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_config_fallback_save_persists_to_config(tmp_path: Any) -> None:
     config_file = tmp_path / "config.yaml"
     config_file.write_text("")
+    store = ConfigFileSavedSearchStore(Config(), config_file=config_file)
 
-    class _Paths:
-        @property
-        def config_file(self) -> Any:
-            return config_file
-
-    monkeypatch.setattr(settings, "default_paths", _Paths)
-
-    tui_commands._save_search("dcim", "devices", "active-sw", {"status": "active"})
+    store.save("dcim", "devices", "active-sw", {"status": "active"})
 
     text = config_file.read_text()
     assert "saved_searches:" in text
@@ -123,19 +119,13 @@ def test_save_search_persists_to_config(tmp_path: Any, monkeypatch: pytest.Monke
     assert "active" in text
 
 
-def test_delete_search_removes_from_config(tmp_path: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_config_fallback_delete_removes_from_config(tmp_path: Any) -> None:
     config_file = tmp_path / "config.yaml"
     config_file.write_text("")
+    store = ConfigFileSavedSearchStore(Config(), config_file=config_file)
 
-    class _Paths:
-        @property
-        def config_file(self) -> Any:
-            return config_file
-
-    monkeypatch.setattr(settings, "default_paths", _Paths)
-
-    tui_commands._save_search("dcim", "devices", "active-sw", {"status": "active"})
-    tui_commands._delete_search("dcim", "devices", "active-sw")
+    store.save("dcim", "devices", "active-sw", {"status": "active"})
+    store.delete("dcim", "devices", "active-sw")
 
     text = config_file.read_text()
     assert "active-sw" not in text
@@ -143,23 +133,15 @@ def test_delete_search_removes_from_config(tmp_path: Any, monkeypatch: pytest.Mo
     assert "saved_searches" not in text
 
 
-def test_save_search_dotted_name_does_not_corrupt_config(
-    tmp_path: Any, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_config_fallback_save_dotted_name_does_not_corrupt_config(tmp_path: Any) -> None:
     config_file = tmp_path / "config.yaml"
     config_file.write_text("")
-
-    class _Paths:
-        @property
-        def config_file(self) -> Any:
-            return config_file
-
-    monkeypatch.setattr(settings, "default_paths", _Paths)
+    store = ConfigFileSavedSearchStore(Config(), config_file=config_file)
 
     # A dotted name must be rejected at persist time, not split into a nested
     # map that later fails Config.model_validate and bricks every nsc run.
     with pytest.raises(InvalidSavedSearchName):
-        tui_commands._save_search("dcim", "devices", "prod.v2", {"status": "active"})
+        store.save("dcim", "devices", "prod.v2", {"status": "active"})
 
     # The config file is untouched and still loads cleanly.
     assert config_file.read_text() == ""

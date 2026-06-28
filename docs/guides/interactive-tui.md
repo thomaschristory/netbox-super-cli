@@ -81,10 +81,26 @@ NetBox list endpoint exposes hundreds of query parameters.
 | <kbd>↓</kbd> | Move to the next field (from a text field) |
 | <kbd>Tab</kbd> / <kbd>Shift</kbd>+<kbd>Tab</kbd> | Move between fields |
 | <kbd>Ctrl</kbd>+<kbd>S</kbd> | Apply |
+| <kbd>Ctrl</kbd>+<kbd>W</kbd> | Save the current filters as a named search |
+| <kbd>Ctrl</kbd>+<kbd>O</kbd> | Load (or delete) a saved search |
 | <kbd>Esc</kbd> | Cancel |
 
 Applying re-queries the list. Reopening the builder shows your current filters
 so you can refine them.
+
+### Saved searches
+
+<kbd>Ctrl</kbd>+<kbd>W</kbd> stores the current filter set as a NetBox **native
+saved filter** (`extras.saved-filters`), scoped to the current resource's object
+type. It then appears in the NetBox web UI's filter dropdown for that object, and
+filters created in the web UI load here with <kbd>Ctrl</kbd>+<kbd>O</kbd> — the two
+surfaces are interchangeable. In the load picker, <kbd>Enter</kbd> applies the
+highlighted search and <kbd>d</kbd> deletes it. Re-apply one non-interactively
+with `nsc <app> <resource> list --saved <name>`.
+
+If NetBox is unreachable (offline, or you lack permission on
+`extras.savedfilter`), saves and loads transparently fall back to a local store in
+`~/.nsc/config.yaml` and a toast tells you the fallback was used.
 
 ## Viewing and editing a record
 

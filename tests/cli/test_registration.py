@@ -367,6 +367,21 @@ def _ctx_with_saved(client: Any, saved: dict[str, Any]) -> RuntimeContext:
     )
 
 
+def _data_list_params(client: MagicMock) -> dict[str, Any] | None:
+    """Params of the data-list paginate call (ignoring object-type resolution).
+
+    ``--saved`` resolves through the native SavedFilter store, which probes
+    ``/api/core/object-types/`` (and ``/api/extras/saved-filters/``) before the
+    actual list fetch; with a MagicMock those probe empty and resolution falls
+    back to the local config ``saved_searches``. We assert on the final data call.
+    """
+    for c in client.paginate.call_args_list:
+        path = c.args[0] if c.args else c.kwargs.get("path")
+        if path == "/api/dcim/devices/":
+            return c.args[1] if len(c.args) > 1 else c.kwargs.get("params")
+    return None
+
+
 def test_list_saved_resolves_into_filters() -> None:
     app = typer.Typer()
     client = MagicMock()
@@ -376,9 +391,7 @@ def test_list_saved_resolves_into_filters() -> None:
     register_dynamic_commands(app, model, lambda: ctx)
     result = CliRunner().invoke(app, ["dcim", "devices", "list", "--saved", "active-sw"])
     assert result.exit_code == 0, result.output
-    client.paginate.assert_called_once_with(
-        "/api/dcim/devices/", {"status": "active", "role": "switch"}
-    )
+    assert _data_list_params(client) == {"status": "active", "role": "switch"}
 
 
 def test_explicit_filter_overrides_saved() -> None:
@@ -392,7 +405,7 @@ def test_explicit_filter_overrides_saved() -> None:
         app, ["dcim", "devices", "list", "--saved", "active-sw", "--filter", "status=offline"]
     )
     assert result.exit_code == 0, result.output
-    client.paginate.assert_called_once_with("/api/dcim/devices/", {"status": "offline"})
+    assert _data_list_params(client) == {"status": "offline"}
 
 
 def test_explicit_typed_option_overrides_saved() -> None:
@@ -408,7 +421,7 @@ def test_explicit_typed_option_overrides_saved() -> None:
         app, ["dcim", "devices", "list", "--saved", "active-sw", "--status", "offline"]
     )
     assert result.exit_code == 0, result.output
-    client.paginate.assert_called_once_with("/api/dcim/devices/", {"status": "offline"})
+    assert _data_list_params(client) == {"status": "offline"}
 
 
 def test_unknown_saved_name_exits_2() -> None:
@@ -420,4 +433,5 @@ def test_unknown_saved_name_exits_2() -> None:
     register_dynamic_commands(app, model, lambda: ctx)
     result = CliRunner().invoke(app, ["dcim", "devices", "list", "--saved", "nope"])
     assert result.exit_code == 2
-    client.paginate.assert_not_called()
+    # An unknown saved name aborts before any data is fetched.
+    assert _data_list_params(client) is None

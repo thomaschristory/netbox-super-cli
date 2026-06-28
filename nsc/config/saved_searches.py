@@ -6,6 +6,8 @@ one implementation and the logic stays unit-testable without any I/O.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from nsc.config.models import Config
 
 _MIN_PRINTABLE = 0x20
@@ -52,3 +54,59 @@ def get_saved_search(config: Config, tag: str, resource: str, name: str) -> dict
 def list_saved_searches(config: Config, tag: str, resource: str) -> list[str]:
     """Sorted names of saved searches for `<tag>.<resource>` (empty if none)."""
     return sorted(config.saved_searches.get(tag, {}).get(resource, {}))
+
+
+class ConfigFileSavedSearchStore:
+    """Offline fallback: saved searches in `config.yaml`, keyed by tag/resource.
+
+    Used when NetBox's native saved filters can't be reached. Reads come from the
+    in-memory `Config`; writes round-trip `config.yaml` (preserving comments) and
+    mutate the in-memory config so a later read in the same session is consistent.
+    """
+
+    def __init__(self, config: Config, *, config_file: Path | None = None) -> None:
+        self._config = config
+        if config_file is None:
+            from nsc.config.settings import default_paths  # noqa: PLC0415
+
+            config_file = default_paths().config_file
+        self._config_file = config_file
+
+    def list(self, tag: str, resource: str) -> dict[str, dict[str, str]]:
+        sets = self._config.saved_searches.get(tag, {}).get(resource, {})
+        return {name: dict(params) for name, params in sets.items()}
+
+    def save(self, tag: str, resource: str, name: str, params: dict[str, str]) -> None:
+        # Validate before touching disk: a dotted name would split into a nested
+        # map under set_path and corrupt the file.
+        validate_saved_search_name(name)
+        from nsc.config.writer import (  # noqa: PLC0415
+            acquire_lock,
+            atomic_write,
+            dump_round_trip,
+            load_round_trip,
+            set_path,
+        )
+
+        with acquire_lock(self._config_file):
+            doc = load_round_trip(self._config_file)
+            set_path(doc, f"saved_searches.{tag}.{resource}.{name}", dict(params))
+            atomic_write(self._config_file, dump_round_trip(doc))
+        self._config.saved_searches.setdefault(tag, {}).setdefault(resource, {})[name] = dict(
+            params
+        )
+
+    def delete(self, tag: str, resource: str, name: str) -> None:
+        from nsc.config.writer import (  # noqa: PLC0415
+            acquire_lock,
+            atomic_write,
+            dump_round_trip,
+            load_round_trip,
+            unset_path,
+        )
+
+        with acquire_lock(self._config_file):
+            doc = load_round_trip(self._config_file)
+            unset_path(doc, f"saved_searches.{tag}.{resource}.{name}")
+            atomic_write(self._config_file, dump_round_trip(doc))
+        self._config.saved_searches.get(tag, {}).get(resource, {}).pop(name, None)

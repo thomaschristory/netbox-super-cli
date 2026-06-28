@@ -128,22 +128,33 @@ def _resolve_saved_filters(
     ctx: RuntimeContext,
     tag_name: str,
     resource_name: str,
+    list_path: str,
     saved_name: str | None,
     explicit_filters: list[tuple[str, str]],
     typed_kwargs: dict[str, Any],
 ) -> list[tuple[str, str]]:
     """Layer a `--saved` filter set under explicit `--filter` and typed options.
 
-    Saved params are the base; explicit `--filter` pairs and any non-None typed
-    query option (already in ``typed_kwargs``) win. Order matters: ``handle_list``
-    overlays ``ctx.filters`` onto the typed-option params, so saved keys that the
-    user also set via a typed flag must be dropped here to let the flag win.
+    The set is resolved against NetBox's native saved filters (interchangeable
+    with the web UI), falling back to the local `config.yaml` map when the API is
+    unavailable. Saved params are the base; explicit `--filter` pairs and any
+    non-None typed query option (already in ``typed_kwargs``) win. Order matters:
+    ``handle_list`` overlays ``ctx.filters`` onto the typed-option params, so
+    saved keys that the user also set via a typed flag must be dropped here to let
+    the flag win.
     """
     if saved_name is None:
         return explicit_filters
-    from nsc.config.saved_searches import get_saved_search  # noqa: PLC0415
+    from nsc.config.saved_searches import ConfigFileSavedSearchStore  # noqa: PLC0415
+    from nsc.savedfilters.store import NativeSavedFilterStore  # noqa: PLC0415
 
-    saved = get_saved_search(ctx.config, tag_name, resource_name, saved_name)
+    store = NativeSavedFilterStore(
+        ctx.client,
+        ConfigFileSavedSearchStore(ctx.config),
+        on_error=lambda message: typer.echo(f"Warning: {message}", err=True),
+    )
+    available = store.list(list_path, tag_name, resource_name)
+    saved = available.get(saved_name)
     if saved is None:
         raise typer.BadParameter(
             f"no saved search named {saved_name!r} for {tag_name}/{resource_name}"
@@ -191,7 +202,7 @@ def _build_read_closure(
             "limit": limit,
             "fetch_all": fetch_all,
             "filters": _resolve_saved_filters(
-                ctx, tag_name, resource_name, saved_name, explicit_filters, kwargs
+                ctx, tag_name, resource_name, operation.path, saved_name, explicit_filters, kwargs
             ),
         }
         if output:
@@ -350,9 +361,10 @@ def _build_global_flag_params() -> tuple[inspect.Parameter, ...]:
                 None,
                 "--saved",
                 help=(
-                    "Apply a LOCAL named filter set saved from the TUI (config "
-                    "`saved_searches`). Explicit --filter/typed options override it. "
-                    "Unrelated to NetBox server-side saved filters."
+                    "Apply a named saved filter for this resource. Resolves against "
+                    "NetBox's native saved filters (interchangeable with the web UI), "
+                    "falling back to the local config `saved_searches` when the API is "
+                    "unavailable. Explicit --filter/typed options override it."
                 ),
             ),
         ),

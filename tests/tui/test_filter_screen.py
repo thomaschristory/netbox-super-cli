@@ -418,6 +418,7 @@ async def test_save_search_invokes_app_callback() -> None:
         prompt = app.screen
         prompt.dismiss("active-sw")
         await pilot.pause()
+        await app.workers.wait_for_complete()
         assert app.save_calls == [("dcim", "devices", "active-sw", {"status": "active"})]
 
 
@@ -462,6 +463,8 @@ async def test_load_saved_search_repopulates_state_and_chips() -> None:
         assert isinstance(screen, FilterScreen)
         screen.action_load_search()
         await pilot.pause()
+        await app.workers.wait_for_complete()
+        await pilot.pause()
         picker = app.screen
         assert isinstance(picker, SavedSearchPicker)
         await pilot.press("enter")
@@ -481,9 +484,12 @@ async def test_delete_saved_search_from_picker_invokes_app_callback() -> None:
         assert isinstance(screen, FilterScreen)
         screen.action_load_search()
         await pilot.pause()
+        await app.workers.wait_for_complete()
+        await pilot.pause()
         picker = app.screen
         assert isinstance(picker, SavedSearchPicker)
         # The delete key binding is the only way to remove a saved search.
         await pilot.press("d")
         await pilot.pause()
+        await app.workers.wait_for_complete()
         assert app.delete_calls == [("dcim", "devices", "active-sw")]
