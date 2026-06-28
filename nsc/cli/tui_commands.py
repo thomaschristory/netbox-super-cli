@@ -41,44 +41,13 @@ def _save_columns(tag: str, resource: str, columns: list[str]) -> None:
         atomic_write(path, dump_round_trip(doc))
 
 
-def _save_search(tag: str, resource: str, name: str, params: dict[str, str]) -> None:
-    """Persist a filter set to ``saved_searches.<tag>.<resource>.<name>``."""
-    from nsc.config.saved_searches import validate_saved_search_name  # noqa: PLC0415
-    from nsc.config.settings import default_paths  # noqa: PLC0415
-    from nsc.config.writer import (  # noqa: PLC0415
-        acquire_lock,
-        atomic_write,
-        dump_round_trip,
-        load_round_trip,
-        set_path,
-    )
+def _build_saved_filter_store(runtime: RuntimeContext) -> object:
+    """Native NetBox SavedFilter store with a config.yaml offline fallback."""
+    from nsc.config.saved_searches import ConfigFileSavedSearchStore  # noqa: PLC0415
+    from nsc.savedfilters.store import NativeSavedFilterStore  # noqa: PLC0415
 
-    # Defensive: a dotted name would split into a nested map under set_path and
-    # corrupt the file. Validate before touching disk so the file is untouched.
-    validate_saved_search_name(name)
-    path = default_paths().config_file
-    with acquire_lock(path):
-        doc = load_round_trip(path)
-        set_path(doc, f"saved_searches.{tag}.{resource}.{name}", dict(params))
-        atomic_write(path, dump_round_trip(doc))
-
-
-def _delete_search(tag: str, resource: str, name: str) -> None:
-    """Remove ``saved_searches.<tag>.<resource>.<name>`` and prune empty parents."""
-    from nsc.config.settings import default_paths  # noqa: PLC0415
-    from nsc.config.writer import (  # noqa: PLC0415
-        acquire_lock,
-        atomic_write,
-        dump_round_trip,
-        load_round_trip,
-        unset_path,
-    )
-
-    path = default_paths().config_file
-    with acquire_lock(path):
-        doc = load_round_trip(path)
-        unset_path(doc, f"saved_searches.{tag}.{resource}.{name}")
-        atomic_write(path, dump_round_trip(doc))
+    fallback = ConfigFileSavedSearchStore(runtime.config)
+    return NativeSavedFilterStore(runtime.client, fallback)
 
 
 def register(app: typer.Typer) -> None:
@@ -94,13 +63,6 @@ def register(app: typer.Typer) -> None:
         from nsc.tui import run_tui  # noqa: PLC0415  # deferred: keeps Textual lazy.
 
         column_prefs = {tag: dict(resources) for tag, resources in runtime.config.columns.items()}
-        saved_searches = {
-            tag: {
-                res: {name: dict(params) for name, params in sets.items()}
-                for res, sets in resources.items()
-            }
-            for tag, resources in runtime.config.saved_searches.items()
-        }
         run_tui(
             runtime.command_model,
             runtime.client,
@@ -108,9 +70,7 @@ def register(app: typer.Typer) -> None:
             save_columns=_save_columns,
             column_prefs=column_prefs,
             object_colors=runtime.object_colors,
-            saved_searches=saved_searches,
-            save_search=_save_search,
-            delete_search=_delete_search,
+            saved_filter_store=_build_saved_filter_store(runtime),
         )
 
     # `tui` is canonical; `interactive` and `i` are hidden aliases for the same

@@ -24,6 +24,7 @@ def run_tui(
     saved_searches: SavedSearchMap | None = None,
     save_search: Callable[[str, str, str, dict[str, str]], None] | None = None,
     delete_search: Callable[[str, str, str], None] | None = None,
+    saved_filter_store: Any | None = None,
 ) -> None:
     """Lazy entrypoint so importing `nsc.tui` never imports Textual eagerly."""
     from nsc.tui.app import run_tui as _run  # noqa: PLC0415  # deferred: keeps Textual lazy.
@@ -38,4 +39,5 @@ def run_tui(
         saved_searches=saved_searches,
         save_search=save_search,
         delete_search=delete_search,
+        saved_filter_store=saved_filter_store,
     )

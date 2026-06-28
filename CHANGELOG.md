@@ -2,6 +2,22 @@
 
 All notable changes to netbox-super-cli are tracked here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) loosely. From v1.0.0 onward, releases follow [Semantic Versioning](https://semver.org/) and the version in `pyproject.toml` matches the git tag. Pre-1.0 milestones (Phase 1-5) were pinned by tag while `pyproject.toml` stayed at `0.0.1`.
 
+## [Unreleased]
+
+### Changed
+
+- **Saved searches are now NetBox-native** ([#129]). Filter sets saved from the
+  TUI (`Ctrl+W`) and applied via `--saved` are stored as NetBox saved filters
+  (`extras.saved-filters`), scoped to the resource's object type, so they are
+  fully interchangeable with the web UI's filter dropdown — a search saved in
+  `nsc` appears in the web UI and vice versa. The object type is resolved from
+  NetBox's own object-type registry (`/api/core/object-types/`), so the mapping
+  is exact rather than guessed. When NetBox is unreachable or the user lacks
+  permission on `extras.savedfilter`, saves/loads transparently fall back to the
+  previous local `config.yaml` store and surface a notice instead of failing.
+
+[#129]: https://github.com/thomaschristory/netbox-super-cli/issues/129
+
 ## v1.4.0 — 2026-06-26
 
 Minor release. Three user-facing features for the interactive TUI and table

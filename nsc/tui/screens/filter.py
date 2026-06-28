@@ -11,6 +11,7 @@ a slug while the ``_id`` variant always accepts the picked record's id.
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any, ClassVar
 
 from textual.app import ComposeResult
@@ -271,6 +272,8 @@ class FilterScreen(ModalScreen[dict[str, str]]):
         )
         from nsc.tui.screens.saved_search_picker import SavedSearchNamePrompt  # noqa: PLC0415
 
+        tag, resource = self._tag, self._resource
+
         def _save(name: str | None) -> None:
             if not name or not name.strip():
                 return
@@ -280,19 +283,30 @@ class FilterScreen(ModalScreen[dict[str, str]]):
             except InvalidSavedSearchName as exc:
                 self.notify(str(exc), severity="error")
                 return
-            self.app.save_search(  # type: ignore[attr-defined]
-                self._tag, self._resource, cleaned, self.state.as_params()
-            )
+            # The store may hit the NetBox API; keep it off the event loop so the
+            # UI never freezes (mirrors ListScreen's threaded fetch).
+            self.run_worker(self._save_worker(tag, resource, cleaned, self.state.as_params()))
 
         self.app.push_screen(SavedSearchNamePrompt(), _save)
+
+    async def _save_worker(
+        self, tag: str, resource: str, name: str, params: dict[str, str]
+    ) -> None:
+        await asyncio.to_thread(self.app.save_search, tag, resource, name, params)  # type: ignore[attr-defined]
 
     def action_load_search(self) -> None:
         if self._tag is None or self._resource is None:
             return
-        reader = getattr(self.app, "saved_searches_for", None)
-        if not callable(reader):
+        if not callable(getattr(self.app, "saved_searches_for", None)):
             return
-        saved: dict[str, dict[str, str]] = reader(self._tag, self._resource)
+        self.run_worker(self._load_worker(self._tag, self._resource))
+
+    async def _load_worker(self, tag: str, resource: str) -> None:
+        saved: dict[str, dict[str, str]] = await asyncio.to_thread(
+            self.app.saved_searches_for,  # type: ignore[attr-defined]
+            tag,
+            resource,
+        )
         if not saved:
             self.notify("No saved searches for this resource yet.")
             return
@@ -318,8 +332,12 @@ class FilterScreen(ModalScreen[dict[str, str]]):
         self.app.push_screen(SavedSearchPicker(sorted(saved)), _chosen)
 
     def _delete_saved(self, name: str) -> None:
-        deleter = getattr(self.app, "delete_search", None)
-        if not callable(deleter):
+        if self._tag is None or self._resource is None:
             return
-        deleter(self._tag, self._resource, name)
+        if not callable(getattr(self.app, "delete_search", None)):
+            return
+        self.run_worker(self._delete_worker(self._tag, self._resource, name))
+
+    async def _delete_worker(self, tag: str, resource: str, name: str) -> None:
+        await asyncio.to_thread(self.app.delete_search, tag, resource, name)  # type: ignore[attr-defined]
         self.notify(f"Deleted saved search {name!r}.")

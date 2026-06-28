@@ -85,9 +85,12 @@ uv run nsc ipam prefixes list --filter created__gte=2026-01-01 --output yaml
 
 ### Saved searches
 
-Filter sets you save from the TUI (Ctrl+W in the filter builder) are stored
-locally under `saved_searches` in `~/.nsc/config.yaml`, keyed by tag/resource.
-Re-apply one on the CLI with `--saved`:
+Filter sets you save from the TUI (Ctrl+W in the filter builder) are stored as
+**NetBox native saved filters** (`extras.saved-filters`), scoped to the resource's
+object type. A search you save in `nsc` shows up in the NetBox web UI's filter
+dropdown for that object — and a filter saved in the web UI loads in the TUI
+(Ctrl+O) — so the two are fully interchangeable. Re-apply one on the CLI with
+`--saved`:
 
 ```sh
 uv run nsc dcim devices list --saved active-switches
@@ -95,9 +98,10 @@ uv run nsc dcim devices list --saved active-switches
 uv run nsc dcim devices list --saved active-switches --status offline
 ```
 
-This is a local, per-config convenience and is unrelated to NetBox's
-server-side saved filters (`extras saved-filters`), which store web-UI query
-strings.
+When NetBox is unreachable (offline, or missing permission on
+`extras.savedfilter`), `nsc` transparently falls back to a local store under
+`saved_searches` in `~/.nsc/config.yaml`, keyed by tag/resource, and tells you it
+did so.
 
 ### Object colors
 

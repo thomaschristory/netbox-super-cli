@@ -38,6 +38,7 @@ class NscTuiApp(App[None]):
         saved_searches: SavedSearchMap | None = None,
         save_search: Callable[[str, str, str, dict[str, str]], None] | None = None,
         delete_search: Callable[[str, str, str], None] | None = None,
+        saved_filter_store: Any | None = None,
     ) -> None:
         super().__init__()
         self._model = model
@@ -49,6 +50,9 @@ class NscTuiApp(App[None]):
         self._saved_searches: SavedSearchMap = saved_searches or {}
         self._save_search = save_search
         self._delete_search = delete_search
+        self._saved_filter_store = saved_filter_store
+        if saved_filter_store is not None and getattr(saved_filter_store, "on_error", None) is None:
+            saved_filter_store.on_error = self._notify_saved_filter_issue
 
     def columns_for(self, tag: str, resource: str) -> list[str] | None:
         """Saved visible columns for a resource, if any (read by ListScreen)."""
@@ -61,11 +65,35 @@ class NscTuiApp(App[None]):
         if self._save_columns is not None:
             self._save_columns(tag, resource, columns)
 
+    def _list_path(self, tag: str, resource: str) -> str:
+        """The NetBox list URL for a resource, used to resolve its object type."""
+        try:
+            list_op = self._model.tags[tag].resources[resource].list_op
+        except KeyError:
+            return ""
+        return list_op.path if list_op is not None else ""
+
+    def _notify_saved_filter_issue(self, message: str) -> None:
+        self.notify(message, severity="warning")
+
     def saved_searches_for(self, tag: str, resource: str) -> dict[str, dict[str, str]]:
-        """Named saved filter sets for a resource (read by FilterScreen)."""
+        """Named saved filter sets for a resource (read by FilterScreen).
+
+        Backed by NetBox's native saved filters when a store is wired (so the web
+        UI's filters appear here too); otherwise the in-memory config map.
+        """
+        if self._saved_filter_store is not None:
+            result: dict[str, dict[str, str]] = self._saved_filter_store.list(
+                self._list_path(tag, resource), tag, resource
+            )
+            return result
         return self._saved_searches.get(tag, {}).get(resource, {})
 
     def save_search(self, tag: str, resource: str, name: str, params: dict[str, str]) -> None:
+        if self._saved_filter_store is not None:
+            path = self._list_path(tag, resource)
+            self._saved_filter_store.save(path, tag, resource, name, params)
+            return
         # Update the in-memory map too so the picker reflects the new entry
         # immediately, without a relaunch.
         self._saved_searches.setdefault(tag, {}).setdefault(resource, {})[name] = dict(params)
@@ -73,6 +101,9 @@ class NscTuiApp(App[None]):
             self._save_search(tag, resource, name, params)
 
     def delete_search(self, tag: str, resource: str, name: str) -> None:
+        if self._saved_filter_store is not None:
+            self._saved_filter_store.delete(self._list_path(tag, resource), tag, resource, name)
+            return
         self._saved_searches.get(tag, {}).get(resource, {}).pop(name, None)
         if self._delete_search is not None:
             self._delete_search(tag, resource, name)
@@ -129,6 +160,7 @@ def run_tui(
     saved_searches: SavedSearchMap | None = None,
     save_search: Callable[[str, str, str, dict[str, str]], None] | None = None,
     delete_search: Callable[[str, str, str], None] | None = None,
+    saved_filter_store: Any | None = None,
 ) -> None:
     NscTuiApp(
         model,
@@ -140,4 +172,5 @@ def run_tui(
         saved_searches=saved_searches,
         save_search=save_search,
         delete_search=delete_search,
+        saved_filter_store=saved_filter_store,
     ).run()
