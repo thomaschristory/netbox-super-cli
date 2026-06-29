@@ -697,6 +697,21 @@ async def test_edit_custom_field_row_shows_human_label_not_raw_key() -> None:
 
 
 @pytest.mark.asyncio
+async def test_edit_diff_modal_shows_custom_field_label_not_raw_key() -> None:
+    record = {"id": 5, "name": "sw1", "custom_fields": {"tier": "silver"}, "tags": []}
+    app = _CfEditApp(_SpyClient([]), record)
+    async with app.run_test(size=(120, 60)) as pilot:
+        await pilot.pause()
+        screen = _cf_edit_screen(app)
+        screen.staged["custom_fields.tier"] = "gold"
+        screen.action_save()
+        await pilot.pause()
+        assert isinstance(app.screen, DiffModal)
+        fields = [row.field for row in app.screen._rows]
+        assert fields == ["Tier"]
+
+
+@pytest.mark.asyncio
 async def test_edit_saves_custom_field_nested() -> None:
     client = _SpyClient([])
     record = {"id": 5, "name": "sw1", "custom_fields": {"tier": "silver"}, "tags": []}

@@ -19,7 +19,8 @@ from nsc.model.command_model import (
 )
 from nsc.savedfilters.custom_fields import CustomFieldDef
 from nsc.savedfilters.tags import TagDef
-from nsc.tui.forms import SET_NULL, tags_payload
+from nsc.tui.bulk import bulk_diff
+from nsc.tui.forms import SET_NULL, flatten_custom_fields, tags_payload
 from nsc.tui.screens.bulk_edit_form import BulkEditForm
 from nsc.tui.screens.list import ListScreen
 from nsc.tui.screens.record_picker import RecordPicker
@@ -977,6 +978,48 @@ async def test_custom_field_ui_edit_saves_end_to_end() -> None:
     assert client.patch_calls
     for call in client.patch_calls:
         assert call["json"] == {"custom_fields": {"tier": "gold"}}
+
+
+@pytest.mark.asyncio
+async def test_opting_in_shared_boolean_cf_without_editing_is_a_noop() -> None:
+    # Records share custom_fields.flag == True. The widget must seed that shared
+    # value so opting it in (no edit) does NOT silently flip every record to False.
+    defs = {"flag": CustomFieldDef("flag", "Flag", type="boolean")}
+    sel = [
+        {"id": 1, "name": "a", "custom_fields": {"flag": True}, "tags": []},
+        {"id": 2, "name": "b", "custom_fields": {"flag": True}, "tags": []},
+    ]
+    app = _CfBulkApp(_SpyClient([]), defs=defs, tags=None, selected=sel)
+    async with app.run_test(size=(120, 60)) as pilot:
+        await pilot.pause()
+        screen = _cf_screen(app)
+        assert screen.query_one("#field-custom_fields-flag", Switch).value is True
+        screen.query_one("#include-custom_fields-flag", Switch).value = True
+        await pilot.pause()
+        # Opted in but unchanged: stages the shared True, so no per-record patch.
+        flattened = [flatten_custom_fields(r) for r in sel]
+        changes = bulk_diff(flattened, screen.bulk_set, ())
+        assert all(not c.patch for c in changes)
+
+
+@pytest.mark.asyncio
+async def test_opting_in_shared_multiselect_cf_without_editing_is_a_noop() -> None:
+    # Records share a multiselect custom field; opting it in unchanged must not
+    # clear it to an empty list.
+    defs = {"envs": CustomFieldDef("envs", "Envs", type="multiselect", choices=("dev", "qa"))}
+    sel = [
+        {"id": 1, "name": "a", "custom_fields": {"envs": ["dev", "qa"]}, "tags": []},
+        {"id": 2, "name": "b", "custom_fields": {"envs": ["dev", "qa"]}, "tags": []},
+    ]
+    app = _CfBulkApp(_SpyClient([]), defs=defs, tags=None, selected=sel)
+    async with app.run_test(size=(120, 60)) as pilot:
+        await pilot.pause()
+        screen = _cf_screen(app)
+        screen.query_one("#include-custom_fields-envs", Switch).value = True
+        await pilot.pause()
+        flattened = [flatten_custom_fields(r) for r in sel]
+        changes = bulk_diff(flattened, screen.bulk_set, ())
+        assert all(not c.patch for c in changes)
 
 
 @pytest.mark.asyncio

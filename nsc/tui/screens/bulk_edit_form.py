@@ -100,9 +100,15 @@ class BulkEditForm(Screen[None]):
         self._fk_labels: dict[str, str] = {}
         body = update_op.request_body
         field_names = list(body.fields) if body is not None else []
+        # Custom fields are staged under flattened ``custom_fields.<name>`` keys,
+        # so seed their shared value from flattened records too — otherwise a
+        # widget defaults (e.g. a boolean to False) and opting it in unchanged
+        # would silently overwrite the records' shared value.
+        cf_names = [f"custom_fields.{cf.name}" for cf in (custom_field_defs or {}).values()]
+        flattened_records = [flatten_custom_fields(record) for record in selected_records]
         # Shared current value per field, to seed the widgets (does NOT opt the
         # field in — the include toggle still gates what gets set).
-        self._shared = shared_values(selected_records, field_names)
+        self._shared = shared_values(flattened_records, field_names + cf_names)
         self.progress_total = 0
         self.progress_done = 0
         self.title = f"Bulk edit {len(selected_records)} {resource_name}"
@@ -195,8 +201,16 @@ class BulkEditForm(Screen[None]):
     def _compose_widget(self, name: str, spec: WidgetSpec) -> ComposeResult:
         wid = f"field-{encode_field_id(name)}"
         if spec.kind == "multi_select":
+            # Tags seed via spec.selected; a custom-field multiselect seeds its
+            # shared current list so opting it in unchanged isn't a destructive
+            # clear (tags are intentionally left blank — they have their own flow).
+            selected = set(spec.selected)
+            if not selected and name != "tags":
+                shared = self._shared.get(name)
+                if isinstance(shared, list):
+                    selected = {str(v) for v in shared}
             yield SelectionList[str](
-                *(Selection(label, val, val in spec.selected) for label, val in spec.options),
+                *(Selection(label, val, val in selected) for label, val in spec.options),
                 id=wid,
                 classes="bulk-multiselect",
             )
@@ -285,6 +299,10 @@ class BulkEditForm(Screen[None]):
     def on_select_changed(self, event: Select.Changed) -> None:
         name = self._strip(event.select.id, "field-")
         if name is None:
+            return
+        # A blank select on a field the user hasn't opted in must not stage a null
+        # (which would clear the field on apply). Only the explicit ∅ button nulls.
+        if event.value is Select.NULL and name not in self._included:
             return
         self._values[name] = None if event.value is Select.NULL else event.value
 
