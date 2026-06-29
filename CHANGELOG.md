@@ -23,6 +23,12 @@ actually save.
   empty; opting it in seeded a null and cleared a value the user never edited.
   Opting in a blank select now contributes no change; only the explicit ∅ button
   nulls.
+- **Bulk-editing a shared custom field could overwrite it on opt-in** ([#137]).
+  Custom-field widgets didn't seed the value the selected records share, so a
+  shared boolean rendered as `False` and opting it in unchanged flipped every
+  record to `False` (and a shared multiselect cleared to empty). Custom-field
+  widgets now seed the shared value, so opting a field in without editing it is a
+  no-op.
 
 [#137]: https://github.com/thomaschristory/netbox-super-cli/issues/137
 
