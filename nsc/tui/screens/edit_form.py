@@ -132,7 +132,7 @@ class EditForm(Screen[None]):
     def _compose_field(self, name: str, spec: WidgetSpec) -> ComposeResult:
         value = _record_value(self._record, name)
         with Horizontal(classes="edit-field"):
-            yield Label(name, classes="edit-label")
+            yield Label(spec.label or name, classes="edit-label")
             yield from self._compose_widget(name, spec, value)
             if spec.nullable and spec.kind != "multi_select":
                 yield Button("∅", id=f"setnull-{encode_field_id(name)}", classes="edit-setnull")
@@ -292,8 +292,10 @@ class EditForm(Screen[None]):
             if confirmed:
                 self._apply_patch(patch, sensitive)
 
+        labels = {name: spec.label for name, spec in self._specs.items() if spec.label}
         self.app.push_screen(
-            DiffModal(diff_rows(self._record, patch, sensitive, self._fk_labels)), _on_confirm
+            DiffModal(diff_rows(self._record, patch, sensitive, self._fk_labels, labels)),
+            _on_confirm,
         )
 
     def _apply_patch(self, patch: dict[str, Any], sensitive_paths: tuple[str, ...]) -> None:

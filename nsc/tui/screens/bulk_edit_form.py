@@ -111,6 +111,10 @@ class BulkEditForm(Screen[None]):
     def bulk_set(self) -> dict[str, Any]:
         return {name: self._values[name] for name in self._included if name in self._values}
 
+    def _field_labels(self) -> dict[str, str]:
+        """Human labels for fields that carry one (custom fields), for the diff."""
+        return {name: spec.label for name, spec in self._specs.items() if spec.label}
+
     def compose(self) -> ComposeResult:
         yield Header()
         with VerticalScroll(id="bulk-form-body"):
@@ -142,7 +146,7 @@ class BulkEditForm(Screen[None]):
     def _compose_field(self, name: str, spec: WidgetSpec) -> ComposeResult:
         with Horizontal(classes="bulk-field"):
             yield Switch(value=False, id=f"include-{encode_field_id(name)}", classes="bulk-include")
-            yield Label(name, classes="bulk-label")
+            yield Label(spec.label or name, classes="bulk-label")
             yield from self._compose_widget(name, spec)
             if spec.nullable and spec.kind != "multi_select":
                 yield Button("∅", id=f"setnull-{encode_field_id(name)}", classes="bulk-setnull")
@@ -264,7 +268,10 @@ class BulkEditForm(Screen[None]):
             return self._multiselect_value(name, self.query_one(wid, SelectionList).selected)
         if spec is not None and spec.kind == "select":
             value = self.query_one(wid, Select).value
-            return None if value is Select.NULL else value
+            # A blank select (no/unresolved choices, or a current value not in the
+            # options) must not seed a null on opt-in — that would silently clear a
+            # field the user never edited. Only the explicit ∅ button nulls.
+            return _NO_SEED if value is Select.NULL else value
         if spec is not None and spec.kind == "switch":
             return self.query_one(wid, Switch).value
         return self._coerce_input(name, self.query_one(wid, Input).value)
@@ -329,7 +336,9 @@ class BulkEditForm(Screen[None]):
         sensitive = body.sensitive_paths if body is not None else ()
         # Flatten custom_fields so each chosen custom_fields.<name> diffs per record.
         flattened = [flatten_custom_fields(record) for record in self._selected]
-        changes = bulk_diff(flattened, self.bulk_set, sensitive, self._fk_labels)
+        changes = bulk_diff(
+            flattened, self.bulk_set, sensitive, self._fk_labels, self._field_labels()
+        )
 
         def _on_confirm(confirmed: bool | None) -> None:
             if confirmed:

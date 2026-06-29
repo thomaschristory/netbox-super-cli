@@ -144,9 +144,11 @@ endpoint can filter by this one. Switch tabs with <kbd>Tab</kbd> and press
 ## Bulk editing
 
 Select rows on a list with <kbd>v</kbd>/<kbd>Space</kbd>, then press
-<kbd>B</kbd>. Choose *which* fields to set (each has an include toggle) and one
-value each. Fields are **prepopulated** with the value the selected records
-share, so a small tweak doesn't mean retyping.
+<kbd>B</kbd>. Each field is one row: flip its **include toggle** (the switch on
+the left) to opt it into the change, then set its value — a field with the toggle
+off is left untouched. Custom fields appear as individual rows under their human
+label. Fields are **prepopulated** with the value the selected records share, so
+a small tweak doesn't mean retyping.
 
 Press <kbd>p</kbd> to **preview** — a per-record diff of exactly what will
 change (records already matching are left untouched). Confirm to apply; a

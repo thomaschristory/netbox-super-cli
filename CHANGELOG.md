@@ -2,6 +2,30 @@
 
 All notable changes to netbox-super-cli are tracked here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) loosely. From v1.0.0 onward, releases follow [Semantic Versioning](https://semver.org/) and the version in `pyproject.toml` matches the git tag. Pre-1.0 milestones (Phase 1-5) were pinned by tag while `pyproject.toml` stayed at `0.0.1`.
 
+## v1.6.1 — 2026-06-29
+
+Patch release. Fixes the TUI bulk-edit form so custom-field edits are visible and
+actually save.
+
+### Fixed
+
+- **Bulk-edit include toggles were invisible, so edits silently didn't save**
+  ([#137]). The per-field include switch in the bulk-edit form was clipped to
+  zero width by its stylesheet and rendered blank — users couldn't see or flip
+  it, so no field was opted in and the apply produced no change with no error.
+  The toggle now sizes to fit its slider.
+- **Edit forms showed the raw `custom_fields.<name>` key** ([#137]). The
+  single-edit and bulk-edit forms, and the change-preview diff, now show a custom
+  field's human label (e.g. "Site Contact") instead of the raw dotted key,
+  matching the list-column labels added in v1.6.0.
+- **Opting in a custom-field select with an unresolved choice set could silently
+  null the field** ([#137]). A select whose choices couldn't be fetched rendered
+  empty; opting it in seeded a null and cleared a value the user never edited.
+  Opting in a blank select now contributes no change; only the explicit ∅ button
+  nulls.
+
+[#137]: https://github.com/thomaschristory/netbox-super-cli/issues/137
+
 ## v1.6.0 — 2026-06-29
 
 Minor release. The interactive TUI gets human-readable custom-field columns,
