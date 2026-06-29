@@ -53,6 +53,19 @@ class NscTuiApp(App[None]):
         self._saved_filter_store = saved_filter_store
         if saved_filter_store is not None and getattr(saved_filter_store, "on_error", None) is None:
             saved_filter_store.on_error = self._notify_saved_filter_issue
+        from nsc.savedfilters.custom_fields import CustomFieldResolver  # noqa: PLC0415
+        from nsc.savedfilters.tags import TagsResolver  # noqa: PLC0415
+
+        self._custom_field_resolver = CustomFieldResolver(client)
+        self._tags_resolver = TagsResolver(client)
+
+    def custom_field_defs_for(self, tag: str, resource: str) -> dict[str, Any] | None:
+        """Custom-field definitions for a resource (read by list/forms), or None."""
+        return self._custom_field_resolver.resolve(self._list_path(tag, resource))
+
+    def available_tags(self) -> Any | None:
+        """All NetBox tags (read by the tag-picker widget), or None if unavailable."""
+        return self._tags_resolver.resolve()
 
     def columns_for(self, tag: str, resource: str) -> list[str] | None:
         """Saved visible columns for a resource, if any (read by ListScreen)."""

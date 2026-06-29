@@ -36,6 +36,7 @@ def render(
     columns: list[str] | None = None,
     color: bool = False,
     object_colors: bool = False,
+    header_labels: dict[str, str] | None = None,
 ) -> None:
     records = [data] if isinstance(data, dict) else list(data)
     if not records:
@@ -48,7 +49,7 @@ def render(
 
     table = Table(show_header=True, header_style="bold")
     for col in fieldnames:
-        table.add_column(col)
+        table.add_column(header_labels.get(col, col) if header_labels else col)
     for r in flat_records:
         table.add_row(*[_format_cell(r.get(col, ""), color=color) for col in fieldnames])
 

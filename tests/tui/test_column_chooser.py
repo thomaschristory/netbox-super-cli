@@ -2,18 +2,24 @@ from __future__ import annotations
 
 import pytest
 from textual.app import App, ComposeResult
-from textual.widgets import Static
+from textual.widgets import Label, ListView, Static
 
 from nsc.tui.screens.columns import ColumnChooserScreen
 
 
 class _ChooserApp(App[None]):
-    def __init__(self, available: list[str], visible: list[str]) -> None:
+    def __init__(
+        self,
+        available: list[str],
+        visible: list[str],
+        labels: dict[str, str] | None = None,
+    ) -> None:
         super().__init__()
         self.result: list[str] | None = None
         self._sentinel = object()
         self._available = available
         self._visible = visible
+        self._chooser_labels = labels
 
     def compose(self) -> ComposeResult:
         yield Static("")
@@ -22,7 +28,9 @@ class _ChooserApp(App[None]):
         def _cb(cols: list[str] | None) -> None:
             self.result = cols
 
-        await self.push_screen(ColumnChooserScreen(self._available, self._visible), _cb)
+        await self.push_screen(
+            ColumnChooserScreen(self._available, self._visible, labels=self._chooser_labels), _cb
+        )
 
 
 def _chooser(app: _ChooserApp) -> ColumnChooserScreen:
@@ -115,3 +123,22 @@ async def test_empty_selection_is_not_applied() -> None:
         await pilot.pause()
         assert isinstance(app.screen, ColumnChooserScreen)  # still open
     assert app.result is None
+
+
+@pytest.mark.asyncio
+async def test_chooser_renders_labels_but_applies_raw_keys() -> None:
+    app = _ChooserApp(
+        available=["name", "custom_fields.rack_role"],
+        visible=["name", "custom_fields.rack_role"],
+        labels={"name": "name", "custom_fields.rack_role": "Rack Role"},
+    )
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        screen = _chooser(app)
+        shown = [label.render().plain for label in screen.query(ListView).first().query(Label)]
+        assert any("Rack Role" in s for s in shown)
+        assert not any("custom_fields.rack_role" in s for s in shown)
+        screen.action_apply()
+        await pilot.pause()
+    # The applied/visible columns keep the raw selector key, not the label.
+    assert app.result == ["name", "custom_fields.rack_role"]

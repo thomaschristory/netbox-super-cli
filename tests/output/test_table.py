@@ -57,3 +57,17 @@ def test_table_renders_placeholder_for_empty_list() -> None:
     buf = io.StringIO()
     render_table([], stream=buf)
     assert "(no records)" in buf.getvalue()
+
+
+def test_table_relabels_headers_with_header_labels() -> None:
+    buf = io.StringIO()
+    render_table(
+        [{"name": "a", "custom_fields": {"rack_role": "gold"}}],
+        stream=buf,
+        columns=["name", "custom_fields.rack_role"],
+        header_labels={"name": "name", "custom_fields.rack_role": "Rack Role"},
+    )
+    text = buf.getvalue()
+    assert "Rack Role" in text
+    assert "custom_fields.rack_role" not in text
+    assert "gold" in text

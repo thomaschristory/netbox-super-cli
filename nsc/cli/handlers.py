@@ -66,6 +66,28 @@ def _out(stream: TextIO | None) -> TextIO:
     return stream if stream is not None else sys.stdout
 
 
+def _custom_field_header_labels(
+    ctx: RuntimeContext, operation: Operation, columns: list[str] | None
+) -> dict[str, str] | None:
+    """Map ``custom_fields.<name>`` columns to their NetBox labels, or None.
+
+    Only fetches definitions when a custom-field column is actually selected, so
+    ordinary lists incur no extra request. Display-only: the raw key stays the
+    selector everywhere else.
+    """
+    if not columns or not any(c.startswith("custom_fields.") for c in columns):
+        return None
+    from nsc.savedfilters.custom_fields import (  # noqa: PLC0415
+        CustomFieldResolver,
+        custom_field_labels,
+    )
+
+    defs = CustomFieldResolver(ctx.client).resolve(operation.path)
+    if defs is None:
+        return None
+    return custom_field_labels(columns, defs)
+
+
 def parse_filters(raw: list[str]) -> dict[str, str]:
     out: dict[str, str] = {}
     for item in raw:
@@ -97,10 +119,12 @@ def handle_list(
                 page_size=ctx.page_size,
             )
         )
+        columns = ctx.resolve_columns(op_tag, op_resource, operation)
         render(
             rows,
             format=ctx.output_format,
-            columns=ctx.resolve_columns(op_tag, op_resource, operation),
+            columns=columns,
+            header_labels=_custom_field_header_labels(ctx, operation, columns),
             stream=_out(stream),
             compact=ctx.compact,
             color=ctx.color,

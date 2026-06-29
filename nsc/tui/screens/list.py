@@ -137,13 +137,28 @@ class ListScreen(Screen[None]):
         table.clear(columns=True)
         sample = records[0] if records else None
         columns = choose_columns(self._op, self._columns_config, sample)
-        table.add_columns(_MARKER_HEADER, *columns)
+        labels = self._header_labels(columns)
+        table.add_columns(_MARKER_HEADER, *(labels.get(c, c) for c in columns))
         object_colors = bool(getattr(self.app, "object_colors", False))
         rows = build_rows(records, columns, object_colors=object_colors)
         for record, row in zip(records, rows, strict=True):
             table.add_row(self._marker_for(record.get("id")), *row)
         self._records = records
         self._columns = columns
+
+    def _header_labels(self, columns: list[str]) -> dict[str, str]:
+        """Display labels for custom-field columns; raw key for everything else.
+
+        Only resolves definitions when a ``custom_fields.<name>`` column is shown,
+        so ordinary lists incur no extra request. The raw key stays the selector.
+        """
+        if not any(c.startswith("custom_fields.") for c in columns):
+            return {}
+        from nsc.savedfilters.custom_fields import custom_field_labels  # noqa: PLC0415
+
+        defs_fn = getattr(self.app, "custom_field_defs_for", None)
+        defs = defs_fn(self._tag, self._resource_name) if callable(defs_fn) else None
+        return custom_field_labels(columns, defs)
 
     def _prune_selection(self, records: list[dict[str, Any]]) -> None:
         present = {record.get("id") for record in records}
@@ -197,8 +212,14 @@ class ListScreen(Screen[None]):
             if callable(saver):
                 saver(self._tag, self._resource_name, columns)
 
+        available = available_columns(self._records)
         self.app.push_screen(
-            ColumnChooserScreen(available_columns(self._records), list(self._columns)), _apply
+            ColumnChooserScreen(
+                available,
+                list(self._columns),
+                labels=self._header_labels(available),
+            ),
+            _apply,
         )
 
     def action_cursor_down(self) -> None:

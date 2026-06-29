@@ -24,9 +24,16 @@ class ColumnChooserScreen(ModalScreen[list[str]]):
         ("escape", "cancel", "Cancel"),
     ]
 
-    def __init__(self, available: list[str], visible: list[str]) -> None:
+    def __init__(
+        self,
+        available: list[str],
+        visible: list[str],
+        *,
+        labels: dict[str, str] | None = None,
+    ) -> None:
         super().__init__()
         self.selection = ColumnSelection(available, visible)
+        self._labels = labels or {}
 
     def compose(self) -> ComposeResult:
         with Vertical(id="columns-box"):
@@ -42,7 +49,7 @@ class ColumnChooserScreen(ModalScreen[list[str]]):
         listing.clear()
         for name in self.selection.items:
             mark = "x" if self.selection.is_visible(name) else " "
-            listing.append(ListItem(Label(f"[{mark}] {name}")))
+            listing.append(ListItem(Label(f"[{mark}] {self._labels.get(name, name)}")))
         if self.selection.items:
             listing.index = max(0, min(index, len(self.selection.items) - 1))
 

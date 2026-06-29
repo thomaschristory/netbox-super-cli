@@ -14,6 +14,7 @@ def render(
     *,
     format: OutputFormat,
     columns: list[str] | None = None,
+    header_labels: dict[str, str] | None = None,
     stream: TextIO = sys.stdout,
     compact: bool = False,
     color: bool = False,
@@ -26,9 +27,16 @@ def render(
     elif format is OutputFormat.YAML:
         yaml_.render(data, stream=stream)
     elif format is OutputFormat.CSV:
-        csv_.render(data, stream=stream, columns=columns)
+        csv_.render(data, stream=stream, columns=columns, header_labels=header_labels)
     elif format is OutputFormat.TABLE:
-        table.render(data, stream=stream, columns=columns, color=color, object_colors=object_colors)
+        table.render(
+            data,
+            stream=stream,
+            columns=columns,
+            color=color,
+            object_colors=object_colors,
+            header_labels=header_labels,
+        )
     else:  # pragma: no cover  (StrEnum exhaustively covered above)
         raise ValueError(f"unknown output format: {format!r}")
 
