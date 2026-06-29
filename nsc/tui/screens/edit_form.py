@@ -13,10 +13,13 @@ from textual.app import ComposeResult
 from textual.binding import BindingType
 from textual.containers import Horizontal, VerticalScroll
 from textual.screen import Screen
-from textual.widgets import Button, Footer, Header, Input, Label, Select, Switch
+from textual.widgets import Button, Footer, Header, Input, Label, Select, SelectionList, Switch
+from textual.widgets.selection_list import Selection
 
 from nsc.http.errors import NetBoxAPIError, NetBoxClientError
 from nsc.model.command_model import CommandModel, Operation
+from nsc.savedfilters.custom_fields import CustomFieldDef
+from nsc.savedfilters.tags import TagDef
 from nsc.tui._bindings import textual_bindings
 from nsc.tui.errors import api_error_message
 from nsc.tui.fk import is_fk_value, resolve_fk_target
@@ -24,9 +27,17 @@ from nsc.tui.forms import (
     SET_NULL,
     WidgetSpec,
     compute_patch,
+    decode_field_id,
     diff_rows,
+    encode_field_id,
+    expand_custom_fields,
     field_to_widget,
     fk_display,
+    flatten_custom_fields,
+    nest_custom_fields,
+    tag_slugs,
+    tags_payload,
+    tags_widget_spec,
 )
 from nsc.tui.view import detail_path
 
@@ -73,6 +84,8 @@ class EditForm(Screen[None]):
         resource_name: str,
         operation: Operation,
         record: dict[str, Any],
+        custom_field_defs: dict[str, CustomFieldDef] | None = None,
+        available_tags: tuple[TagDef, ...] | None = None,
     ) -> None:
         super().__init__()
         self._model = model
@@ -80,7 +93,11 @@ class EditForm(Screen[None]):
         self._tag = tag
         self._resource_name = resource_name
         self._op = operation
-        self._record = record
+        # Explode custom_fields into custom_fields.<name> keys so the per-field
+        # widgets seed and diff individually; the patch is re-nested before send.
+        self._record = flatten_custom_fields(record)
+        self._cf_defs = custom_field_defs
+        self._tags = available_tags
         self._specs: dict[str, WidgetSpec] = {}
         self._fk_labels: dict[str, str] = {}
         self.staged: dict[str, Any] = {}
@@ -97,34 +114,51 @@ class EditForm(Screen[None]):
             fields = body.fields if body is not None else {}
             sensitive = body.sensitive_paths if body is not None else ()
             for name, field in fields.items():
-                spec = field_to_widget(name, field, sensitive)
-                self._specs[name] = spec
-                yield from self._compose_field(name, spec)
+                for spec in self._specs_for(name, field, sensitive):
+                    self._specs[spec.name] = spec
+                    yield from self._compose_field(spec.name, spec)
             yield Button("Save", id="save", classes="edit-save")
         yield Footer()
+
+    def _specs_for(self, name: str, field: Any, sensitive: tuple[str, ...]) -> list[WidgetSpec]:
+        """Widget spec(s) for a body field — expanding custom_fields and tags."""
+        if name == "custom_fields" and self._cf_defs:
+            return expand_custom_fields(self._cf_defs)
+        if name == "tags" and self._tags is not None:
+            current = tag_slugs(self._record.get("tags"))
+            return [tags_widget_spec(name, self._tags, current)]
+        return [field_to_widget(name, field, sensitive)]
 
     def _compose_field(self, name: str, spec: WidgetSpec) -> ComposeResult:
         value = _record_value(self._record, name)
         with Horizontal(classes="edit-field"):
             yield Label(name, classes="edit-label")
             yield from self._compose_widget(name, spec, value)
-            if spec.nullable:
-                yield Button("∅", id=f"setnull-{name}", classes="edit-setnull")
+            if spec.nullable and spec.kind != "multi_select":
+                yield Button("∅", id=f"setnull-{encode_field_id(name)}", classes="edit-setnull")
 
     def _compose_widget(self, name: str, spec: WidgetSpec, value: Any) -> ComposeResult:
+        wid = f"field-{encode_field_id(name)}"
+        if spec.kind == "multi_select":
+            yield SelectionList[str](
+                *(Selection(label, val, val in spec.selected) for label, val in spec.options),
+                id=wid,
+                classes="edit-multiselect",
+            )
+            return
         if self._is_fk(name, spec):
             yield from self._compose_fk(name, value)
             return
         if spec.kind == "select":
             options = [(choice, choice) for choice in spec.choices]
             select_value = value if value in spec.choices else Select.NULL
-            yield Select(options, value=select_value, id=f"field-{name}", allow_blank=True)
+            yield Select(options, value=select_value, id=wid, allow_blank=True)
             return
         if spec.kind == "switch":
-            yield Switch(value=bool(value), id=f"field-{name}")
+            yield Switch(value=bool(value), id=wid)
             return
         text = "" if value is None else str(value)
-        yield Input(value=text, password=spec.sensitive, id=f"field-{name}")
+        yield Input(value=text, password=spec.sensitive, id=wid)
 
     def _is_fk(self, name: str, spec: WidgetSpec) -> bool:
         # Writable FK fields type as oneOf[int, brief] -> UNKNOWN -> `text`, so a
@@ -154,7 +188,7 @@ class EditForm(Screen[None]):
     def _field_name(ident: str | None) -> str | None:
         if ident is None or not ident.startswith("field-"):
             return None
-        return ident.removeprefix("field-")
+        return decode_field_id(ident.removeprefix("field-"))
 
     def on_input_changed(self, event: Input.Changed) -> None:
         name = self._field_name(event.input.id)
@@ -197,13 +231,28 @@ class EditForm(Screen[None]):
             self.action_save()
             return
         if ident.startswith("setnull-"):
-            field = ident.removeprefix("setnull-")
+            field = decode_field_id(ident.removeprefix("setnull-"))
             self.staged[field] = SET_NULL
             # Drop any picked label so the diff can't show a name while nulling.
             self._fk_labels.pop(field, None)
             return
         if ident.startswith("fk-"):
             self._open_picker(ident.removeprefix("fk-"))
+
+    def on_selection_list_selected_changed(self, event: SelectionList.SelectedChanged[str]) -> None:
+        name = self._field_name(event.selection_list.id)
+        if name is None:
+            return
+        selected = tuple(str(v) for v in event.selection_list.selected)
+        if name == "tags":
+            # Only stage when the tag set actually changed, so an unchanged
+            # pre-seeded selection doesn't force a replace patch.
+            if set(selected) == set(tag_slugs(self._record.get("tags"))):
+                self.staged.pop(name, None)
+            else:
+                self.staged[name] = tags_payload(selected, self._tags or ())
+            return
+        self.staged[name] = list(selected)
 
     def _open_picker(self, name: str) -> None:
         target = resolve_fk_target(name, self._record.get(name), self._model)
@@ -237,6 +286,7 @@ class EditForm(Screen[None]):
         )
 
     def _apply_patch(self, patch: dict[str, Any], sensitive_paths: tuple[str, ...]) -> None:
+        patch = nest_custom_fields(patch)
         try:
             if self._create_mode:
                 self._client.post(

@@ -16,13 +16,38 @@ from textual.app import ComposeResult
 from textual.binding import BindingType
 from textual.containers import Horizontal, VerticalScroll
 from textual.screen import Screen
-from textual.widgets import Button, Footer, Header, Input, Label, ProgressBar, Select, Switch
+from textual.widgets import (
+    Button,
+    Footer,
+    Header,
+    Input,
+    Label,
+    ProgressBar,
+    Select,
+    SelectionList,
+    Switch,
+)
+from textual.widgets.selection_list import Selection
 
 from nsc.model.command_model import CommandModel, Operation
+from nsc.savedfilters.custom_fields import CustomFieldDef
+from nsc.savedfilters.tags import TagDef
 from nsc.tui._bindings import textual_bindings
 from nsc.tui.bulk import RecordChange, shared_values
 from nsc.tui.fk import is_fk_value, resolve_fk_target
-from nsc.tui.forms import SET_NULL, WidgetSpec, field_to_widget, fk_display
+from nsc.tui.forms import (
+    SET_NULL,
+    WidgetSpec,
+    decode_field_id,
+    encode_field_id,
+    expand_custom_fields,
+    field_to_widget,
+    fk_display,
+    flatten_custom_fields,
+    nest_custom_fields,
+    tags_payload,
+    tags_widget_spec,
+)
 from nsc.tui.view import detail_path
 
 # Sentinel: a picker FK opted in with neither a pick nor a shared value
@@ -56,6 +81,8 @@ class BulkEditForm(Screen[None]):
         resource_name: str,
         update_op: Operation,
         selected_records: list[dict[str, Any]],
+        custom_field_defs: dict[str, CustomFieldDef] | None = None,
+        available_tags: tuple[TagDef, ...] | None = None,
     ) -> None:
         super().__init__()
         self._model = model
@@ -64,6 +91,8 @@ class BulkEditForm(Screen[None]):
         self._resource_name = resource_name
         self._op = update_op
         self._selected = selected_records
+        self._cf_defs = custom_field_defs
+        self._tags = available_tags
         self._specs: dict[str, WidgetSpec] = {}
         self._values: dict[str, Any] = {}
         self._included: set[str] = set()
@@ -89,22 +118,34 @@ class BulkEditForm(Screen[None]):
             fields = body.fields if body is not None else {}
             sensitive = body.sensitive_paths if body is not None else ()
             for name, field in fields.items():
-                spec = field_to_widget(name, field, sensitive)
-                self._specs[name] = spec
-                yield from self._compose_field(name, spec)
+                for spec in self._specs_for(name, field, sensitive):
+                    self._specs[spec.name] = spec
+                    yield from self._compose_field(spec.name, spec)
             yield Button("Preview", id="preview", classes="bulk-preview")
             progress = ProgressBar(id="bulk-progress", show_eta=False)
             progress.display = False
             yield progress
         yield Footer()
 
+    def _specs_for(self, name: str, field: Any, sensitive: tuple[str, ...]) -> list[WidgetSpec]:
+        """Widget spec(s) for a body field — expanding custom_fields and tags.
+
+        Each expanded custom field gets its own include toggle, so users opt in
+        only the fields they intend to set across the selection.
+        """
+        if name == "custom_fields" and self._cf_defs:
+            return expand_custom_fields(self._cf_defs)
+        if name == "tags" and self._tags is not None:
+            return [tags_widget_spec(name, self._tags, ())]
+        return [field_to_widget(name, field, sensitive)]
+
     def _compose_field(self, name: str, spec: WidgetSpec) -> ComposeResult:
         with Horizontal(classes="bulk-field"):
-            yield Switch(value=False, id=f"include-{name}", classes="bulk-include")
+            yield Switch(value=False, id=f"include-{encode_field_id(name)}", classes="bulk-include")
             yield Label(name, classes="bulk-label")
             yield from self._compose_widget(name, spec)
-            if spec.nullable:
-                yield Button("∅", id=f"setnull-{name}", classes="bulk-setnull")
+            if spec.nullable and spec.kind != "multi_select":
+                yield Button("∅", id=f"setnull-{encode_field_id(name)}", classes="bulk-setnull")
 
     def _is_fk(self, name: str, spec: WidgetSpec) -> bool:
         if spec.kind in ("select", "switch", "masked") or spec.is_float:
@@ -144,6 +185,14 @@ class BulkEditForm(Screen[None]):
         yield Button(f"{name}: {self._fk_seed_label(name)}", id=f"fk-{name}", classes="bulk-fk")
 
     def _compose_widget(self, name: str, spec: WidgetSpec) -> ComposeResult:
+        wid = f"field-{encode_field_id(name)}"
+        if spec.kind == "multi_select":
+            yield SelectionList[str](
+                *(Selection(label, val, val in spec.selected) for label, val in spec.options),
+                id=wid,
+                classes="bulk-multiselect",
+            )
+            return
         if self._is_fk(name, spec):
             yield from self._compose_fk(name)
             return
@@ -151,19 +200,19 @@ class BulkEditForm(Screen[None]):
         if spec.kind == "select":
             options = [(choice, choice) for choice in spec.choices]
             value = shared if shared in spec.choices else Select.NULL
-            yield Select(options, value=value, id=f"field-{name}", allow_blank=True)
+            yield Select(options, value=value, id=wid, allow_blank=True)
             return
         if spec.kind == "switch":
-            yield Switch(value=bool(shared), id=f"field-{name}")
+            yield Switch(value=bool(shared), id=wid)
             return
         text = "" if shared is None else str(shared)
-        yield Input(value=text, password=spec.sensitive, id=f"field-{name}")
+        yield Input(value=text, password=spec.sensitive, id=wid)
 
     @staticmethod
     def _strip(ident: str | None, prefix: str) -> str | None:
         if ident is None or not ident.startswith(prefix):
             return None
-        return ident.removeprefix(prefix)
+        return decode_field_id(ident.removeprefix(prefix))
 
     def on_input_changed(self, event: Input.Changed) -> None:
         name = self._strip(event.input.id, "field-")
@@ -203,21 +252,36 @@ class BulkEditForm(Screen[None]):
 
     def _read_widget_value(self, name: str) -> Any:
         spec = self._specs.get(name)
+        wid = f"#field-{encode_field_id(name)}"
         if self._fk_kinds.get(name) == "picker":
             shared_id = self._shared.get(name)
             return shared_id if shared_id is not None else _NO_SEED
+        if spec is not None and spec.kind == "multi_select":
+            return self._multiselect_value(name, self.query_one(wid, SelectionList).selected)
         if spec is not None and spec.kind == "select":
-            value = self.query_one(f"#field-{name}", Select).value
+            value = self.query_one(wid, Select).value
             return None if value is Select.NULL else value
         if spec is not None and spec.kind == "switch":
-            return self.query_one(f"#field-{name}", Switch).value
-        return self._coerce_input(name, self.query_one(f"#field-{name}", Input).value)
+            return self.query_one(wid, Switch).value
+        return self._coerce_input(name, self.query_one(wid, Input).value)
+
+    def _multiselect_value(self, name: str, selected: list[Any]) -> Any:
+        slugs = tuple(str(v) for v in selected)
+        if name == "tags":
+            return tags_payload(slugs, self._tags or ())
+        return list(slugs)
 
     def on_select_changed(self, event: Select.Changed) -> None:
         name = self._strip(event.select.id, "field-")
         if name is None:
             return
         self._values[name] = None if event.value is Select.NULL else event.value
+
+    def on_selection_list_selected_changed(self, event: SelectionList.SelectedChanged[str]) -> None:
+        name = self._strip(event.selection_list.id, "field-")
+        if name is None:
+            return
+        self._values[name] = self._multiselect_value(name, event.selection_list.selected)
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         ident = event.button.id
@@ -247,7 +311,9 @@ class BulkEditForm(Screen[None]):
             if result is not None:
                 self._values[name] = result[0]
                 self._fk_labels[name] = result[1]
-                self.query_one(f"#fk-{name}", Button).label = f"{name}: {result[1]}"
+                self.query_one(
+                    f"#fk-{encode_field_id(name)}", Button
+                ).label = f"{name}: {result[1]}"
 
         self.app.push_screen(RecordPicker(self._client, target.list_op, target.current_id), _stage)
 
@@ -257,7 +323,9 @@ class BulkEditForm(Screen[None]):
 
         body = self._op.request_body
         sensitive = body.sensitive_paths if body is not None else ()
-        changes = bulk_diff(self._selected, self.bulk_set, sensitive, self._fk_labels)
+        # Flatten custom_fields so each chosen custom_fields.<name> diffs per record.
+        flattened = [flatten_custom_fields(record) for record in self._selected]
+        changes = bulk_diff(flattened, self.bulk_set, sensitive, self._fk_labels)
 
         def _on_confirm(confirmed: bool | None) -> None:
             if confirmed:
@@ -282,7 +350,7 @@ class BulkEditForm(Screen[None]):
         def _patch(change: RecordChange) -> None:
             self._client.patch(
                 detail_path(self._op.path, change.record_id),
-                json=change.patch,
+                json=nest_custom_fields(change.patch),
                 operation_id=self._op.operation_id,
                 sensitive_paths=sensitive_paths,
             )

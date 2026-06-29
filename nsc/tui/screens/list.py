@@ -271,6 +271,14 @@ class ListScreen(Screen[None]):
         else:
             self.notify("Nothing to go back to — press q to quit or ctrl+p to switch resource.")
 
+    def _form_data_sources(self) -> tuple[dict[str, Any] | None, tuple[Any, ...] | None]:
+        """Custom-field defs + available tags from the app, for editing widgets."""
+        defs_fn = getattr(self.app, "custom_field_defs_for", None)
+        tags_fn = getattr(self.app, "available_tags", None)
+        defs = defs_fn(self._tag, self._resource_name) if callable(defs_fn) else None
+        tags = tags_fn() if callable(tags_fn) else None
+        return defs, tags
+
     def action_create_record(self) -> None:
         resource = self._model.tags[self._tag].resources[self._resource_name]
         create_op = resource.create_op
@@ -281,6 +289,7 @@ class ListScreen(Screen[None]):
         def _after(_: None) -> None:
             self.reload()
 
+        defs, tags = self._form_data_sources()
         self.app.push_screen(
             EditForm(
                 self._model,
@@ -289,6 +298,8 @@ class ListScreen(Screen[None]):
                 self._resource_name,
                 create_op,
                 {},
+                custom_field_defs=defs,
+                available_tags=tags,
             ),
             _after,
         )
@@ -308,6 +319,7 @@ class ListScreen(Screen[None]):
             self._selection.clear()
             self.reload()
 
+        defs, tags = self._form_data_sources()
         self.app.push_screen(
             BulkEditForm(
                 self._model,
@@ -316,6 +328,8 @@ class ListScreen(Screen[None]):
                 self._resource_name,
                 update_op,
                 selected,
+                custom_field_defs=defs,
+                available_tags=tags,
             ),
             _after,
         )

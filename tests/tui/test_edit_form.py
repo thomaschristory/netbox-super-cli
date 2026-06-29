@@ -4,7 +4,7 @@ from typing import Any
 
 import pytest
 from textual.app import App, ComposeResult
-from textual.widgets import Button, Input, ListView, Select, Static, Switch
+from textual.widgets import Button, Input, ListView, Select, SelectionList, Static, Switch
 
 from nsc.http.errors import NetBoxAPIError
 from nsc.model.command_model import (
@@ -16,7 +16,9 @@ from nsc.model.command_model import (
     Resource,
     Tag,
 )
-from nsc.tui.forms import SET_NULL, compute_patch
+from nsc.savedfilters.custom_fields import CustomFieldDef
+from nsc.savedfilters.tags import TagDef
+from nsc.tui.forms import SET_NULL, compute_patch, tags_payload
 from nsc.tui.screens.edit_form import EditForm
 from nsc.tui.screens.record_picker import RecordPicker
 from nsc.tui.widgets.diff import DiffModal
@@ -606,3 +608,134 @@ async def test_go_back_without_changes_dismisses_immediately() -> None:
         screen.action_go_back()
         await pilot.pause()
         assert app.screen is not screen
+
+
+# --- #134: per-field custom fields + tags multi-select in single edit ---
+
+_CF_DEFS = {"tier": CustomFieldDef("tier", "Tier", type="select", choices=("gold", "silver"))}
+_TAGS = (TagDef("Prod", "prod", "ff0000"), TagDef("Edge", "edge", None))
+
+
+def _cf_model() -> CommandModel:
+    update_op = Operation(
+        operation_id="dcim_devices_partial_update",
+        http_method="PATCH",
+        path="/api/dcim/devices/{id}/",
+        request_body=RequestBodyShape(
+            top_level="object",
+            fields={
+                "name": FieldShape(primitive=PrimitiveType.STRING),
+                "custom_fields": FieldShape(primitive=PrimitiveType.OBJECT),
+                "tags": FieldShape(primitive=PrimitiveType.ARRAY),
+            },
+        ),
+    )
+    devices = Resource(name="devices", update_op=update_op)
+    return CommandModel(
+        info_title="t",
+        info_version="1",
+        schema_hash="h",
+        tags={"dcim": Tag(name="dcim", resources={"devices": devices})},
+    )
+
+
+class _CfEditApp(App[None]):
+    def __init__(self, client: _SpyClient, record: dict[str, Any]) -> None:
+        super().__init__()
+        self._client = client
+        self._record = record
+
+    def compose(self) -> ComposeResult:
+        yield Static("")
+
+    async def on_mount(self) -> None:
+        model = _cf_model()
+        op = model.tags["dcim"].resources["devices"].update_op
+        assert op is not None
+        await self.push_screen(
+            EditForm(
+                model,
+                self._client,
+                "dcim",
+                "devices",
+                op,
+                self._record,
+                custom_field_defs=_CF_DEFS,
+                available_tags=_TAGS,
+            )
+        )
+
+
+def _cf_edit_screen(app: _CfEditApp) -> EditForm:
+    screen = app.screen
+    assert isinstance(screen, EditForm)
+    return screen
+
+
+@pytest.mark.asyncio
+async def test_edit_expands_custom_field_widget() -> None:
+    record = {"id": 5, "name": "sw1", "custom_fields": {"tier": "silver"}, "tags": []}
+    app = _CfEditApp(_SpyClient([]), record)
+    async with app.run_test(size=(120, 60)) as pilot:
+        await pilot.pause()
+        screen = _cf_edit_screen(app)
+        tier = screen.query_one("#field-custom_fields-tier", Select)
+        assert tier.value == "silver"
+        assert isinstance(screen.query_one("#field-tags"), SelectionList)
+
+
+@pytest.mark.asyncio
+async def test_edit_saves_custom_field_nested() -> None:
+    client = _SpyClient([])
+    record = {"id": 5, "name": "sw1", "custom_fields": {"tier": "silver"}, "tags": []}
+    app = _CfEditApp(client, record)
+    async with app.run_test(size=(120, 60)) as pilot:
+        await pilot.pause()
+        screen = _cf_edit_screen(app)
+        screen.staged["custom_fields.tier"] = "gold"
+        screen.action_save()
+        await pilot.pause()
+        await pilot.press("y")
+        await pilot.pause()
+    assert len(client.patch_calls) == 1
+    assert client.patch_calls[0]["json"] == {"custom_fields": {"tier": "gold"}}
+
+
+@pytest.mark.asyncio
+async def test_edit_saves_tags_as_name_slug_list() -> None:
+    client = _SpyClient([])
+    record = {
+        "id": 5,
+        "name": "sw1",
+        "custom_fields": {},
+        "tags": [{"slug": "prod", "name": "Prod"}],
+    }
+    app = _CfEditApp(client, record)
+    async with app.run_test(size=(120, 60)) as pilot:
+        await pilot.pause()
+        screen = _cf_edit_screen(app)
+        screen.staged["tags"] = tags_payload(("prod", "edge"), _TAGS)
+        screen.action_save()
+        await pilot.pause()
+        await pilot.press("y")
+        await pilot.pause()
+    assert len(client.patch_calls) == 1
+    assert client.patch_calls[0]["json"] == {
+        "tags": [{"name": "Prod", "slug": "prod"}, {"name": "Edge", "slug": "edge"}]
+    }
+
+
+@pytest.mark.asyncio
+async def test_edit_unchanged_tag_selection_stages_nothing() -> None:
+    record = {
+        "id": 5,
+        "name": "sw1",
+        "custom_fields": {},
+        "tags": [{"slug": "prod", "name": "Prod"}],
+    }
+    app = _CfEditApp(_SpyClient([]), record)
+    async with app.run_test(size=(120, 60)) as pilot:
+        await pilot.pause()
+        screen = _cf_edit_screen(app)
+        # The pre-seeded selection firing on mount must not stage a tags change.
+        assert "tags" not in screen.staged

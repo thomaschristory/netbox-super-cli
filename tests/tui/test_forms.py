@@ -130,3 +130,88 @@ def test_diff_rows_new_display_override_used_for_new_value() -> None:
 def test_diff_rows_override_absent_falls_back_to_str() -> None:
     rows = diff_rows({"status": "active"}, {"status": "offline"}, (), {"role": "x"})
     assert rows == [DiffRow(field="status", old_display="active", new_display="offline")]
+
+
+# --- #134: custom-field expansion, tags multi-select, payload nesting ---
+
+from nsc.savedfilters.custom_fields import CustomFieldDef  # noqa: E402
+from nsc.savedfilters.tags import TagDef  # noqa: E402
+from nsc.tui.forms import (  # noqa: E402
+    custom_field_widget,
+    expand_custom_fields,
+    flatten_custom_fields,
+    nest_custom_fields,
+    tag_slugs,
+    tags_payload,
+    tags_widget_spec,
+)
+
+
+def test_custom_field_widget_maps_types() -> None:
+    assert custom_field_widget(CustomFieldDef("a", "A", type="text")).kind == "text"
+    assert custom_field_widget(CustomFieldDef("a", "A", type="integer")).kind == "number"
+    dec = custom_field_widget(CustomFieldDef("a", "A", type="decimal"))
+    assert dec.kind == "number" and dec.is_float is True
+    assert custom_field_widget(CustomFieldDef("a", "A", type="boolean")).kind == "switch"
+    sel = custom_field_widget(CustomFieldDef("a", "A", type="select", choices=("x", "y")))
+    assert sel.kind == "select" and sel.choices == ("x", "y")
+    ms = custom_field_widget(CustomFieldDef("a", "A", type="multiselect", choices=("x", "y")))
+    assert ms.kind == "multi_select"
+
+
+def test_custom_field_widget_names_are_dotted() -> None:
+    spec = custom_field_widget(CustomFieldDef("rack_role", "Rack Role"))
+    assert spec.name == "custom_fields.rack_role"
+
+
+def test_expand_custom_fields_one_spec_each() -> None:
+    defs = {
+        "a": CustomFieldDef("a", "A", type="text"),
+        "b": CustomFieldDef("b", "B", type="integer"),
+    }
+    specs = expand_custom_fields(defs)
+    assert [s.name for s in specs] == ["custom_fields.a", "custom_fields.b"]
+
+
+def test_tags_widget_spec_carries_options_and_selected() -> None:
+    tags = (TagDef("Prod", "prod", "ff0000"), TagDef("Edge", "edge", None))
+    spec = tags_widget_spec("tags", tags, ("prod",))
+    assert spec.kind == "multi_select"
+    assert spec.options == (("Prod", "prod"), ("Edge", "edge"))
+    assert spec.selected == ("prod",)
+
+
+def test_tag_slugs_extracts_from_record_list() -> None:
+    value = [{"slug": "prod", "name": "Prod"}, {"name": "edge"}]
+    assert tag_slugs(value) == ("prod", "edge")
+    assert tag_slugs(None) == ()
+
+
+def test_tags_payload_builds_name_slug_objects() -> None:
+    tags = (TagDef("Prod", "prod", None), TagDef("Edge", "edge", None))
+    assert tags_payload(("prod",), tags) == [{"name": "Prod", "slug": "prod"}]
+    # Unknown slug falls back to itself.
+    assert tags_payload(("ghost",), tags) == [{"name": "ghost", "slug": "ghost"}]
+
+
+def test_flatten_custom_fields_adds_dotted_keys() -> None:
+    rec = {"name": "x", "custom_fields": {"tier": "gold", "n": 3}}
+    flat = flatten_custom_fields(rec)
+    assert flat["custom_fields.tier"] == "gold"
+    assert flat["custom_fields.n"] == 3
+    # Original is not mutated.
+    assert "custom_fields.tier" not in rec
+
+
+def test_flatten_custom_fields_noop_without_cf() -> None:
+    assert flatten_custom_fields({"name": "x"}) == {"name": "x"}
+
+
+def test_nest_custom_fields_folds_dotted_keys() -> None:
+    patch = {"name": "x", "custom_fields.tier": "silver", "custom_fields.n": None}
+    nested = nest_custom_fields(patch)
+    assert nested == {"name": "x", "custom_fields": {"tier": "silver", "n": None}}
+
+
+def test_nest_custom_fields_passthrough_without_cf() -> None:
+    assert nest_custom_fields({"name": "x"}) == {"name": "x"}
