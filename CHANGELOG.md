@@ -2,7 +2,9 @@
 
 All notable changes to netbox-super-cli are tracked here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) loosely. From v1.0.0 onward, releases follow [Semantic Versioning](https://semver.org/) and the version in `pyproject.toml` matches the git tag. Pre-1.0 milestones (Phase 1-5) were pinned by tag while `pyproject.toml` stayed at `0.0.1`.
 
-## [Unreleased]
+## v1.5.0 — 2026-06-29
+
+Minor release. Saved searches become interchangeable with the NetBox web UI.
 
 ### Changed
 
