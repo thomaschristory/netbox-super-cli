@@ -2,6 +2,42 @@
 
 All notable changes to netbox-super-cli are tracked here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) loosely. From v1.0.0 onward, releases follow [Semantic Versioning](https://semver.org/) and the version in `pyproject.toml` matches the git tag. Pre-1.0 milestones (Phase 1-5) were pinned by tag while `pyproject.toml` stayed at `0.0.1`.
 
+## v1.6.0 — 2026-06-29
+
+Minor release. The interactive TUI gets human-readable custom-field columns,
+clean rendering of list/M2M fields, and a far richer bulk-edit form.
+
+### Added
+
+- **Custom-field column labels** ([#132]). Custom-field columns now show the
+  field's human label (e.g. "Site Contact") instead of the raw
+  `custom_fields.<name>` key — in the TUI list headers and column chooser, and in
+  CLI `table`/`csv` output for `list`, `get`, and create/update responses. The
+  raw `custom_fields.<name>` key stays the selector, so `--columns` and saved
+  column prefs are unchanged. Labels come from the custom-field definitions
+  (`/api/extras/custom-fields/`, scoped to the resource's object type) and fall
+  back to a humanized name or the raw key when unavailable or ambiguous; JSON/YAML
+  output is untouched.
+- **Bulk-edit: per-field custom fields and a tags dropdown** ([#134]). The TUI
+  bulk-edit form now expands `custom_fields` into one typed widget per field
+  (text/number/switch/select/multi-select), each with its own include toggle, and
+  renders `tags` as a multi-select populated from `/api/extras/tags/` (submitting
+  the NetBox-native `{name, slug}` list). The same per-field custom fields and
+  tag picker apply to single-record editing, and the bulk form's layout is
+  aligned with the single-edit experience. Falls back to plain inputs when the
+  definitions can't be fetched.
+
+### Fixed
+
+- **Detail view rendered list fields as raw dicts** ([#133]). Tags and other
+  list-of-object fields in the record detail view showed a raw
+  `[{'id': …, 'display': …}]` repr; they now render as a clean comma-joined list
+  (colored when object colors are on), matching the list table.
+
+[#132]: https://github.com/thomaschristory/netbox-super-cli/issues/132
+[#133]: https://github.com/thomaschristory/netbox-super-cli/issues/133
+[#134]: https://github.com/thomaschristory/netbox-super-cli/issues/134
+
 ## v1.5.0 — 2026-06-29
 
 Minor release. Saved searches become interchangeable with the NetBox web UI.
