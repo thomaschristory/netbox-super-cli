@@ -16,6 +16,7 @@ from nsc.model.command_model import (
     Resource,
     Tag,
 )
+from nsc.savedfilters.custom_fields import CustomFieldDef
 from nsc.tui.app import NscTuiApp
 from nsc.tui.screens.bulk_edit_form import BulkEditForm
 from nsc.tui.screens.columns import ColumnChooserScreen
@@ -694,3 +695,67 @@ async def test_bulk_edit_reloads_list_after_form_dismisses() -> None:
         await app.workers.wait_for_complete()
         assert isinstance(app.screen, ListScreen)
         assert len(client.calls) > load_count
+
+
+def _cf_model() -> CommandModel:
+    op = Operation(
+        operation_id="devices_list",
+        http_method="GET",
+        path="/api/dcim/devices/",
+        default_columns=["id", "name", "custom_fields.rack_role"],
+    )
+    tag = Tag(name="dcim", resources={"devices": Resource(name="devices", list_op=op)})
+    return CommandModel(info_title="t", info_version="1", schema_hash="h", tags={"dcim": tag})
+
+
+class _CfListApp(App[None]):
+    def __init__(self, client: _FakeClient, defs: dict[str, Any] | None) -> None:
+        super().__init__()
+        self._client = client
+        self._defs = defs
+
+    def custom_field_defs_for(self, tag: str, resource: str) -> dict[str, Any] | None:
+        return self._defs
+
+    def compose(self) -> ComposeResult:
+        yield Static("")
+
+    async def on_mount(self) -> None:
+        model = _cf_model()
+        op = model.tags["dcim"].resources["devices"].list_op
+        assert op is not None
+        await self.push_screen(ListScreen(model, self._client, "dcim", "devices", op))
+
+
+@pytest.mark.asyncio
+async def test_list_header_shows_custom_field_label_but_keeps_raw_key() -> None:
+    client = _FakeClient([{"id": 1, "name": "sw1", "custom_fields": {"rack_role": "gold"}}])
+    defs = {"rack_role": CustomFieldDef(name="rack_role", label="Rack Role")}
+    app = _CfListApp(client, defs)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await app.workers.wait_for_complete()
+        await pilot.pause()
+        screen = app.screen
+        assert isinstance(screen, ListScreen)
+        table = screen.query_one(DataTable)
+        headers = [str(col.label) for col in table.ordered_columns]
+        assert "Rack Role" in headers
+        assert "custom_fields.rack_role" not in headers
+        # The selector key is preserved for cell lookup / persistence.
+        assert "custom_fields.rack_role" in screen._columns
+
+
+@pytest.mark.asyncio
+async def test_list_header_falls_back_to_raw_key_when_defs_unavailable() -> None:
+    client = _FakeClient([{"id": 1, "name": "sw1", "custom_fields": {"rack_role": "gold"}}])
+    app = _CfListApp(client, None)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await app.workers.wait_for_complete()
+        await pilot.pause()
+        screen = app.screen
+        assert isinstance(screen, ListScreen)
+        table = screen.query_one(DataTable)
+        headers = [str(col.label) for col in table.ordered_columns]
+        assert "custom_fields.rack_role" in headers

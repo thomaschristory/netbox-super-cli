@@ -14,6 +14,7 @@ def render(
     *,
     stream: TextIO = sys.stdout,
     columns: list[str] | None = None,
+    header_labels: dict[str, str] | None = None,
 ) -> None:
     records = [data] if isinstance(data, dict) else list(data)
     if not records:
@@ -21,7 +22,12 @@ def render(
     flat_records = [flatten(r, columns=columns) for r in records]
     fieldnames = columns if columns is not None else _gather_fieldnames(flat_records)
     writer = csv.DictWriter(stream, fieldnames=fieldnames, extrasaction="ignore")
-    writer.writeheader()
+    if header_labels:
+        # DictWriter keys data rows by raw fieldname, so emit a relabeled header
+        # row manually (instead of writeheader) to keep header/data aligned.
+        csv.writer(stream).writerow([header_labels.get(f, f) for f in fieldnames])
+    else:
+        writer.writeheader()
     for row in flat_records:
         writer.writerow({k: ("" if v is None else v) for k, v in row.items()})
 

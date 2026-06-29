@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
+from rich.text import Text
 from textual.app import App, ComposeResult
 from textual.coordinate import Coordinate
 from textual.widgets import DataTable, Input, ListView, Static, Tab, Tabs
@@ -631,3 +632,92 @@ async def test_text_kind_fk_opens_picker_and_shows_chosen_name() -> None:
         role_row = next(r for r in rows if r.field == "role")
         assert role_row.old_display == "Top of Rack Switch"
         assert role_row.new_display == "Leaf Switch"
+
+
+def _tags_model(*, editable_tags: bool = False) -> CommandModel:
+    fields: dict[str, FieldShape] = {"name": FieldShape(primitive=PrimitiveType.STRING)}
+    if editable_tags:
+        fields["tags"] = FieldShape(primitive=PrimitiveType.ARRAY)
+    devices = Resource(
+        name="devices",
+        list_op=Operation(operation_id="d_list", http_method="GET", path="/api/dcim/devices/"),
+        get_op=Operation(operation_id="d_get", http_method="GET", path="/api/dcim/devices/{id}/"),
+        update_op=Operation(
+            operation_id="d_update",
+            http_method="PATCH",
+            path="/api/dcim/devices/{id}/",
+            request_body=RequestBodyShape(top_level="object", fields=fields),
+        ),
+    )
+    return CommandModel(
+        info_title="t",
+        info_version="1",
+        schema_hash="h",
+        tags={"dcim": Tag(name="dcim", resources={"devices": devices})},
+    )
+
+
+_TAGS_RECORD = {
+    "id": 7,
+    "name": "sw1",
+    "tags": [
+        {"display": "prod", "name": "prod", "slug": "prod", "color": "ff0000"},
+        {"display": "edge", "name": "edge", "slug": "edge", "color": "00ff00"},
+    ],
+}
+
+
+class _TagsDetailApp(App[None]):
+    def __init__(self, *, object_colors: bool = False, editable_tags: bool = False) -> None:
+        super().__init__()
+        self.client = _SpyClient()
+        self.object_colors = object_colors
+        self._editable_tags = editable_tags
+
+    def compose(self) -> ComposeResult:
+        yield Static("")
+
+    async def on_mount(self) -> None:
+        model = _tags_model(editable_tags=self._editable_tags)
+        resource = model.tags["dcim"].resources["devices"]
+        await self.push_screen(
+            DetailScreen(model, self.client, "dcim", "devices", resource, dict(_TAGS_RECORD))
+        )
+
+
+def _tags_cell(screen: DetailScreen) -> Any:
+    row = next(i for i, r in enumerate(screen._rows) if r.name == "tags")
+    return screen._table.get_cell_at(Coordinate(row, 1))
+
+
+@pytest.mark.asyncio
+async def test_readonly_tag_list_renders_joined_not_raw_repr() -> None:
+    app = _TagsDetailApp()
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        cell = _tags_cell(_detail(app))
+        assert str(cell) == "prod, edge"
+        assert "{" not in str(cell)
+
+
+@pytest.mark.asyncio
+async def test_editable_tag_list_renders_joined_not_raw_repr() -> None:
+    app = _TagsDetailApp(editable_tags=True)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        cell = _tags_cell(_detail(app))
+        assert str(cell) == "prod, edge"
+        assert "{" not in str(cell)
+
+
+@pytest.mark.asyncio
+async def test_tag_list_colored_when_object_colors_enabled() -> None:
+    app = _TagsDetailApp(object_colors=True)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        cell = _tags_cell(_detail(app))
+        assert isinstance(cell, Text)
+        assert cell.plain == "prod, edge"
+        styles = {str(span.style) for span in cell.spans}
+        assert "#ff0000" in styles
+        assert "#00ff00" in styles

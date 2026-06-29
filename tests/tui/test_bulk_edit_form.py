@@ -4,7 +4,7 @@ from typing import Any
 
 import pytest
 from textual.app import App, ComposeResult
-from textual.widgets import Button, Input, ListView, Select, Static, Switch
+from textual.widgets import Button, Input, ListView, Select, SelectionList, Static, Switch
 
 from nsc.http.errors import NetBoxAPIError
 from nsc.model.command_model import (
@@ -16,7 +16,9 @@ from nsc.model.command_model import (
     Resource,
     Tag,
 )
-from nsc.tui.forms import SET_NULL
+from nsc.savedfilters.custom_fields import CustomFieldDef
+from nsc.savedfilters.tags import TagDef
+from nsc.tui.forms import SET_NULL, tags_payload
 from nsc.tui.screens.bulk_edit_form import BulkEditForm
 from nsc.tui.screens.list import ListScreen
 from nsc.tui.screens.record_picker import RecordPicker
@@ -805,3 +807,152 @@ async def test_unresolvable_fk_falls_back_to_raw_id_input() -> None:
         await pilot.pause()
         assert screen.bulk_set == {"role": 7}
         assert isinstance(screen.bulk_set["role"], int)
+
+
+# --- #134: per-field custom fields + tags multi-select in bulk edit ---
+
+_CF_DEFS = {
+    "tier": CustomFieldDef("tier", "Tier", type="select", choices=("gold", "silver")),
+    "count": CustomFieldDef("count", "Count", type="integer"),
+}
+_TAGS = (TagDef("Prod", "prod", "ff0000"), TagDef("Edge", "edge", None))
+
+
+def _cf_model() -> CommandModel:
+    update_op = Operation(
+        operation_id="dcim_devices_partial_update",
+        http_method="PATCH",
+        path="/api/dcim/devices/{id}/",
+        request_body=RequestBodyShape(
+            top_level="object",
+            fields={
+                "name": FieldShape(primitive=PrimitiveType.STRING),
+                "custom_fields": FieldShape(primitive=PrimitiveType.OBJECT),
+                "tags": FieldShape(primitive=PrimitiveType.ARRAY),
+            },
+        ),
+    )
+    devices = Resource(name="devices", update_op=update_op)
+    return CommandModel(
+        info_title="t",
+        info_version="1",
+        schema_hash="h",
+        tags={"dcim": Tag(name="dcim", resources={"devices": devices})},
+    )
+
+
+class _CfBulkApp(App[None]):
+    def __init__(
+        self,
+        client: _SpyClient,
+        *,
+        defs: dict[str, Any] | None = _CF_DEFS,
+        tags: tuple[TagDef, ...] | None = _TAGS,
+        selected: list[dict[str, Any]] | None = None,
+    ) -> None:
+        super().__init__()
+        self._client = client
+        self._defs = defs
+        self._tags = tags
+        self._sel = selected or [
+            {"id": 1, "name": "sw1", "custom_fields": {"tier": "silver", "count": 1}, "tags": []},
+            {"id": 2, "name": "sw2", "custom_fields": {"tier": "silver", "count": 2}, "tags": []},
+        ]
+
+    def compose(self) -> ComposeResult:
+        yield Static("")
+
+    async def on_mount(self) -> None:
+        model = _cf_model()
+        op = model.tags["dcim"].resources["devices"].update_op
+        assert op is not None
+        await self.push_screen(
+            BulkEditForm(
+                model,
+                self._client,
+                "dcim",
+                "devices",
+                op,
+                self._sel,
+                custom_field_defs=self._defs,
+                available_tags=self._tags,
+            )
+        )
+
+
+def _cf_screen(app: _CfBulkApp) -> BulkEditForm:
+    screen = app.screen
+    assert isinstance(screen, BulkEditForm)
+    return screen
+
+
+@pytest.mark.asyncio
+async def test_custom_fields_expand_into_per_field_widgets_with_toggles() -> None:
+    app = _CfBulkApp(_SpyClient([]))
+    async with app.run_test(size=(120, 60)) as pilot:
+        await pilot.pause()
+        screen = _cf_screen(app)
+        assert isinstance(screen.query_one("#field-custom_fields-tier"), Select)
+        assert isinstance(screen.query_one("#field-custom_fields-count"), Input)
+        assert isinstance(screen.query_one("#include-custom_fields-tier"), Switch)
+        # No single opaque custom_fields widget remains.
+        assert not screen.query("#field-custom_fields")
+
+
+@pytest.mark.asyncio
+async def test_tags_render_as_selection_list() -> None:
+    app = _CfBulkApp(_SpyClient([]))
+    async with app.run_test(size=(120, 60)) as pilot:
+        await pilot.pause()
+        screen = _cf_screen(app)
+        assert isinstance(screen.query_one("#field-tags"), SelectionList)
+
+
+@pytest.mark.asyncio
+async def test_bulk_apply_nests_custom_field_value() -> None:
+    client = _SpyClient([])
+    app = _CfBulkApp(client)
+    async with app.run_test(size=(120, 60)) as pilot:
+        await pilot.pause()
+        screen = _cf_screen(app)
+        screen._included.add("custom_fields.tier")
+        screen._values["custom_fields.tier"] = "gold"
+        screen.action_preview()
+        await pilot.pause()
+        await pilot.press("enter")
+        await app.workers.wait_for_complete()
+        await pilot.pause()
+    assert client.patch_calls
+    for call in client.patch_calls:
+        assert call["json"] == {"custom_fields": {"tier": "gold"}}
+
+
+@pytest.mark.asyncio
+async def test_bulk_apply_sets_tags_as_name_slug_list() -> None:
+    client = _SpyClient([])
+    app = _CfBulkApp(client)
+    async with app.run_test(size=(120, 60)) as pilot:
+        await pilot.pause()
+        screen = _cf_screen(app)
+        screen._included.add("tags")
+        screen._values["tags"] = tags_payload(("prod",), _TAGS)
+        screen.action_preview()
+        await pilot.pause()
+        await pilot.press("enter")
+        await app.workers.wait_for_complete()
+        await pilot.pause()
+    assert client.patch_calls
+    for call in client.patch_calls:
+        assert call["json"] == {"tags": [{"name": "Prod", "slug": "prod"}]}
+
+
+@pytest.mark.asyncio
+async def test_bulk_falls_back_to_text_inputs_without_defs() -> None:
+    app = _CfBulkApp(_SpyClient([]), defs=None, tags=None)
+    async with app.run_test(size=(120, 60)) as pilot:
+        await pilot.pause()
+        screen = _cf_screen(app)
+        # Degrades to the previous opaque single inputs, no crash.
+        assert isinstance(screen.query_one("#field-custom_fields"), Input)
+        assert isinstance(screen.query_one("#field-tags"), Input)
+        assert not screen.query("#field-custom_fields-tier")

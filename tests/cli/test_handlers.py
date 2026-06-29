@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import csv
 import io
 import json
 from typing import Any
@@ -196,3 +197,50 @@ def test_handle_list_emits_envelope_on_api_error(monkeypatch: pytest.MonkeyPatch
     with pytest.raises(typer.Exit) as ei:
         handle_list(operation, "dcim", "devices", ctx, stream=buf)
     assert ei.value.exit_code == 9  # EXIT_CODES[ErrorType.NOT_FOUND]
+
+
+class _CfFakeClient:
+    """Responds per-path for the custom-field label resolution chain."""
+
+    def __init__(self, obj: dict[str, Any]) -> None:
+        self._obj = obj
+
+    def get(self, path: str, params: Any = None) -> dict[str, Any]:
+        return self._obj
+
+    def paginate(self, path: str, params: Any = None, *, limit: Any = None) -> Any:
+        if path == "/api/core/object-types/":
+            yield {
+                "app_label": "dcim",
+                "model": "device",
+                "rest_api_endpoint": "/api/dcim/devices/",
+            }
+        elif path == "/api/extras/custom-fields/":
+            yield {"name": "rack_role", "label": "Rack Role", "type": {"value": "text"}}
+
+
+def test_handle_get_relabels_custom_field_header_in_csv() -> None:
+    client = _CfFakeClient({"id": 7, "name": "sw1", "custom_fields": {"rack_role": "gold"}})
+    op = Operation(
+        operation_id="dcim_devices_retrieve",
+        http_method=HttpMethod.GET,
+        path="/api/dcim/devices/{id}/",
+        parameters=[
+            Parameter(
+                name="id",
+                location=ParameterLocation.PATH,
+                primitive=PrimitiveType.INTEGER,
+                required=True,
+            ),
+        ],
+    )
+    buf = io.StringIO()
+    ctx = _ctx(
+        client,
+        output_format=OutputFormat.CSV,
+        columns_override=["name", "custom_fields.rack_role"],
+    )
+    handle_get(op, "dcim", "devices", ctx, stream=buf, id=7)
+    rows = list(csv.reader(io.StringIO(buf.getvalue())))
+    assert rows[0] == ["name", "Rack Role"]
+    assert rows[1] == ["sw1", "gold"]

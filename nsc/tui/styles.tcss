@@ -50,6 +50,39 @@ EditForm #edit-form-body {
     color: $text-muted;
 }
 
+.edit-multiselect {
+    height: auto;
+    max-height: 8;
+    border: round $panel;
+}
+
+/* ---- bulk edit: include-toggle + label + widget rows, aligned to single edit ---- */
+BulkEditForm #bulk-form-body {
+    height: 1fr;
+}
+
+.bulk-field {
+    height: auto;
+    min-height: 3;
+    padding: 0 1;
+}
+
+.bulk-include {
+    width: 6;
+}
+
+.bulk-label {
+    width: 20;
+    content-align: left middle;
+    color: $text-muted;
+}
+
+.bulk-multiselect {
+    height: auto;
+    max-height: 8;
+    border: round $panel;
+}
+
 /* ---- generic modal dialogs: centre, box, dim the backdrop ---- */
 ModalScreen {
     align: center middle;

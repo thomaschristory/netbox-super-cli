@@ -137,13 +137,28 @@ class ListScreen(Screen[None]):
         table.clear(columns=True)
         sample = records[0] if records else None
         columns = choose_columns(self._op, self._columns_config, sample)
-        table.add_columns(_MARKER_HEADER, *columns)
+        labels = self._header_labels(columns)
+        table.add_columns(_MARKER_HEADER, *(labels.get(c, c) for c in columns))
         object_colors = bool(getattr(self.app, "object_colors", False))
         rows = build_rows(records, columns, object_colors=object_colors)
         for record, row in zip(records, rows, strict=True):
             table.add_row(self._marker_for(record.get("id")), *row)
         self._records = records
         self._columns = columns
+
+    def _header_labels(self, columns: list[str]) -> dict[str, str]:
+        """Display labels for custom-field columns; raw key for everything else.
+
+        Only resolves definitions when a ``custom_fields.<name>`` column is shown,
+        so ordinary lists incur no extra request. The raw key stays the selector.
+        """
+        if not any(c.startswith("custom_fields.") for c in columns):
+            return {}
+        from nsc.savedfilters.custom_fields import custom_field_labels  # noqa: PLC0415
+
+        defs_fn = getattr(self.app, "custom_field_defs_for", None)
+        defs = defs_fn(self._tag, self._resource_name) if callable(defs_fn) else None
+        return custom_field_labels(columns, defs)
 
     def _prune_selection(self, records: list[dict[str, Any]]) -> None:
         present = {record.get("id") for record in records}
@@ -197,8 +212,14 @@ class ListScreen(Screen[None]):
             if callable(saver):
                 saver(self._tag, self._resource_name, columns)
 
+        available = available_columns(self._records)
         self.app.push_screen(
-            ColumnChooserScreen(available_columns(self._records), list(self._columns)), _apply
+            ColumnChooserScreen(
+                available,
+                list(self._columns),
+                labels=self._header_labels(available),
+            ),
+            _apply,
         )
 
     def action_cursor_down(self) -> None:
@@ -250,6 +271,14 @@ class ListScreen(Screen[None]):
         else:
             self.notify("Nothing to go back to — press q to quit or ctrl+p to switch resource.")
 
+    def _form_data_sources(self) -> tuple[dict[str, Any] | None, tuple[Any, ...] | None]:
+        """Custom-field defs + available tags from the app, for editing widgets."""
+        defs_fn = getattr(self.app, "custom_field_defs_for", None)
+        tags_fn = getattr(self.app, "available_tags", None)
+        defs = defs_fn(self._tag, self._resource_name) if callable(defs_fn) else None
+        tags = tags_fn() if callable(tags_fn) else None
+        return defs, tags
+
     def action_create_record(self) -> None:
         resource = self._model.tags[self._tag].resources[self._resource_name]
         create_op = resource.create_op
@@ -260,6 +289,7 @@ class ListScreen(Screen[None]):
         def _after(_: None) -> None:
             self.reload()
 
+        defs, tags = self._form_data_sources()
         self.app.push_screen(
             EditForm(
                 self._model,
@@ -268,6 +298,8 @@ class ListScreen(Screen[None]):
                 self._resource_name,
                 create_op,
                 {},
+                custom_field_defs=defs,
+                available_tags=tags,
             ),
             _after,
         )
@@ -287,6 +319,7 @@ class ListScreen(Screen[None]):
             self._selection.clear()
             self.reload()
 
+        defs, tags = self._form_data_sources()
         self.app.push_screen(
             BulkEditForm(
                 self._model,
@@ -295,6 +328,8 @@ class ListScreen(Screen[None]):
                 self._resource_name,
                 update_op,
                 selected,
+                custom_field_defs=defs,
+                available_tags=tags,
             ),
             _after,
         )

@@ -44,7 +44,7 @@ def build_rows(
     rows: list[list[str | Text]] = []
     for record in records:
         flat = flatten(record, columns=columns, with_colors=object_colors)
-        rows.append([_cell(flat.get(col)) for col in columns])
+        rows.append([render_cell(flat.get(col)) for col in columns])
     return rows
 
 
@@ -54,7 +54,13 @@ def _colored_text(value: ColoredValue) -> Text:
     return Text(value.text, style=f"#{value.color}")
 
 
-def _cell(value: Any) -> str | Text:
+def render_cell(value: Any) -> str | Text:
+    """Render a flattened cell value as plain text or colored Rich ``Text``.
+
+    Shared by the list table and the detail view so list-of-object fields (tags)
+    render identically in both — colored chips or a comma-joined display string —
+    rather than a raw repr.
+    """
     if value is None:
         return ""
     if isinstance(value, ColoredValue):

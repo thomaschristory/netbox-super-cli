@@ -73,3 +73,16 @@ def test_csv_quotes_joined_list_cell_containing_comma() -> None:
     # The joined cell ("edge, dc1, prod") survives a CSV round-trip as one field.
     rows = list(csv.reader(io.StringIO(buf.getvalue())))
     assert rows[1] == ["1", "edge, dc1, prod"]
+
+
+def test_csv_relabels_header_keeps_data_keyed_by_raw_column() -> None:
+    buf = io.StringIO()
+    render_csv(
+        [{"name": "a", "custom_fields": {"rack_role": "gold"}}],
+        stream=buf,
+        columns=["name", "custom_fields.rack_role"],
+        header_labels={"name": "name", "custom_fields.rack_role": "Rack Role"},
+    )
+    rows = list(csv.reader(io.StringIO(buf.getvalue())))
+    assert rows[0] == ["name", "Rack Role"]
+    assert rows[1] == ["a", "gold"]
