@@ -35,6 +35,9 @@ class WidgetSpec(BaseModel):
 
     kind: WidgetKind
     name: str
+    # Human-friendly row label; falls back to ``name`` when blank (regular fields
+    # keep their key as the label; custom fields carry their NetBox label here).
+    label: str = ""
     choices: tuple[str, ...] = ()
     nullable: bool = False
     sensitive: bool = False
@@ -83,15 +86,20 @@ def custom_field_widget(cf: CustomFieldDef) -> WidgetSpec:
     kind = _CF_KINDS.get(cf.type, "text")
     nullable = not cf.required
     if kind == "select":
-        return WidgetSpec(kind="select", name=name, choices=cf.choices, nullable=nullable)
+        return WidgetSpec(
+            kind="select", name=name, label=cf.label, choices=cf.choices, nullable=nullable
+        )
     if kind == "multi_select":
         return WidgetSpec(
             kind="multi_select",
             name=name,
+            label=cf.label,
             options=tuple((c, c) for c in cf.choices),
             nullable=nullable,
         )
-    return WidgetSpec(kind=kind, name=name, nullable=nullable, is_float=cf.type == "decimal")
+    return WidgetSpec(
+        kind=kind, name=name, label=cf.label, nullable=nullable, is_float=cf.type == "decimal"
+    )
 
 
 def expand_custom_fields(defs: dict[str, CustomFieldDef]) -> list[WidgetSpec]:
@@ -242,20 +250,25 @@ def diff_rows(
     patch: dict[str, object],
     sensitive_paths: tuple[str, ...],
     new_displays: dict[str, str] | None = None,
+    field_labels: dict[str, str] | None = None,
 ) -> list[DiffRow]:
     """Render ``patch`` as human-readable old -> new rows for the confirm modal.
 
     ``new_displays`` overrides a field's rendered *new* value — used for FK
     fields whose staged value is a bare id but whose chosen label is known
     (e.g. picked from the record chooser). The patch still carries the id.
+    ``field_labels`` overrides a field's *name* — used so a ``custom_fields.<name>``
+    key renders as its human label rather than the raw dotted key.
     """
     overrides = new_displays or {}
+    labels = field_labels or {}
     rows: list[DiffRow] = []
     for name, new_value in patch.items():
+        field = labels.get(name, name)
         if name in sensitive_paths:
-            rows.append(DiffRow(field=name, old_display="****", new_display="****"))
+            rows.append(DiffRow(field=field, old_display="****", new_display="****"))
             continue
         old_display = fk_display(original[name]) if name in original else ""
         new_display = overrides.get(name, str(new_value))
-        rows.append(DiffRow(field=name, old_display=old_display, new_display=new_display))
+        rows.append(DiffRow(field=field, old_display=old_display, new_display=new_display))
     return rows

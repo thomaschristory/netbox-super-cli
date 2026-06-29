@@ -100,9 +100,15 @@ class BulkEditForm(Screen[None]):
         self._fk_labels: dict[str, str] = {}
         body = update_op.request_body
         field_names = list(body.fields) if body is not None else []
+        # Custom fields are staged under flattened ``custom_fields.<name>`` keys,
+        # so seed their shared value from flattened records too — otherwise a
+        # widget defaults (e.g. a boolean to False) and opting it in unchanged
+        # would silently overwrite the records' shared value.
+        cf_names = [f"custom_fields.{cf.name}" for cf in (custom_field_defs or {}).values()]
+        flattened_records = [flatten_custom_fields(record) for record in selected_records]
         # Shared current value per field, to seed the widgets (does NOT opt the
         # field in — the include toggle still gates what gets set).
-        self._shared = shared_values(selected_records, field_names)
+        self._shared = shared_values(flattened_records, field_names + cf_names)
         self.progress_total = 0
         self.progress_done = 0
         self.title = f"Bulk edit {len(selected_records)} {resource_name}"
@@ -110,6 +116,10 @@ class BulkEditForm(Screen[None]):
     @property
     def bulk_set(self) -> dict[str, Any]:
         return {name: self._values[name] for name in self._included if name in self._values}
+
+    def _field_labels(self) -> dict[str, str]:
+        """Human labels for fields that carry one (custom fields), for the diff."""
+        return {name: spec.label for name, spec in self._specs.items() if spec.label}
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -142,7 +152,7 @@ class BulkEditForm(Screen[None]):
     def _compose_field(self, name: str, spec: WidgetSpec) -> ComposeResult:
         with Horizontal(classes="bulk-field"):
             yield Switch(value=False, id=f"include-{encode_field_id(name)}", classes="bulk-include")
-            yield Label(name, classes="bulk-label")
+            yield Label(spec.label or name, classes="bulk-label")
             yield from self._compose_widget(name, spec)
             if spec.nullable and spec.kind != "multi_select":
                 yield Button("∅", id=f"setnull-{encode_field_id(name)}", classes="bulk-setnull")
@@ -191,8 +201,16 @@ class BulkEditForm(Screen[None]):
     def _compose_widget(self, name: str, spec: WidgetSpec) -> ComposeResult:
         wid = f"field-{encode_field_id(name)}"
         if spec.kind == "multi_select":
+            # Tags seed via spec.selected; a custom-field multiselect seeds its
+            # shared current list so opting it in unchanged isn't a destructive
+            # clear (tags are intentionally left blank — they have their own flow).
+            selected = set(spec.selected)
+            if not selected and name != "tags":
+                shared = self._shared.get(name)
+                if isinstance(shared, list):
+                    selected = {str(v) for v in shared}
             yield SelectionList[str](
-                *(Selection(label, val, val in spec.selected) for label, val in spec.options),
+                *(Selection(label, val, val in selected) for label, val in spec.options),
                 id=wid,
                 classes="bulk-multiselect",
             )
@@ -264,7 +282,10 @@ class BulkEditForm(Screen[None]):
             return self._multiselect_value(name, self.query_one(wid, SelectionList).selected)
         if spec is not None and spec.kind == "select":
             value = self.query_one(wid, Select).value
-            return None if value is Select.NULL else value
+            # A blank select (no/unresolved choices, or a current value not in the
+            # options) must not seed a null on opt-in — that would silently clear a
+            # field the user never edited. Only the explicit ∅ button nulls.
+            return _NO_SEED if value is Select.NULL else value
         if spec is not None and spec.kind == "switch":
             return self.query_one(wid, Switch).value
         return self._coerce_input(name, self.query_one(wid, Input).value)
@@ -278,6 +299,10 @@ class BulkEditForm(Screen[None]):
     def on_select_changed(self, event: Select.Changed) -> None:
         name = self._strip(event.select.id, "field-")
         if name is None:
+            return
+        # A blank select on a field the user hasn't opted in must not stage a null
+        # (which would clear the field on apply). Only the explicit ∅ button nulls.
+        if event.value is Select.NULL and name not in self._included:
             return
         self._values[name] = None if event.value is Select.NULL else event.value
 
@@ -329,7 +354,9 @@ class BulkEditForm(Screen[None]):
         sensitive = body.sensitive_paths if body is not None else ()
         # Flatten custom_fields so each chosen custom_fields.<name> diffs per record.
         flattened = [flatten_custom_fields(record) for record in self._selected]
-        changes = bulk_diff(flattened, self.bulk_set, sensitive, self._fk_labels)
+        changes = bulk_diff(
+            flattened, self.bulk_set, sensitive, self._fk_labels, self._field_labels()
+        )
 
         def _on_confirm(confirmed: bool | None) -> None:
             if confirmed:

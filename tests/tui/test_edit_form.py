@@ -4,7 +4,7 @@ from typing import Any
 
 import pytest
 from textual.app import App, ComposeResult
-from textual.widgets import Button, Input, ListView, Select, SelectionList, Static, Switch
+from textual.widgets import Button, Input, Label, ListView, Select, SelectionList, Static, Switch
 
 from nsc.http.errors import NetBoxAPIError
 from nsc.model.command_model import (
@@ -682,6 +682,33 @@ async def test_edit_expands_custom_field_widget() -> None:
         tier = screen.query_one("#field-custom_fields-tier", Select)
         assert tier.value == "silver"
         assert isinstance(screen.query_one("#field-tags"), SelectionList)
+
+
+@pytest.mark.asyncio
+async def test_edit_custom_field_row_shows_human_label_not_raw_key() -> None:
+    record = {"id": 5, "name": "sw1", "custom_fields": {"tier": "silver"}, "tags": []}
+    app = _CfEditApp(_SpyClient([]), record)
+    async with app.run_test(size=(120, 60)) as pilot:
+        await pilot.pause()
+        screen = _cf_edit_screen(app)
+        labels = {w.render().plain for w in screen.query(".edit-label").results(Label)}
+        assert "Tier" in labels
+        assert "custom_fields.tier" not in labels
+
+
+@pytest.mark.asyncio
+async def test_edit_diff_modal_shows_custom_field_label_not_raw_key() -> None:
+    record = {"id": 5, "name": "sw1", "custom_fields": {"tier": "silver"}, "tags": []}
+    app = _CfEditApp(_SpyClient([]), record)
+    async with app.run_test(size=(120, 60)) as pilot:
+        await pilot.pause()
+        screen = _cf_edit_screen(app)
+        screen.staged["custom_fields.tier"] = "gold"
+        screen.action_save()
+        await pilot.pause()
+        assert isinstance(app.screen, DiffModal)
+        fields = [row.field for row in app.screen._rows]
+        assert fields == ["Tier"]
 
 
 @pytest.mark.asyncio

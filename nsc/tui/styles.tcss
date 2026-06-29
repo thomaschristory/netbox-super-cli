@@ -68,7 +68,10 @@ BulkEditForm #bulk-form-body {
 }
 
 .bulk-include {
-    width: 6;
+    /* A Switch needs room for its border + padding + slider; a too-narrow
+       width clips the slider to zero so the toggle becomes invisible. */
+    width: auto;
+    padding: 0 1;
 }
 
 .bulk-label {

@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 import pytest
 from textual.app import App, ComposeResult
-from textual.widgets import Button, Input, ListView, Select, SelectionList, Static, Switch
+from textual.widgets import Button, Input, Label, ListView, Select, SelectionList, Static, Switch
 
 from nsc.http.errors import NetBoxAPIError
 from nsc.model.command_model import (
@@ -18,7 +19,8 @@ from nsc.model.command_model import (
 )
 from nsc.savedfilters.custom_fields import CustomFieldDef
 from nsc.savedfilters.tags import TagDef
-from nsc.tui.forms import SET_NULL, tags_payload
+from nsc.tui.bulk import bulk_diff
+from nsc.tui.forms import SET_NULL, flatten_custom_fields, tags_payload
 from nsc.tui.screens.bulk_edit_form import BulkEditForm
 from nsc.tui.screens.list import ListScreen
 from nsc.tui.screens.record_picker import RecordPicker
@@ -886,6 +888,37 @@ def _cf_screen(app: _CfBulkApp) -> BulkEditForm:
     return screen
 
 
+class _StyledCfBulkApp(_CfBulkApp):
+    """Same form, but with the real stylesheet loaded so layout is exercised."""
+
+    CSS_PATH = str(Path(__file__).resolve().parents[2] / "nsc" / "tui" / "styles.tcss")
+
+
+@pytest.mark.asyncio
+async def test_include_toggle_is_not_clipped_to_zero_width() -> None:
+    # Regression: a too-narrow `.bulk-include` clipped the Switch slider to zero,
+    # making every include toggle invisible so fields could never be opted in.
+    app = _StyledCfBulkApp(_SpyClient([]))
+    async with app.run_test(size=(120, 60)) as pilot:
+        await pilot.pause()
+        screen = _cf_screen(app)
+        for sw in screen.query(".bulk-include").results(Switch):
+            assert sw.content_region.width > 0, f"{sw.id} slider clipped to zero width"
+
+
+@pytest.mark.asyncio
+async def test_custom_field_rows_show_human_labels_not_raw_keys() -> None:
+    app = _CfBulkApp(_SpyClient([]))
+    async with app.run_test(size=(120, 60)) as pilot:
+        await pilot.pause()
+        screen = _cf_screen(app)
+        labels = {w.render().plain for w in screen.query(".bulk-label").results(Label)}
+        assert "Tier" in labels
+        assert "Count" in labels
+        assert "custom_fields.tier" not in labels
+        assert "custom_fields.count" not in labels
+
+
 @pytest.mark.asyncio
 async def test_custom_fields_expand_into_per_field_widgets_with_toggles() -> None:
     app = _CfBulkApp(_SpyClient([]))
@@ -906,6 +939,106 @@ async def test_tags_render_as_selection_list() -> None:
         await pilot.pause()
         screen = _cf_screen(app)
         assert isinstance(screen.query_one("#field-tags"), SelectionList)
+
+
+@pytest.mark.asyncio
+async def test_bulk_diff_preview_shows_custom_field_label_not_raw_key() -> None:
+    app = _CfBulkApp(_SpyClient([]))
+    async with app.run_test(size=(120, 60)) as pilot:
+        await pilot.pause()
+        screen = _cf_screen(app)
+        screen._included.add("custom_fields.tier")
+        screen._values["custom_fields.tier"] = "gold"
+        screen.action_preview()
+        await pilot.pause()
+        modal = app.screen
+        assert isinstance(modal, BulkDiffModal)
+        text = modal.render_text()
+        assert "Tier:" in text
+        assert "custom_fields.tier" not in text
+
+
+@pytest.mark.asyncio
+async def test_custom_field_ui_edit_saves_end_to_end() -> None:
+    """Guard: a UI edit + opt-in of a custom field sends the nested PATCH."""
+    client = _SpyClient([])
+    app = _CfBulkApp(client)
+    async with app.run_test(size=(120, 60)) as pilot:
+        await pilot.pause()
+        screen = _cf_screen(app)
+        screen.query_one("#field-custom_fields-tier", Select).value = "gold"
+        await pilot.pause()
+        await pilot.click("#include-custom_fields-tier")
+        await pilot.pause()
+        screen.action_preview()
+        await pilot.pause()
+        await pilot.press("enter")
+        await app.workers.wait_for_complete()
+        await pilot.pause()
+    assert client.patch_calls
+    for call in client.patch_calls:
+        assert call["json"] == {"custom_fields": {"tier": "gold"}}
+
+
+@pytest.mark.asyncio
+async def test_opting_in_shared_boolean_cf_without_editing_is_a_noop() -> None:
+    # Records share custom_fields.flag == True. The widget must seed that shared
+    # value so opting it in (no edit) does NOT silently flip every record to False.
+    defs = {"flag": CustomFieldDef("flag", "Flag", type="boolean")}
+    sel = [
+        {"id": 1, "name": "a", "custom_fields": {"flag": True}, "tags": []},
+        {"id": 2, "name": "b", "custom_fields": {"flag": True}, "tags": []},
+    ]
+    app = _CfBulkApp(_SpyClient([]), defs=defs, tags=None, selected=sel)
+    async with app.run_test(size=(120, 60)) as pilot:
+        await pilot.pause()
+        screen = _cf_screen(app)
+        assert screen.query_one("#field-custom_fields-flag", Switch).value is True
+        screen.query_one("#include-custom_fields-flag", Switch).value = True
+        await pilot.pause()
+        # Opted in but unchanged: stages the shared True, so no per-record patch.
+        flattened = [flatten_custom_fields(r) for r in sel]
+        changes = bulk_diff(flattened, screen.bulk_set, ())
+        assert all(not c.patch for c in changes)
+
+
+@pytest.mark.asyncio
+async def test_opting_in_shared_multiselect_cf_without_editing_is_a_noop() -> None:
+    # Records share a multiselect custom field; opting it in unchanged must not
+    # clear it to an empty list.
+    defs = {"envs": CustomFieldDef("envs", "Envs", type="multiselect", choices=("dev", "qa"))}
+    sel = [
+        {"id": 1, "name": "a", "custom_fields": {"envs": ["dev", "qa"]}, "tags": []},
+        {"id": 2, "name": "b", "custom_fields": {"envs": ["dev", "qa"]}, "tags": []},
+    ]
+    app = _CfBulkApp(_SpyClient([]), defs=defs, tags=None, selected=sel)
+    async with app.run_test(size=(120, 60)) as pilot:
+        await pilot.pause()
+        screen = _cf_screen(app)
+        screen.query_one("#include-custom_fields-envs", Switch).value = True
+        await pilot.pause()
+        flattened = [flatten_custom_fields(r) for r in sel]
+        changes = bulk_diff(flattened, screen.bulk_set, ())
+        assert all(not c.patch for c in changes)
+
+
+@pytest.mark.asyncio
+async def test_opting_in_blank_select_does_not_null_the_field() -> None:
+    # A select whose choice-set didn't resolve renders empty (value == NULL).
+    # Opting it in must NOT silently null a value the user couldn't even pick;
+    # only the explicit ∅ button should null. So it contributes no patch.
+    defs = {"region": CustomFieldDef("region", "Region", type="select", choices=())}
+    sel = [
+        {"id": 1, "name": "a", "custom_fields": {"region": "eu"}, "tags": []},
+        {"id": 2, "name": "b", "custom_fields": {"region": "eu"}, "tags": []},
+    ]
+    app = _CfBulkApp(_SpyClient([]), defs=defs, tags=None, selected=sel)
+    async with app.run_test(size=(120, 60)) as pilot:
+        await pilot.pause()
+        screen = _cf_screen(app)
+        screen.query_one("#include-custom_fields-region", Switch).value = True
+        await pilot.pause()
+        assert "custom_fields.region" not in screen.bulk_set
 
 
 @pytest.mark.asyncio

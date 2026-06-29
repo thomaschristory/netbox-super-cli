@@ -132,6 +132,21 @@ def test_diff_rows_override_absent_falls_back_to_str() -> None:
     assert rows == [DiffRow(field="status", old_display="active", new_display="offline")]
 
 
+def test_diff_rows_uses_field_label_for_custom_field_key() -> None:
+    rows = diff_rows(
+        {"custom_fields.tier": "silver"},
+        {"custom_fields.tier": "gold"},
+        (),
+        field_labels={"custom_fields.tier": "Tier"},
+    )
+    assert rows == [DiffRow(field="Tier", old_display="silver", new_display="gold")]
+
+
+def test_diff_rows_field_label_absent_falls_back_to_raw_key() -> None:
+    rows = diff_rows({"status": "active"}, {"status": "offline"}, (), field_labels={})
+    assert rows == [DiffRow(field="status", old_display="active", new_display="offline")]
+
+
 # --- #134: custom-field expansion, tags multi-select, payload nesting ---
 
 from nsc.savedfilters.custom_fields import CustomFieldDef  # noqa: E402
