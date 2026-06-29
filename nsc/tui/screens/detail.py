@@ -12,6 +12,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, ClassVar
 
+from rich.text import Text
 from textual.app import ComposeResult
 from textual.binding import BindingType
 from textual.containers import Horizontal
@@ -26,7 +27,7 @@ from nsc.tui.errors import api_error_message
 from nsc.tui.fk import is_fk_value, resolve_fk_target
 from nsc.tui.forms import SET_NULL, WidgetSpec, compute_patch, diff_rows, field_to_widget
 from nsc.tui.relations import RelatedView, related_views
-from nsc.tui.view import detail_path
+from nsc.tui.view import detail_path, render_cell
 
 
 @dataclass
@@ -88,7 +89,7 @@ class DetailScreen(Screen[None]):
         return self.query_one(Tabs)
 
     @property
-    def _table(self) -> DataTable[str]:
+    def _table(self) -> DataTable[str | Text]:
         return self.query_one("#fields", DataTable)
 
     def on_mount(self) -> None:
@@ -124,27 +125,47 @@ class DetailScreen(Screen[None]):
         if table.row_count:
             table.move_cursor(row=min(cursor, table.row_count - 1))
 
-    def _value_display(self, row: _FieldRow, flat: dict[str, Any]) -> str:
-        sensitive = row.spec is not None and row.spec.sensitive
+    def _value_display(self, row: _FieldRow, flat: dict[str, Any]) -> str | Text:
         if row.editable and row.name in self.staged:
-            staged = self.staged[row.name]
-            if staged is SET_NULL:
-                return "(null)"
-            # Never echo a just-typed secret; a picked FK stages a bare id, so
-            # show its chosen label rather than the number.
-            return (
-                "****" if sensitive and staged != "" else self._fk_labels.get(row.name, str(staged))
-            )
+            return self._staged_display(row)
+        sensitive = row.spec is not None and row.spec.sensitive
         if row.editable:
-            value = self._record.get(row.name)
-            if isinstance(value, dict):
-                display = value.get("display")
-                return str(display if display is not None else value.get("id", ""))
-            if sensitive and value not in (None, ""):
-                return "****"
-            return "" if value is None else str(value)
+            return self._editable_display(row.name, sensitive=sensitive)
+        if isinstance(self._record.get(row.name), list):
+            return self._render_list(row.name)
         value = flat.get(row.name)
         return "" if value is None else str(value)
+
+    def _staged_display(self, row: _FieldRow) -> str:
+        staged = self.staged[row.name]
+        if staged is SET_NULL:
+            return "(null)"
+        # Never echo a just-typed secret; a picked FK stages a bare id, so show
+        # its chosen label rather than the number.
+        sensitive = row.spec is not None and row.spec.sensitive
+        return "****" if sensitive and staged != "" else self._fk_labels.get(row.name, str(staged))
+
+    def _editable_display(self, name: str, *, sensitive: bool) -> str | Text:
+        value = self._record.get(name)
+        if isinstance(value, dict):
+            display = value.get("display")
+            return str(display if display is not None else value.get("id", ""))
+        if sensitive and value not in (None, ""):
+            return "****"
+        if isinstance(value, list):
+            return self._render_list(name)
+        return "" if value is None else str(value)
+
+    def _render_list(self, name: str) -> str | Text:
+        """Render a list-of-object field (tags, …) like the list table does.
+
+        Routes through the same flatten/colour pipeline so the cell shows a
+        comma-joined display string — colored when object colors are on — rather
+        than a raw list-of-dicts repr.
+        """
+        object_colors = bool(getattr(self.app, "object_colors", False))
+        rendered = flatten(self._record, columns=[name], with_colors=object_colors).get(name)
+        return render_cell(rendered)
 
     # --- editing ---------------------------------------------------------
     def action_edit_field(self) -> None:
