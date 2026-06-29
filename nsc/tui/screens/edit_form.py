@@ -140,8 +140,13 @@ class EditForm(Screen[None]):
     def _compose_widget(self, name: str, spec: WidgetSpec, value: Any) -> ComposeResult:
         wid = f"field-{encode_field_id(name)}"
         if spec.kind == "multi_select":
+            # Tags seed via spec.selected; a custom-field multiselect seeds from
+            # the record's current list value.
+            current = set(spec.selected)
+            if not current and isinstance(value, list):
+                current = {str(v) for v in value}
             yield SelectionList[str](
-                *(Selection(label, val, val in spec.selected) for label, val in spec.options),
+                *(Selection(label, val, val in current) for label, val in spec.options),
                 id=wid,
                 classes="edit-multiselect",
             )
@@ -244,15 +249,21 @@ class EditForm(Screen[None]):
         if name is None:
             return
         selected = tuple(str(v) for v in event.selection_list.selected)
+        # Only stage when the selection actually changed (by set), so an
+        # unchanged pre-seeded selection — regardless of order — doesn't force a
+        # spurious patch.
         if name == "tags":
-            # Only stage when the tag set actually changed, so an unchanged
-            # pre-seeded selection doesn't force a replace patch.
             if set(selected) == set(tag_slugs(self._record.get("tags"))):
                 self.staged.pop(name, None)
             else:
                 self.staged[name] = tags_payload(selected, self._tags or ())
             return
-        self.staged[name] = list(selected)
+        original = self._record.get(name)
+        original_set = {str(v) for v in original} if isinstance(original, list) else set()
+        if set(selected) == original_set:
+            self.staged.pop(name, None)
+        else:
+            self.staged[name] = list(selected)
 
     def _open_picker(self, name: str) -> None:
         target = resolve_fk_target(name, self._record.get(name), self._model)

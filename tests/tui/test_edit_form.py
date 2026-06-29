@@ -739,3 +739,49 @@ async def test_edit_unchanged_tag_selection_stages_nothing() -> None:
         screen = _cf_edit_screen(app)
         # The pre-seeded selection firing on mount must not stage a tags change.
         assert "tags" not in screen.staged
+
+
+_CF_DEFS_MS = {
+    "envs": CustomFieldDef("envs", "Envs", type="multiselect", choices=("dev", "prod", "qa")),
+}
+
+
+class _CfMsEditApp(App[None]):
+    def __init__(self, client: _SpyClient, record: dict[str, Any]) -> None:
+        super().__init__()
+        self._client = client
+        self._record = record
+
+    def compose(self) -> ComposeResult:
+        yield Static("")
+
+    async def on_mount(self) -> None:
+        model = _cf_model()
+        op = model.tags["dcim"].resources["devices"].update_op
+        assert op is not None
+        await self.push_screen(
+            EditForm(
+                model,
+                self._client,
+                "dcim",
+                "devices",
+                op,
+                self._record,
+                custom_field_defs=_CF_DEFS_MS,
+                available_tags=_TAGS,
+            )
+        )
+
+
+@pytest.mark.asyncio
+async def test_edit_multiselect_custom_field_preseeds_current_values() -> None:
+    record = {"id": 5, "name": "sw1", "custom_fields": {"envs": ["dev", "qa"]}, "tags": []}
+    app = _CfMsEditApp(_SpyClient([]), record)
+    async with app.run_test(size=(120, 60)) as pilot:
+        await pilot.pause()
+        screen = app.screen
+        assert isinstance(screen, EditForm)
+        widget = screen.query_one("#field-custom_fields-envs", SelectionList)
+        assert set(widget.selected) == {"dev", "qa"}
+        # Pre-seeded selection that is unchanged stages nothing.
+        assert "custom_fields.envs" not in screen.staged

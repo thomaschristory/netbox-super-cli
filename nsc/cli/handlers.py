@@ -82,7 +82,12 @@ def _custom_field_header_labels(
         custom_field_labels,
     )
 
-    defs = CustomFieldResolver(ctx.client).resolve(operation.path)
+    # Custom-field definitions are keyed by the collection (list) endpoint, so a
+    # detail path like /api/dcim/devices/{id}/ must reduce to /api/dcim/devices/.
+    list_path = operation.path
+    if list_path.endswith("{id}/"):
+        list_path = list_path[: -len("{id}/")]
+    defs = CustomFieldResolver(ctx.client).resolve(list_path)
     if defs is None:
         return None
     return custom_field_labels(columns, defs)
@@ -148,10 +153,12 @@ def handle_get(
     try:
         params, path_vars = _split_params(operation, kwargs)
         obj = ctx.client.get(operation.path.format(**path_vars), params)
+        columns = ctx.resolve_columns(op_tag, op_resource, operation)
         render(
             obj,
             format=ctx.output_format,
-            columns=ctx.resolve_columns(op_tag, op_resource, operation),
+            columns=columns,
+            header_labels=_custom_field_header_labels(ctx, operation, columns),
             stream=_out(stream),
             compact=ctx.compact,
             color=ctx.color,
@@ -635,10 +642,12 @@ def _render_response(
     if is_delete:
         _render_delete_ok(ctx, stream=stream)
         return
+    columns = ctx.resolve_columns(op_tag, op_resource, operation)
     render(
         response,
         format=ctx.output_format,
-        columns=ctx.resolve_columns(op_tag, op_resource, operation),
+        columns=columns,
+        header_labels=_custom_field_header_labels(ctx, operation, columns),
         stream=stream,
         compact=ctx.compact,
         color=ctx.color,

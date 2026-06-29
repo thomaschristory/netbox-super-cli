@@ -178,11 +178,15 @@ class BulkEditForm(Screen[None]):
         shared_id = self._shared.get(name)
         if target.kind == "raw_id":
             text = "" if shared_id is None else str(shared_id)
-            yield Input(value=text, id=f"field-{name}")
+            yield Input(value=text, id=f"field-{encode_field_id(name)}")
             if target.hint:
                 yield Label(target.hint, classes="bulk-fk-hint")
             return
-        yield Button(f"{name}: {self._fk_seed_label(name)}", id=f"fk-{name}", classes="bulk-fk")
+        yield Button(
+            f"{name}: {self._fk_seed_label(name)}",
+            id=f"fk-{encode_field_id(name)}",
+            classes="bulk-fk",
+        )
 
     def _compose_widget(self, name: str, spec: WidgetSpec) -> ComposeResult:
         wid = f"field-{encode_field_id(name)}"
