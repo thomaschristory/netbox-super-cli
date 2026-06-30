@@ -26,6 +26,7 @@ from nsc.cli import app as app_mod
 from nsc.cli.app import app
 from nsc.config.settings import Paths
 from nsc.model.command_model import (
+    MODEL_FORMAT_VERSION,
     CommandModel,
     HttpMethod,
     Operation,
@@ -88,6 +89,7 @@ def _stub_model() -> CommandModel:
         info_version="1",
         schema_hash="a" * 64,
         tags={"dcim": dcim},
+        format_version=MODEL_FORMAT_VERSION,
     )
 
 

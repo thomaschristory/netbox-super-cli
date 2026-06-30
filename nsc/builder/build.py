@@ -10,8 +10,10 @@ import re
 from typing import Literal
 
 from nsc.model.command_model import (
+    MODEL_FORMAT_VERSION,
     CommandModel,
     FieldShape,
+    FkResourceRef,
     HttpMethod,
     Operation,
     Parameter,
@@ -77,6 +79,8 @@ def build_command_model(loaded: LoadedSchema) -> CommandModel:
         info_version=doc.info.version,
         schema_hash=loaded.hash,
         tags=final_tags,
+        fk_resources=_build_fk_resources(doc),
+        format_version=MODEL_FORMAT_VERSION,
     )
 
 
@@ -346,8 +350,105 @@ def _flat_fields(schema: SchemaObject, doc: OpenAPIDocument) -> dict[str, FieldS
         resolved = _resolve_ref(prop, doc) or prop
         primitive = _primitive(resolved)
         enum = [str(v) for v in resolved.enum] if resolved.enum else None
-        out[name] = FieldShape(primitive=primitive, enum=enum, nullable=resolved.nullable)
+        out[name] = FieldShape(
+            primitive=primitive,
+            enum=enum,
+            nullable=resolved.nullable,
+            fk_target=_fk_target_component(prop),
+        )
     return out
+
+
+def _ref_component_name(ref: str | None) -> str | None:
+    prefix = "#/components/schemas/"
+    if isinstance(ref, str) and ref.startswith(prefix):
+        return ref[len(prefix) :]
+    return None
+
+
+def _normalize_serializer(name: str) -> str:
+    """Reduce a serializer name to a key shared by a field's FK brief and the
+    target resource's list serializer: ``BriefDeviceRoleRequest`` → ``DeviceRole``
+    and ``DeviceWithConfigContext`` → ``Device`` both land on the same base."""
+    return name.removeprefix("Brief").removesuffix("Request").removesuffix("WithConfigContext")
+
+
+def _branch_ref(raw: dict[str, object]) -> str | None:
+    """The `$ref` of a oneOf/anyOf branch, unwrapping a nullable `allOf` wrapper."""
+    ref = raw.get("$ref")
+    if isinstance(ref, str):
+        return ref
+    inner = raw.get("allOf")
+    if isinstance(inner, list):
+        for sub in inner:
+            if isinstance(sub, dict) and isinstance(sub.get("$ref"), str):
+                return str(sub["$ref"])
+    return None
+
+
+def _fk_target_component(prop: SchemaObject) -> str | None:
+    """Target serializer name for a writable FK (`oneOf[integer, Brief<X>Request]`).
+
+    A `oneOf`/`anyOf` mixing an integer branch with a brief-ref branch is NetBox's
+    way of saying "an id or an object" — i.e. a foreign key. Returns `<X>`.
+    """
+    extras = prop.model_extra or {}
+    branches = extras.get("oneOf") or extras.get("anyOf") or []
+    if not isinstance(branches, list):
+        return None
+    has_integer = False
+    ref_name: str | None = None
+    for raw in branches:
+        if not isinstance(raw, dict):
+            continue
+        if raw.get("type") == "integer":
+            has_integer = True
+        name = _ref_component_name(_branch_ref(raw))
+        if name is not None:
+            ref_name = name
+    if has_integer and ref_name is not None:
+        return _normalize_serializer(ref_name)
+    return None
+
+
+def _list_serializer_name(get_op: SchemaOperation, doc: OpenAPIDocument) -> str | None:
+    """The item serializer name a collection GET returns (Paginated<X>List → <X>)."""
+    response = get_op.responses.get("200")
+    if response is None:
+        return None
+    media = response.content.get("application/json")
+    if media is None or media.schema_ is None:
+        return None
+    paginated_name = _ref_component_name(media.schema_.ref)
+    if paginated_name is None:
+        return None
+    paginated = doc.components.schemas.get(paginated_name)
+    if paginated is None or not paginated.properties:
+        return None
+    results = paginated.properties.get("results")
+    if results is None or results.items is None:
+        return None
+    return _ref_component_name(results.items.ref)
+
+
+def _build_fk_resources(doc: OpenAPIDocument) -> dict[str, FkResourceRef]:
+    """Index each list endpoint's item serializer to its owning resource."""
+    index: dict[str, FkResourceRef] = {}
+    for path in sorted(doc.paths):
+        get_op = doc.paths[path].get
+        if get_op is None or not get_op.tags:
+            continue
+        tag_name = get_op.tags[0]
+        resource_name, is_collection = _resource_from_path(path, tag_name)
+        if resource_name is None or not is_collection:
+            continue
+        serializer = _list_serializer_name(get_op, doc)
+        if serializer is None:
+            continue
+        index.setdefault(
+            _normalize_serializer(serializer), FkResourceRef(tag=tag_name, resource=resource_name)
+        )
+    return index
 
 
 def _primitive(schema: SchemaObject) -> PrimitiveType:

@@ -43,6 +43,12 @@ class PrimitiveType(StrEnum):
     UNKNOWN = "unknown"
 
 
+# Bumped whenever the builder changes the shape of a CommandModel in a way that
+# makes older cached models incomplete (not just a schema-body change). The cache
+# rebuilds entries stamped with an older version. See nsc/cache/store.py.
+MODEL_FORMAT_VERSION = 1
+
+
 class _Frozen(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -60,6 +66,10 @@ class FieldShape(_Frozen):
     primitive: PrimitiveType = PrimitiveType.UNKNOWN
     enum: list[str] | None = None
     nullable: bool = False
+    # For a writable foreign key (`oneOf[integer, Brief<X>Request]`), the target
+    # serializer name `<X>` (e.g. "DeviceRole"); None for non-FK fields. Pairs
+    # with CommandModel.fk_resources to find the target resource.
+    fk_target: str | None = None
 
 
 class RequestBodyShape(_Frozen):
@@ -97,6 +107,13 @@ class Tag(_Frozen):
     resources: dict[str, Resource] = Field(default_factory=dict)
 
 
+class FkResourceRef(_Frozen):
+    """Where a foreign-key serializer lives: which `tag` and `resource` serve it."""
+
+    tag: str
+    resource: str
+
+
 class CommandModel(_Frozen):
     """The full normalized tree: tags → resources → operations."""
 
@@ -104,6 +121,11 @@ class CommandModel(_Frozen):
     info_version: str
     schema_hash: str
     tags: dict[str, Tag] = Field(default_factory=dict)
+    # serializer name (e.g. "DeviceRole") → the resource whose list endpoint
+    # serves it. Lets the TUI resolve an FK picker to its true target.
+    fk_resources: dict[str, FkResourceRef] = Field(default_factory=dict)
+    # Defaults to 0 so models written before versioning read as stale and rebuild.
+    format_version: int = 0
 
     def iter_operations(self) -> Iterator[tuple[str, str, Operation]]:
         """Yield `(tag, resource, operation)` triples in deterministic order."""

@@ -214,7 +214,13 @@ class DetailScreen(Screen[None]):
         editor.focus()
 
     def _edit_fk(self, name: str) -> None:
-        target = resolve_fk_target(name, self._record.get(name), self._model)
+        target = resolve_fk_target(
+            name,
+            self._record.get(name),
+            self._model,
+            context_tag=self._tag,
+            context_resource=self._resource_name,
+        )
         if target.kind == "raw_id" or target.list_op is None:
             spec = self._specs[name]
             self._open_input(name, spec)

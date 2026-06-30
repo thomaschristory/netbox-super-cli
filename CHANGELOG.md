@@ -2,6 +2,23 @@
 
 All notable changes to netbox-super-cli are tracked here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) loosely. From v1.0.0 onward, releases follow [Semantic Versioning](https://semver.org/) and the version in `pyproject.toml` matches the git tag. Pre-1.0 milestones (Phase 1-5) were pinned by tag while `pyproject.toml` stayed at `0.0.1`.
 
+## v1.6.2 — 2026-06-30
+
+Patch release. Fixes TUI foreign-key pickers resolving to the wrong resource.
+
+### Fixed
+
+- **Filtering/editing by `role` (and other FKs) opened the wrong picker**
+  ([#139]). Choosing a `role` value when filtering devices listed IPAM roles
+  instead of device roles, because the picker matched the bare field name across
+  apps. Foreign-key pickers now resolve to the field's true target read from the
+  OpenAPI schema (a device/VM `role` → dcim device-roles, a prefix `role` → ipam
+  roles, a contact-assignment `role` → tenancy contact-roles), and fall back to a
+  context-qualified name match. This also corrects `group`, `type`, and similar
+  cross-app FK fields. Cached schemas rebuild once to pick up the new metadata.
+
+[#139]: https://github.com/thomaschristory/netbox-super-cli/issues/139
+
 ## v1.6.1 — 2026-06-29
 
 Patch release. Fixes the TUI bulk-edit form so custom-field edits are visible and

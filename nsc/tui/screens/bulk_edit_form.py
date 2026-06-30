@@ -183,7 +183,13 @@ class BulkEditForm(Screen[None]):
         return str(shared_id)
 
     def _compose_fk(self, name: str) -> ComposeResult:
-        target = resolve_fk_target(name, self._fk_nested_value(name), self._model)
+        target = resolve_fk_target(
+            name,
+            self._fk_nested_value(name),
+            self._model,
+            context_tag=self._tag,
+            context_resource=self._resource_name,
+        )
         self._fk_kinds[name] = target.kind
         shared_id = self._shared.get(name)
         if target.kind == "raw_id":
@@ -331,7 +337,13 @@ class BulkEditForm(Screen[None]):
             self._open_picker(fk)
 
     def _open_picker(self, name: str) -> None:
-        target = resolve_fk_target(name, self._fk_nested_value(name), self._model)
+        target = resolve_fk_target(
+            name,
+            self._fk_nested_value(name),
+            self._model,
+            context_tag=self._tag,
+            context_resource=self._resource_name,
+        )
         if target.list_op is None:
             return
         from nsc.tui.screens.record_picker import RecordPicker  # noqa: PLC0415

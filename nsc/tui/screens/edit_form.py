@@ -174,7 +174,13 @@ class EditForm(Screen[None]):
         return name.endswith("_id") or is_fk_value(self._record.get(name))
 
     def _compose_fk(self, name: str, value: Any) -> ComposeResult:
-        target = resolve_fk_target(name, self._record.get(name), self._model)
+        target = resolve_fk_target(
+            name,
+            self._record.get(name),
+            self._model,
+            context_tag=self._tag,
+            context_resource=self._resource_name,
+        )
         if target.kind == "raw_id":
             text = "" if value is None else str(value)
             yield Input(value=text, id=f"field-{name}")
@@ -266,7 +272,13 @@ class EditForm(Screen[None]):
             self.staged[name] = list(selected)
 
     def _open_picker(self, name: str) -> None:
-        target = resolve_fk_target(name, self._record.get(name), self._model)
+        target = resolve_fk_target(
+            name,
+            self._record.get(name),
+            self._model,
+            context_tag=self._tag,
+            context_resource=self._resource_name,
+        )
         if target.list_op is None:
             return
         from nsc.tui.screens.record_picker import RecordPicker  # noqa: PLC0415
