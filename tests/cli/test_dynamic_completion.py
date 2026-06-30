@@ -23,6 +23,7 @@ from nsc.completion.cache_probe import load_cached_model_for_profile, resolve_co
 from nsc.config.models import Config, Profile
 from nsc.config.settings import Paths
 from nsc.model.command_model import (
+    MODEL_FORMAT_VERSION,
     CommandModel,
     HttpMethod,
     Operation,
@@ -97,6 +98,7 @@ def _model() -> CommandModel:
         info_version="1",
         schema_hash="0" * 64,
         tags={"dcim": dcim},
+        format_version=MODEL_FORMAT_VERSION,
     )
 
 

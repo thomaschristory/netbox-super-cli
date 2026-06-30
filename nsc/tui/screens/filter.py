@@ -67,7 +67,12 @@ class FilterScreen(ModalScreen[dict[str, str]]):
         self._syncing = False
 
     def _is_fk(self, name: str) -> bool:
-        return resolve_fk_target(name, None, self._model).kind == "picker"
+        return (
+            resolve_fk_target(
+                name, None, self._model, context_tag=self._tag, context_resource=self._resource
+            ).kind
+            == "picker"
+        )
 
     @staticmethod
     def _apply_key(name: str) -> str:
@@ -187,7 +192,9 @@ class FilterScreen(ModalScreen[dict[str, str]]):
         raw.focus()
 
     def _open_fk_picker(self, name: str) -> None:
-        target = resolve_fk_target(name, None, self._model)
+        target = resolve_fk_target(
+            name, None, self._model, context_tag=self._tag, context_resource=self._resource
+        )
         if target.list_op is None:
             return
         from nsc.tui.screens.record_picker import RecordPicker  # noqa: PLC0415

@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 from nsc.cache.store import CacheStore
-from nsc.model.command_model import CommandModel, Tag
+from nsc.model.command_model import MODEL_FORMAT_VERSION, CommandModel, Tag
 
 
 def _model(hash_: str = "a" * 64) -> CommandModel:
@@ -18,6 +18,7 @@ def _model(hash_: str = "a" * 64) -> CommandModel:
         info_version="4.1.0",
         schema_hash=hash_,
         tags={"dcim": Tag(name="dcim")},
+        format_version=MODEL_FORMAT_VERSION,
     )
 
 
@@ -57,6 +58,16 @@ def test_corrupt_cache_returns_none(tmp_path: Path) -> None:
     target = tmp_path / "prod" / ("a" * 64 + ".json")
     target.write_text("not json")
     assert store.load("prod", "a" * 64) is None
+
+
+def test_load_rejects_stale_format_version(tmp_path: Path) -> None:
+    # A model written by an older nsc (older format_version) must miss so it
+    # rebuilds with current metadata, even though its hash matches.
+    store = CacheStore(root=tmp_path)
+    h = "a" * 64
+    stale = _model(h).model_copy(update={"format_version": MODEL_FORMAT_VERSION - 1})
+    store.save("default", stale)
+    assert store.load("default", h) is None
 
 
 def test_load_rejects_hash_mismatch(tmp_path: Path) -> None:

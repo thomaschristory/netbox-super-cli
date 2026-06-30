@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from nsc.config.models import Config, Profile
-from nsc.model.command_model import CommandModel
+from nsc.model.command_model import MODEL_FORMAT_VERSION, CommandModel
 
 _LOG = logging.getLogger(__name__)
 _PROFILE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")
@@ -75,6 +75,10 @@ class CacheStore:
             return None
         if model.schema_hash != schema_hash:
             _LOG.warning("cache: hash mismatch for %s (file says %s)", target, model.schema_hash)
+            return None
+        if model.format_version != MODEL_FORMAT_VERSION:
+            # Built by an older nsc whose model lacks current metadata; rebuild.
+            _LOG.info("cache: stale model format for %s; rebuilding", target)
             return None
         return model
 

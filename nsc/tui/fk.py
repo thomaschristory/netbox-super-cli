@@ -20,7 +20,7 @@ from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict
 
-from nsc.model.command_model import CommandModel, Operation
+from nsc.model.command_model import CommandModel, Operation, Resource
 from nsc.tui.relations import singularize
 
 FkKind = Literal["picker", "raw_id"]
@@ -51,12 +51,27 @@ class FkTarget(BaseModel):
     hint: str | None = None
 
 
-def resolve_fk_target(field_name: str, current_value: Any, model: CommandModel) -> FkTarget:
+def resolve_fk_target(
+    field_name: str,
+    current_value: Any,
+    model: CommandModel,
+    *,
+    context_tag: str | None = None,
+    context_resource: str | None = None,
+) -> FkTarget:
     from_url = _resolve_from_url(field_name, current_value, model)
     if from_url is not None:
         return from_url
 
-    by_name = _resolve_by_field_name(field_name, model)
+    from_schema = _resolve_from_schema_fk(
+        field_name, model, context_tag=context_tag, context_resource=context_resource
+    )
+    if from_schema is not None:
+        return from_schema
+
+    by_name = _resolve_by_field_name(
+        field_name, model, context_tag=context_tag, context_resource=context_resource
+    )
     if by_name is not None:
         return by_name
 
@@ -65,6 +80,67 @@ def resolve_fk_target(field_name: str, current_value: Any, model: CommandModel) 
         field_name=field_name,
         hint=f"Could not resolve a target resource for '{field_name}'; enter the numeric ID.",
     )
+
+
+def _resolve_from_schema_fk(
+    field_name: str,
+    model: CommandModel,
+    *,
+    context_tag: str | None,
+    context_resource: str | None,
+) -> FkTarget | None:
+    """Resolve via the schema-declared FK target of the owning resource's field.
+
+    The owning resource's create/update body types the field as a FK to a named
+    serializer (`fk_target`); `model.fk_resources` maps that serializer to the
+    resource that serves it. This resolves even when the field and resource names
+    diverge (a virtual-machine's `role` targets dcim `device-roles`).
+    """
+    if context_resource is None:
+        return None
+    resource = _find_resource(model, context_resource, prefer_tag=context_tag)
+    if resource is None:
+        return None
+    base = field_name[:-3] if field_name.endswith("_id") else field_name
+    component = _field_fk_target(resource, base)
+    if component is None:
+        return None
+    ref = model.fk_resources.get(component)
+    if ref is None:
+        return None
+    tag = model.tags.get(ref.tag)
+    target = tag.resources.get(ref.resource) if tag is not None else None
+    if target is None or target.list_op is None:
+        return None
+    return FkTarget(
+        kind="picker",
+        field_name=field_name,
+        tag=ref.tag,
+        resource_name=ref.resource,
+        list_op=target.list_op,
+    )
+
+
+def _field_fk_target(resource: Resource, base: str) -> str | None:
+    for op in (resource.create_op, resource.update_op, resource.replace_op):
+        if op is None or op.request_body is None:
+            continue
+        shape = op.request_body.fields.get(base)
+        if shape is not None and shape.fk_target is not None:
+            return shape.fk_target
+    return None
+
+
+def _find_resource(model: CommandModel, name: str, *, prefer_tag: str | None) -> Resource | None:
+    if prefer_tag is not None and prefer_tag in model.tags:
+        found = model.tags[prefer_tag].resources.get(name)
+        if found is not None:
+            return found
+    for tag_name in sorted(model.tags):
+        found = model.tags[tag_name].resources.get(name)
+        if found is not None:
+            return found
+    return None
 
 
 def _resolve_from_url(field_name: str, current_value: Any, model: CommandModel) -> FkTarget | None:
@@ -110,25 +186,59 @@ def _resolve_from_url(field_name: str, current_value: Any, model: CommandModel) 
     )
 
 
-def _resolve_by_field_name(field_name: str, model: CommandModel) -> FkTarget | None:
+def _resolve_by_field_name(
+    field_name: str,
+    model: CommandModel,
+    *,
+    context_tag: str | None = None,
+    context_resource: str | None = None,
+) -> FkTarget | None:
     base = field_name[:-3] if field_name.endswith("_id") else field_name
     wanted = singularize(base)
-    for tag_name in sorted(model.tags):
-        tag = model.tags[tag_name]
-        for resource_name in sorted(tag.resources):
-            if singularize(resource_name) != wanted:
-                continue
-            resource = tag.resources[resource_name]
-            if resource.list_op is None:
-                continue
+
+    # NetBox reuses bare FK names across apps: a device's `role` targets dcim
+    # `device-roles`, an ipam prefix's `role` targets ipam `roles`. The bare name
+    # can't disambiguate (`device-roles` does not singularize to `role`), so when
+    # the owning resource is known we first try the qualified target name
+    # `<owner>-<field>` (e.g. `device-role`), preferring the owner's own tag,
+    # before falling back to the bare name's global scan.
+    candidates: list[str] = []
+    if context_resource is not None:
+        candidates.append(f"{singularize(context_resource)}-{wanted}")
+    candidates.append(wanted)
+
+    for candidate in candidates:
+        located = _match_resource_by_singular(model, candidate, prefer_tag=context_tag)
+        if located is not None:
+            tag_name, resource_name, list_op = located
             return FkTarget(
                 kind="picker",
                 field_name=field_name,
                 tag=tag_name,
                 resource_name=resource_name,
-                list_op=resource.list_op,
+                list_op=list_op,
             )
     return None
+
+
+def _match_resource_by_singular(
+    model: CommandModel, wanted: str, *, prefer_tag: str | None
+) -> tuple[str, str, Operation] | None:
+    for tag_name in _tag_search_order(model, prefer_tag):
+        tag = model.tags[tag_name]
+        for resource_name in sorted(tag.resources):
+            resource = tag.resources[resource_name]
+            if singularize(resource_name) != wanted or resource.list_op is None:
+                continue
+            return (tag_name, resource_name, resource.list_op)
+    return None
+
+
+def _tag_search_order(model: CommandModel, prefer_tag: str | None) -> list[str]:
+    rest = sorted(model.tags)
+    if prefer_tag is not None and prefer_tag in model.tags:
+        return [prefer_tag, *(t for t in rest if t != prefer_tag)]
+    return rest
 
 
 def _locate_resource(
