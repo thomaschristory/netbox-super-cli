@@ -197,6 +197,24 @@ def test_offline_format_stale_cache_persists_bundled_fallback(
 
 
 @respx.mock
+def test_offline_bundled_fallback_survives_unpersistable_profile_name(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A profile name outside `_PROFILE_RE` (names aren't validated at config
+    time) makes `CacheStore.save` raise `ValueError`; the offline bundled
+    fallback must swallow it and still return the in-memory model."""
+    respx.get("https://nb.example/api/schema/?format=json").mock(
+        side_effect=httpx.ConnectError("offline")
+    )
+    paths = _paths(tmp_path)
+    model = resolve_command_model(
+        paths=paths, profile=_profile(name="has space"), schema_override=None
+    )
+    assert isinstance(model, CommandModel)
+    assert "bundled" in capsys.readouterr().err.lower()
+
+
+@respx.mock
 def test_offline_no_cache_no_bundled_raises(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

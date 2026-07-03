@@ -212,7 +212,10 @@ def _persist_offline_fallback(paths: Paths, profile_name: str, model: CommandMod
     reachable again. A write failure here is non-fatal; we still return the
     in-memory model to the caller."""
     store = CacheStore(root=paths.cache_dir)
-    with contextlib.suppress(OSError):
+    # OSError: disk/permission failure. ValueError: CacheStore rejects a
+    # profile name outside `_PROFILE_RE` (names aren't validated at config
+    # time). Both are non-fatal here — the in-memory model is still returned.
+    with contextlib.suppress(OSError, ValueError):
         store.save(profile_name, model, record_fetch=False)
 
 
