@@ -7,7 +7,6 @@ from collections.abc import Callable
 from enum import StrEnum
 from typing import Annotated
 
-import httpx
 import typer
 
 from nsc.cache.store import (
@@ -45,6 +44,8 @@ def _load_config_or_empty() -> Config:
 
 
 def _fetch_live_hash(profile: Profile, *, default_timeout: float) -> str:
+    import httpx  # noqa: PLC0415  # deferred: keeps httpx off the CLI-startup path.
+
     url = str(profile.url).rstrip("/") + "/api/schema/?format=json"
     headers = {"Accept": "application/json"}
     if profile.token:

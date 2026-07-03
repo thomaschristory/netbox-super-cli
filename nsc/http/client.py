@@ -7,10 +7,8 @@ import time
 from collections.abc import Iterator
 from datetime import UTC, datetime
 from types import TracebackType
-from typing import Any, Protocol, cast
+from typing import TYPE_CHECKING, Any, Protocol, cast
 from urllib.parse import parse_qs, urlsplit
-
-import httpx
 
 from nsc.config.models import AuditRedaction
 from nsc.config.settings import default_paths
@@ -28,6 +26,9 @@ from nsc.http.retry import (
     should_retry,
 )
 from nsc.model.command_model import HttpMethod
+
+if TYPE_CHECKING:
+    import httpx
 
 _BODY_SNIPPET_BYTES = 2048
 _HTTP_5XX_MIN = 500
@@ -50,6 +51,8 @@ class NetBoxClient:
         redaction: AuditRedaction = AuditRedaction.SAFE,
         profile_name: str | None = None,
     ) -> None:
+        import httpx  # noqa: PLC0415  # deferred: keeps httpx off the CLI-startup path.
+
         if profile.token is None:
             raise ValueError("NetBoxClient requires a non-None token on the profile")
         self._url = str(profile.url).rstrip("/")
@@ -200,6 +203,8 @@ class NetBoxClient:
         record_indices: list[int] | None = None,
         sensitive_paths: tuple[str, ...] = (),
     ) -> httpx.Response:
+        import httpx  # noqa: PLC0415  # deferred: keeps httpx off the CLI-startup path.
+
         policy = policy_for_method(method)
         attempt = 0
         is_write = method not in {HttpMethod.GET, HttpMethod.HEAD, HttpMethod.OPTIONS}
