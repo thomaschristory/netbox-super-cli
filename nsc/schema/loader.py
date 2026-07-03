@@ -7,8 +7,6 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
-import httpx
-
 from nsc.schema.hashing import canonical_sha256
 from nsc.schema.models import OpenAPIDocument
 
@@ -122,6 +120,8 @@ def _decode_content_encoding(raw: bytes, encoding: str, source: str) -> bytes:
 
 
 def _fetch_http_body(source: str, *, verify_ssl: bool, timeout: float) -> bytes:
+    import httpx  # noqa: PLC0415  # deferred: keeps httpx off the CLI-startup path.
+
     try:
         with httpx.stream(
             "GET",

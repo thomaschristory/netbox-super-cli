@@ -9,7 +9,6 @@ from __future__ import annotations
 import random
 from enum import Enum
 
-import httpx
 from pydantic import BaseModel, ConfigDict
 
 from nsc.model.command_model import HttpMethod
@@ -49,6 +48,8 @@ def policy_for_method(method: HttpMethod) -> RetryPolicy:
 
 def classify_error(exc: BaseException) -> ErrorClass:
     """Map an httpx transport exception to a retry-relevant class."""
+    import httpx  # noqa: PLC0415  # deferred: keeps httpx off the CLI-startup path.
+
     if isinstance(exc, (httpx.ConnectError, httpx.ConnectTimeout)):
         return ErrorClass.CONNECT
     if isinstance(exc, httpx.ReadTimeout):

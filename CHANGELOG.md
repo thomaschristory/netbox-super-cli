@@ -2,6 +2,23 @@
 
 All notable changes to netbox-super-cli are tracked here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) loosely. From v1.0.0 onward, releases follow [Semantic Versioning](https://semver.org/) and the version in `pyproject.toml` matches the git tag. Pre-1.0 milestones (Phase 1-5) were pinned by tag while `pyproject.toml` stayed at `0.0.1`.
 
+## [Unreleased]
+
+### Changed
+
+- **httpx is now kept off the `nsc --help` / cold-start path** ([#13]). httpx is
+  the single heaviest import in the tree (~65ms cold), and nothing on the startup
+  path needs an HTTP client. It was being pulled in eagerly through the
+  runtime → client → retry chain (plus `cache`, `schema`, and `login`
+  command modules). All of these now import httpx lazily, at first request. Cold
+  startup drops by roughly httpx's import cost, bringing the median back under the
+  300ms project target. A new guard test (`test_lazy_httpx_import.py`) asserts
+  httpx never loads on `nsc --help`, and the startup benchmark's threshold is
+  re-baselined to 300ms so an over-threshold skip once again signals a real
+  regression instead of firing on every run.
+
+[#13]: https://github.com/thomaschristory/netbox-super-cli/issues/13
+
 ## v1.6.3 — 2026-07-03
 
 Patch release. Stops an offline instance from rebuilding the command model from

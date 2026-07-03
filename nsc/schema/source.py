@@ -20,7 +20,6 @@ import sys
 import time
 from pathlib import Path
 
-import httpx
 from ruamel.yaml import YAML
 
 from nsc.builder.build import build_command_model
@@ -67,6 +66,8 @@ def resolve_command_model(
     schema_refresh: SchemaRefresh = SchemaRefresh.ON_HASH_CHANGE,
     force_refresh: bool = False,
 ) -> CommandModel:
+    import httpx  # noqa: PLC0415  # deferred: keeps httpx off the CLI-startup path.
+
     if schema_override is not None:
         loaded = load_schema(
             schema_override, verify_ssl=profile.verify_ssl, timeout=profile.timeout
@@ -112,6 +113,8 @@ def resolve_command_model(
 
 
 def _fetch_schema(url: str, profile: ResolvedProfile) -> LoadedSchema:
+    import httpx  # noqa: PLC0415  # deferred: keeps httpx off the CLI-startup path.
+
     headers: dict[str, str] = {"Accept": "application/json"}
     if profile.token:
         headers["Authorization"] = f"Token {profile.token}"

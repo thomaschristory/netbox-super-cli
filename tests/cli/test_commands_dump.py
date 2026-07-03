@@ -42,7 +42,10 @@ def _install_fake_stream(
         captured["timeout"] = kwargs.get("timeout")
         yield httpx.Response(200, stream=_Stream())
 
-    monkeypatch.setattr("nsc.schema.loader.httpx.stream", fake_stream)
+    # The loader imports httpx lazily (keeps it off the CLI-startup path, #13),
+    # so there is no `nsc.schema.loader.httpx` module attribute to patch. httpx is
+    # a shared singleton; patching `httpx.stream` reaches the loader's local import.
+    monkeypatch.setattr("httpx.stream", fake_stream)
 
 
 def test_dumps_command_model_as_json() -> None:

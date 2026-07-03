@@ -17,10 +17,14 @@ out of `audit.jsonl`. There is no retry loop: a single failed probe fails fast.
 
 from __future__ import annotations
 
-import httpx
+from typing import TYPE_CHECKING
+
 from pydantic import BaseModel, ConfigDict
 
 from nsc.config.models import Profile
+
+if TYPE_CHECKING:
+    import httpx
 
 _DEFAULT_TIMEOUT = 10.0
 
@@ -65,6 +69,8 @@ def verify(profile: Profile, *, timeout: float = _DEFAULT_TIMEOUT) -> VerifyResu
 
     Raises `VerifyError` on any failure. Returns a `VerifyResult` on success.
     """
+    import httpx  # noqa: PLC0415  # deferred: keeps httpx off the CLI-startup path.
+
     if not profile.token:
         raise VerifyError(message="profile has no token; cannot verify")
     base = str(profile.url).rstrip("/")
@@ -84,6 +90,8 @@ def verify(profile: Profile, *, timeout: float = _DEFAULT_TIMEOUT) -> VerifyResu
 
 
 def _probe_status(client: httpx.Client) -> str:
+    import httpx  # noqa: PLC0415  # deferred: keeps httpx off the CLI-startup path.
+
     try:
         response = client.get("/api/status/")
     except (httpx.RequestError, OSError) as exc:
@@ -109,6 +117,8 @@ def _probe_users_me(client: httpx.Client) -> str:
     calling user's identity in the common case. If the user has no visible
     tokens (an unusual admin state), we surface "(unknown)" rather than failing.
     """
+    import httpx  # noqa: PLC0415  # deferred: keeps httpx off the CLI-startup path.
+
     try:
         response = client.get("/api/users/tokens/", params={"limit": 1})
     except (httpx.RequestError, OSError) as exc:
