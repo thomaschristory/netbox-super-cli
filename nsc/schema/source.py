@@ -15,6 +15,7 @@ access logs as a `GET /api/schema/` between every PATCH.
 
 from __future__ import annotations
 
+import contextlib
 import sys
 import time
 from pathlib import Path
@@ -97,6 +98,7 @@ def resolve_command_model(
             return cached
         bundled = _load_bundled_command_model()
         if bundled is not None:
+            _persist_offline_fallback(paths, profile.name, bundled)
             print(
                 f"Could not reach NetBox ({exc}) and no cache; using bundled schema.",
                 file=sys.stderr,
@@ -195,6 +197,23 @@ def _find_fresh_cached(
         if model is not None:
             return model
     return None
+
+
+def _persist_offline_fallback(paths: Paths, profile_name: str, model: CommandModel) -> None:
+    """Cache a bundled-schema model under the profile so subsequent offline
+    invocations hit `_find_any_cached` (a cheap JSON load) instead of
+    re-building from the bundled schema on every call (issue #140). This also
+    ends the completion blackout: `cache_probe` can now surface a
+    format-current entry.
+
+    No fetch timestamp is recorded (`record_fetch=False`): the model did not
+    come from this NetBox, so the TTL fast-path must keep distrusting it and
+    attempt a real fetch on the next invocation — self-healing once NetBox is
+    reachable again. A write failure here is non-fatal; we still return the
+    in-memory model to the caller."""
+    store = CacheStore(root=paths.cache_dir)
+    with contextlib.suppress(OSError):
+        store.save(profile_name, model, record_fetch=False)
 
 
 def _load_bundled_command_model() -> CommandModel | None:

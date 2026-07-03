@@ -2,6 +2,25 @@
 
 All notable changes to netbox-super-cli are tracked here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) loosely. From v1.0.0 onward, releases follow [Semantic Versioning](https://semver.org/) and the version in `pyproject.toml` matches the git tag. Pre-1.0 milestones (Phase 1-5) were pinned by tag while `pyproject.toml` stayed at `0.0.1`.
 
+## v1.6.3 — 2026-07-03
+
+Patch release. Stops an offline instance from rebuilding the command model from
+the bundled schema on every invocation after a format-version bump.
+
+### Fixed
+
+- **Offline invocations rebuilt from the bundled schema every time when the only
+  cached model was format-stale** ([#140]). After the v1.6.2 format-version bump
+  (#139), a cache entry built by an older `nsc` is rejected so it rebuilds with
+  the new metadata. Online this self-heals on the first call, but while NetBox
+  was unreachable nothing re-saved: each invocation re-parsed the bundled schema
+  (~180ms) and tab-completion went briefly blank for the profile. The offline
+  bundled fallback is now persisted under the profile — without a fetch
+  timestamp, so the TTL fast-path still refetches once NetBox is reachable — so
+  the next invocation hits the cache and completion recovers immediately.
+
+[#140]: https://github.com/thomaschristory/netbox-super-cli/issues/140
+
 ## v1.6.2 — 2026-06-30
 
 Patch release. Fixes TUI foreign-key pickers resolving to the wrong resource.
