@@ -148,6 +148,20 @@ def test_save_writes_fetched_at_sidecar(tmp_path: Path) -> None:
     assert before <= fetched_at <= after
 
 
+def test_save_without_record_fetch_writes_no_sidecar(tmp_path: Path) -> None:
+    """`save(record_fetch=False)` persists the model but leaves no fetch
+    timestamp, so the TTL fast-path keeps distrusting the entry. Used by the
+    offline bundled-fallback path (issue #140): we cache the rebuilt model to
+    skip per-invocation rebuilds, but a real fetch must still be attempted
+    once NetBox is reachable again."""
+    store = CacheStore(root=tmp_path)
+    store.save("prod", _model("a" * 64), record_fetch=False)
+
+    assert store.load("prod", "a" * 64) is not None
+    assert not (tmp_path / "prod" / ("a" * 64 + ".meta.json")).exists()
+    assert store.load_fetched_at("prod", "a" * 64) is None
+
+
 def test_load_fetched_at_returns_none_when_missing(tmp_path: Path) -> None:
     """No sidecar means we can't prove freshness — distrust the entry."""
     store = CacheStore(root=tmp_path)

@@ -82,13 +82,21 @@ class CacheStore:
             return None
         return model
 
-    def save(self, profile: str, model: CommandModel) -> Path:
+    def save(self, profile: str, model: CommandModel, *, record_fetch: bool = True) -> Path:
+        """Persist `model` under the profile. `record_fetch=True` also stamps
+        the `fetched_at` sidecar (a live fetch just produced this model, so
+        the TTL fast-path may trust it). Pass `record_fetch=False` for models
+        that were *not* fetched from this NetBox — e.g. the offline bundled
+        fallback (issue #140): we want the persisted copy so future offline
+        invocations skip the rebuild, but the TTL fast-path must keep
+        distrusting it so a real fetch is attempted once NetBox is reachable."""
         self._validate_profile(profile)
         target = self._path_for(profile, model.schema_hash)
         target.parent.mkdir(parents=True, exist_ok=True)
         _atomic_write(target, model.model_dump_json(indent=2))
-        meta = self._meta_path_for(profile, model.schema_hash)
-        _atomic_write(meta, json.dumps({"fetched_at": time.time()}))
+        if record_fetch:
+            meta = self._meta_path_for(profile, model.schema_hash)
+            _atomic_write(meta, json.dumps({"fetched_at": time.time()}))
         return target
 
     def touch_fetched_at(self, profile: str, schema_hash: str) -> None:
