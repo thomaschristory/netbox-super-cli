@@ -36,7 +36,7 @@ jobs:
       - name: Sync deps (runtime + docs)
         run: uv sync --frozen --group docs
       - name: Build site (strict)
-        run: uv run mkdocs build --strict
+        run: uv run zensical build --strict
       - name: Upload Pages artifact
         if: github.ref_type == 'tag'
         uses: actions/upload-pages-artifact@v5
