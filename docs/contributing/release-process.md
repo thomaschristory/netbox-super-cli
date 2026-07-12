@@ -11,7 +11,7 @@ on a `chore/release-X.Y.Z` feature branch, gets PR-merged into `main`,
 and only then is `vX.Y.Z` tagged on the resulting merge commit.
 
 The same `v*` tag push also publishes the documentation site.
-`docs.yml` runs build-only (`mkdocs build --strict`) on docs-touching
+`docs.yml` runs build-only (`zensical build --strict`) on docs-touching
 pull requests, but the GitHub Pages **deploy** job only runs on a `v*`
 tag push — the live docs site updates on release, not on merge to
 `main`.

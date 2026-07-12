@@ -54,10 +54,10 @@ e2e:
         docker compose -f tests/e2e/docker-compose.yml down -v; \
         exit $rc
 
-# Serve the MkDocs site locally at http://127.0.0.1:8000
+# Serve the docs site locally at http://127.0.0.1:8000 (preview only)
 docs:
-    uv run mkdocs serve
+    uv run zensical serve
 
-# Build the MkDocs site (strict mode — fails on broken links, missing nav targets, etc.)
+# Build the docs site (strict mode — fails on broken links, missing anchors, etc.)
 docs-build:
-    uv run mkdocs build --strict
+    uv run zensical build --strict

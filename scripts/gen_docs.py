@@ -1,4 +1,4 @@
-"""Generate the four auto-generated reference pages for the MkDocs site.
+"""Generate the four auto-generated reference pages for the docs site.
 
 Usage:
     python scripts/gen_docs.py             # write the pages

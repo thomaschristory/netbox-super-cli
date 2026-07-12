@@ -78,8 +78,7 @@ dev = [
     "types-PyYAML>=6.0",
 ]
 docs = [
-    "mkdocs>=1.6",
-    "mkdocs-material>=9.5",
+    "zensical>=0.0.38",
     "pyyaml>=6.0",
 ]
 
