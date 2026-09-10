@@ -9,7 +9,7 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
-import httpx
+import httpx2
 import pytest
 from typer.testing import CliRunner
 
@@ -26,9 +26,9 @@ def _bundled_schema() -> Path:
 def _install_fake_stream(
     monkeypatch: pytest.MonkeyPatch, captured: dict[str, Any], body: bytes
 ) -> None:
-    """Patch `httpx.stream` (used by the schema loader) to record kwargs and replay `body`."""
+    """Patch `httpx2.stream` (used by the schema loader) to record kwargs and replay `body`."""
 
-    class _Stream(httpx.SyncByteStream):
+    class _Stream(httpx2.SyncByteStream):
         def __iter__(self) -> Iterator[bytes]:
             yield body
 
@@ -36,16 +36,16 @@ def _install_fake_stream(
             pass
 
     @contextlib.contextmanager
-    def fake_stream(method: str, url: str, **kwargs: Any) -> Iterator[httpx.Response]:
+    def fake_stream(method: str, url: str, **kwargs: Any) -> Iterator[httpx2.Response]:
         captured["url"] = url
         captured["verify"] = kwargs.get("verify")
         captured["timeout"] = kwargs.get("timeout")
-        yield httpx.Response(200, stream=_Stream())
+        yield httpx2.Response(200, stream=_Stream())
 
-    # The loader imports httpx lazily (keeps it off the CLI-startup path, #13),
-    # so there is no `nsc.schema.loader.httpx` module attribute to patch. httpx is
-    # a shared singleton; patching `httpx.stream` reaches the loader's local import.
-    monkeypatch.setattr("httpx.stream", fake_stream)
+    # The loader imports httpx2 lazily (keeps it off the CLI-startup path, #13),
+    # so there is no `nsc.schema.loader.httpx2` module attribute to patch. httpx2 is
+    # a shared singleton; patching `httpx2.stream` reaches the loader's local import.
+    monkeypatch.setattr("httpx2.stream", fake_stream)
 
 
 def test_dumps_command_model_as_json() -> None:
@@ -78,7 +78,7 @@ def test_unknown_schema_path_yields_nonzero_exit() -> None:
 def test_insecure_flag_propagates_to_schema_fetch(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """`nsc --insecure commands --schema https://...` must call httpx with verify=False.
+    """`nsc --insecure commands --schema https://...` must call httpx2 with verify=False.
 
     Regression for issue #8 — the `commands` meta-command bypasses the bootstrap
     pipeline that resolves `--insecure`, so it has to read the global state itself.

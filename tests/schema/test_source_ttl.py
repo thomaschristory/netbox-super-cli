@@ -12,7 +12,6 @@ import time
 from pathlib import Path
 from typing import Any
 
-import httpx
 import pytest
 import respx
 
@@ -65,12 +64,13 @@ def _minimal_schema_doc() -> dict[str, Any]:
     }
 
 
-@respx.mock
-def test_daily_refresh_skips_fetch_when_cache_is_fresh(tmp_path: Path) -> None:
+def test_daily_refresh_skips_fetch_when_cache_is_fresh(
+    tmp_path: Path, httpx2_mock: respx.Router
+) -> None:
     """With DAILY policy and a cache entry written seconds ago, the
     second resolve must NOT hit /api/schema/."""
-    route = respx.get("https://nb.example/api/schema/?format=json").mock(
-        return_value=httpx.Response(200, json=_minimal_schema_doc())
+    route = httpx2_mock.get("https://nb.example/api/schema/?format=json").respond(
+        200, json=_minimal_schema_doc()
     )
     paths = _paths(tmp_path)
     profile = _profile()
@@ -92,12 +92,13 @@ def test_daily_refresh_skips_fetch_when_cache_is_fresh(tmp_path: Path) -> None:
     assert route.call_count == 1, "second call must use the fresh cache, not refetch"
 
 
-@respx.mock
-def test_daily_refresh_refetches_when_cache_is_stale(tmp_path: Path) -> None:
+def test_daily_refresh_refetches_when_cache_is_stale(
+    tmp_path: Path, httpx2_mock: respx.Router
+) -> None:
     """When the newest cache entry is older than DAILY's TTL (24h),
     we must fetch again."""
-    route = respx.get("https://nb.example/api/schema/?format=json").mock(
-        return_value=httpx.Response(200, json=_minimal_schema_doc())
+    route = httpx2_mock.get("https://nb.example/api/schema/?format=json").respond(
+        200, json=_minimal_schema_doc()
     )
     paths = _paths(tmp_path)
     profile = _profile()
@@ -122,12 +123,11 @@ def test_daily_refresh_refetches_when_cache_is_stale(tmp_path: Path) -> None:
     assert route.call_count == 2
 
 
-@respx.mock
-def test_manual_refresh_uses_cache_indefinitely(tmp_path: Path) -> None:
+def test_manual_refresh_uses_cache_indefinitely(tmp_path: Path, httpx2_mock: respx.Router) -> None:
     """MANUAL means: never auto-refresh — any cache hit wins,
     regardless of age."""
-    route = respx.get("https://nb.example/api/schema/?format=json").mock(
-        return_value=httpx.Response(200, json=_minimal_schema_doc())
+    route = httpx2_mock.get("https://nb.example/api/schema/?format=json").respond(
+        200, json=_minimal_schema_doc()
     )
     paths = _paths(tmp_path)
     profile = _profile()
@@ -152,11 +152,10 @@ def test_manual_refresh_uses_cache_indefinitely(tmp_path: Path) -> None:
     assert route.call_count == 1
 
 
-@respx.mock
-def test_force_refresh_bypasses_fresh_cache(tmp_path: Path) -> None:
+def test_force_refresh_bypasses_fresh_cache(tmp_path: Path, httpx2_mock: respx.Router) -> None:
     """`force_refresh=True` forces a fetch even with a fresh cache."""
-    route = respx.get("https://nb.example/api/schema/?format=json").mock(
-        return_value=httpx.Response(200, json=_minimal_schema_doc())
+    route = httpx2_mock.get("https://nb.example/api/schema/?format=json").respond(
+        200, json=_minimal_schema_doc()
     )
     paths = _paths(tmp_path)
     profile = _profile()
@@ -179,12 +178,11 @@ def test_force_refresh_bypasses_fresh_cache(tmp_path: Path) -> None:
     assert route.call_count == 2
 
 
-@respx.mock
-def test_on_hash_change_keeps_legacy_behaviour(tmp_path: Path) -> None:
+def test_on_hash_change_keeps_legacy_behaviour(tmp_path: Path, httpx2_mock: respx.Router) -> None:
     """ON_HASH_CHANGE preserves the v1.0.1 behaviour: every invocation
     fetches the live schema to compare hashes."""
-    route = respx.get("https://nb.example/api/schema/?format=json").mock(
-        return_value=httpx.Response(200, json=_minimal_schema_doc())
+    route = httpx2_mock.get("https://nb.example/api/schema/?format=json").respond(
+        200, json=_minimal_schema_doc()
     )
     paths = _paths(tmp_path)
     profile = _profile()
@@ -204,12 +202,11 @@ def test_on_hash_change_keeps_legacy_behaviour(tmp_path: Path) -> None:
     assert route.call_count == 2
 
 
-@respx.mock
-def test_no_cache_yet_falls_back_to_fetch(tmp_path: Path) -> None:
+def test_no_cache_yet_falls_back_to_fetch(tmp_path: Path, httpx2_mock: respx.Router) -> None:
     """First-ever invocation: no cache exists, must fetch even in
     MANUAL mode (otherwise nothing would work)."""
-    route = respx.get("https://nb.example/api/schema/?format=json").mock(
-        return_value=httpx.Response(200, json=_minimal_schema_doc())
+    route = httpx2_mock.get("https://nb.example/api/schema/?format=json").respond(
+        200, json=_minimal_schema_doc()
     )
     paths = _paths(tmp_path)
 
@@ -222,13 +219,11 @@ def test_no_cache_yet_falls_back_to_fetch(tmp_path: Path) -> None:
     assert route.call_count == 1
 
 
-@respx.mock
-def test_explicit_schema_override_ignores_ttl(tmp_path: Path) -> None:
+@pytest.mark.httpx2(assert_all_called=False)
+def test_explicit_schema_override_ignores_ttl(tmp_path: Path, httpx2_mock: respx.Router) -> None:
     """`--schema <path>` always wins; never consults TTL or hits the
     network."""
-    route = respx.get("https://nb.example/api/schema/?format=json").mock(
-        return_value=httpx.Response(500)
-    )
+    route = httpx2_mock.get("https://nb.example/api/schema/?format=json").respond(500)
     schema_path = tmp_path / "s.json"
     schema_path.write_text(json.dumps(_minimal_schema_doc()), encoding="utf-8")
     paths = _paths(tmp_path)
@@ -265,13 +260,14 @@ def test_ttl_for_policy(policy: SchemaRefresh, expected_ttl: float) -> None:
     assert _ttl_for_policy(policy) == expected_ttl
 
 
-@respx.mock
-def test_missing_sidecar_forces_refetch_under_daily(tmp_path: Path) -> None:
+def test_missing_sidecar_forces_refetch_under_daily(
+    tmp_path: Path, httpx2_mock: respx.Router
+) -> None:
     """A cache file without its `<hash>.meta.json` sidecar is distrusted —
     the fast path can't prove freshness, so we refetch. This is the
     upgrade path for caches written before the sidecar existed."""
-    route = respx.get("https://nb.example/api/schema/?format=json").mock(
-        return_value=httpx.Response(200, json=_minimal_schema_doc())
+    route = httpx2_mock.get("https://nb.example/api/schema/?format=json").respond(
+        200, json=_minimal_schema_doc()
     )
     paths = _paths(tmp_path)
     profile = _profile()
@@ -297,12 +293,11 @@ def test_missing_sidecar_forces_refetch_under_daily(tmp_path: Path) -> None:
     assert route.call_count == 2
 
 
-@respx.mock
-def test_future_dated_sidecar_is_rejected(tmp_path: Path) -> None:
+def test_future_dated_sidecar_is_rejected(tmp_path: Path, httpx2_mock: respx.Router) -> None:
     """A `fetched_at` more than a minute in the future (clock skew or
     tampering) is treated as stale and forces a refetch."""
-    route = respx.get("https://nb.example/api/schema/?format=json").mock(
-        return_value=httpx.Response(200, json=_minimal_schema_doc())
+    route = httpx2_mock.get("https://nb.example/api/schema/?format=json").respond(
+        200, json=_minimal_schema_doc()
     )
     paths = _paths(tmp_path)
     profile = _profile()
@@ -327,13 +322,12 @@ def test_future_dated_sidecar_is_rejected(tmp_path: Path) -> None:
     assert route.call_count == 2
 
 
-@respx.mock
-def test_fast_path_rejects_hash_mismatch(tmp_path: Path) -> None:
+def test_fast_path_rejects_hash_mismatch(tmp_path: Path, httpx2_mock: respx.Router) -> None:
     """If a cache file's contents claim a different schema_hash than its
     filename, the fast path must reject it (`CacheStore.load` already
     enforces this — verify the fast path actually routes through it)."""
-    route = respx.get("https://nb.example/api/schema/?format=json").mock(
-        return_value=httpx.Response(200, json=_minimal_schema_doc())
+    route = httpx2_mock.get("https://nb.example/api/schema/?format=json").respond(
+        200, json=_minimal_schema_doc()
     )
     paths = _paths(tmp_path)
     profile = _profile()
@@ -361,16 +355,17 @@ def test_fast_path_rejects_hash_mismatch(tmp_path: Path) -> None:
     assert route.call_count == 2
 
 
-@respx.mock
-def test_legacy_cache_without_sidecar_warms_then_uses_fast_path(tmp_path: Path) -> None:
+def test_legacy_cache_without_sidecar_warms_then_uses_fast_path(
+    tmp_path: Path, httpx2_mock: respx.Router
+) -> None:
     """Issue #39: a cache file written by a pre-#35 version has no
     sidecar. The first invocation under DAILY must fetch (sidecar
     missing → no proof of freshness), confirm the live hash matches the
     legacy file, write a sidecar, and the second invocation must hit
     the fast path. Without this self-healing the user sees a fresh
     `/api/schema/` request on every command."""
-    route = respx.get("https://nb.example/api/schema/?format=json").mock(
-        return_value=httpx.Response(200, json=_minimal_schema_doc())
+    route = httpx2_mock.get("https://nb.example/api/schema/?format=json").respond(
+        200, json=_minimal_schema_doc()
     )
     paths = _paths(tmp_path)
     profile = _profile()
@@ -407,15 +402,16 @@ def test_legacy_cache_without_sidecar_warms_then_uses_fast_path(tmp_path: Path) 
     )
 
 
-@respx.mock
-def test_aged_cache_with_unchanged_hash_refreshes_sidecar(tmp_path: Path) -> None:
+def test_aged_cache_with_unchanged_hash_refreshes_sidecar(
+    tmp_path: Path, httpx2_mock: respx.Router
+) -> None:
     """Issue #39: when the cache has aged past the TTL but the live
     schema hash is unchanged, `_build_and_cache` finds the cache hit by
     hash. It must still bump `fetched_at` so the next invocation can
     skip the network — otherwise every subsequent call refetches even
     though the schema hasn't moved."""
-    route = respx.get("https://nb.example/api/schema/?format=json").mock(
-        return_value=httpx.Response(200, json=_minimal_schema_doc())
+    route = httpx2_mock.get("https://nb.example/api/schema/?format=json").respond(
+        200, json=_minimal_schema_doc()
     )
     paths = _paths(tmp_path)
     profile = _profile()

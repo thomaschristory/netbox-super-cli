@@ -1,4 +1,4 @@
-"""Sync httpx-based NetBox client."""
+"""Sync httpx2-based NetBox client."""
 
 from __future__ import annotations
 
@@ -28,7 +28,7 @@ from nsc.http.retry import (
 from nsc.model.command_model import HttpMethod
 
 if TYPE_CHECKING:
-    import httpx
+    import httpx2
 
 _BODY_SNIPPET_BYTES = 2048
 _HTTP_5XX_MIN = 500
@@ -51,7 +51,7 @@ class NetBoxClient:
         redaction: AuditRedaction = AuditRedaction.SAFE,
         profile_name: str | None = None,
     ) -> None:
-        import httpx  # noqa: PLC0415  # deferred: keeps httpx off the CLI-startup path.
+        import httpx2  # noqa: PLC0415  # deferred: keeps httpx2 off the CLI-startup path.
 
         if profile.token is None:
             raise ValueError("NetBoxClient requires a non-None token on the profile")
@@ -59,7 +59,7 @@ class NetBoxClient:
         self._debug = debug
         self._redaction = redaction
         self._profile_name = profile_name
-        self._client = httpx.Client(
+        self._client = httpx2.Client(
             base_url=self._url,
             headers={
                 "Authorization": f"Token {profile.token}",
@@ -176,7 +176,7 @@ class NetBoxClient:
             if first:
                 req_path, req_params = url, params
             else:
-                # next URLs are absolute; split them so respx (and httpx) can
+                # next URLs are absolute; split them so respx (and httpx2) can
                 # match on path + params independently rather than a raw string.
                 parsed = urlsplit(url)
                 req_path = parsed.path
@@ -202,8 +202,8 @@ class NetBoxClient:
         operation_id: str | None = None,
         record_indices: list[int] | None = None,
         sensitive_paths: tuple[str, ...] = (),
-    ) -> httpx.Response:
-        import httpx  # noqa: PLC0415  # deferred: keeps httpx off the CLI-startup path.
+    ) -> httpx2.Response:
+        import httpx2  # noqa: PLC0415  # deferred: keeps httpx2 off the CLI-startup path.
 
         policy = policy_for_method(method)
         attempt = 0
@@ -214,7 +214,7 @@ class NetBoxClient:
             started = time.monotonic()
             try:
                 response = self._client.request(method.value, path, params=params, json=json_body)
-            except httpx.RequestError as exc:
+            except httpx2.RequestError as exc:
                 error_class: ErrorClass = classify_error(exc)
                 duration_ms = int((time.monotonic() - started) * 1000)
                 retry = should_retry(
@@ -269,7 +269,7 @@ class NetBoxClient:
         request = self._client.build_request("GET", path, params=params)
         return str(request.url)
 
-    def _raise_for_status(self, response: httpx.Response) -> None:
+    def _raise_for_status(self, response: httpx2.Response) -> None:
         try:
             body = response.text[:_BODY_SNIPPET_BYTES]
         except Exception:  # pragma: no cover
@@ -288,7 +288,7 @@ class NetBoxClient:
         path: str,
         params: dict[str, Any] | None,
         request_body: Any | None,
-        response: httpx.Response | None,
+        response: httpx2.Response | None,
         duration_ms: int,
         attempt: int,
         final: bool,
@@ -298,7 +298,7 @@ class NetBoxClient:
         sensitive_paths: tuple[str, ...] = (),
     ) -> None:
         url = self._absolute(path, params)
-        # httpx lowercases all header names; title-case them so the audit log
+        # httpx2 lowercases all header names; title-case them so the audit log
         # uses the conventional HTTP capitalisation (e.g. "Authorization").
         request_headers = {k.title(): v for k, v in self._client.headers.items()}
         if response is not None:
@@ -351,13 +351,13 @@ class NetBoxClient:
             append_audit_jsonl(entry, path=log_dir / "audit.jsonl")
 
     def _event_hooks(self) -> dict[str, list[Any]]:
-        def on_request(request: httpx.Request) -> None:
+        def on_request(request: httpx2.Request) -> None:
             print(f">>> {request.method} {request.url}", file=sys.stderr)
             for k, v in request.headers.items():
                 masked = "<redacted>" if k.lower() == "authorization" else v
                 print(f">>> {k}: {masked}", file=sys.stderr)
 
-        def on_response(response: httpx.Response) -> None:
+        def on_response(response: httpx2.Response) -> None:
             response.read()
             print(f"<<< {response.status_code} {response.reason_phrase}", file=sys.stderr)
             for k, v in response.headers.items():
@@ -373,7 +373,7 @@ def _now_iso() -> str:
     return datetime.now(UTC).isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
 
-def _parse_json(response: httpx.Response) -> dict[str, Any]:
+def _parse_json(response: httpx2.Response) -> dict[str, Any]:
     if not response.content:
         return {}
     return cast(dict[str, Any], response.json())

@@ -5,9 +5,7 @@ from __future__ import annotations
 import gzip
 import json as _json
 from pathlib import Path
-from typing import Any
 
-import httpx
 import pytest
 import respx
 from typer.testing import CliRunner
@@ -112,22 +110,24 @@ def test_unsupported_extension_still_rejected(tmp_path: Path) -> None:
 # --- handler integration ---
 
 
-def _mock_schema(respx_mock: Any) -> None:
+def _mock_schema(respx_mock: respx.Router) -> None:
     bundled = next(Path("nsc/schemas/bundled").glob("*.json*"))
     body = (
         gzip.decompress(bundled.read_bytes())
         if bundled.name.endswith(".gz")
         else bundled.read_bytes()
     )
-    respx_mock.get("https://nb.example/api/schema/?format=json").mock(
-        return_value=httpx.Response(200, content=body, headers={"content-type": "application/json"})
+    respx_mock.get("https://nb.example/api/schema/?format=json").respond(
+        200, content=body, headers={"content-type": "application/json"}
     )
 
 
+@pytest.mark.httpx2(assert_all_called=False)
 def test_handler_emits_input_error_envelope_on_ndjson_parse_failure(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     fixture_profile_yaml: Path,
+    httpx2_mock: respx.Router,
 ) -> None:
     """Spec §4.4: parse failure aborts before any wire request and emits
     `type: input_error` (exit 4) with `details.bad_lines`.
@@ -137,16 +137,15 @@ def test_handler_emits_input_error_envelope_on_ndjson_parse_failure(
     p = tmp_path / "bad.ndjson"
     p.write_text('{"name": "a"}\nnot json\n{"name": "c"}\n', encoding="utf-8")
 
-    with respx.mock(assert_all_called=False) as router:
-        _mock_schema(router)
-        runner = CliRunner()
-        result = runner.invoke(
-            app,
-            ["dcim", "devices", "create", "-f", str(p), "--apply", "--output", "json"],
-        )
-        # Spec: no wire write request before parse-abort. The schema fetch is OK.
-        write_calls = [c for c in router.calls if c.request.method != "GET"]
-        assert write_calls == []
+    _mock_schema(httpx2_mock)
+    runner = CliRunner()
+    result = runner.invoke(
+        app,
+        ["dcim", "devices", "create", "-f", str(p), "--apply", "--output", "json"],
+    )
+    # Spec: no wire write request before parse-abort. The schema fetch is OK.
+    write_calls = [c for c in httpx2_mock.calls if c.request.method != "GET"]
+    assert write_calls == []
 
     assert result.exit_code == 4, (result.stdout, result.stderr)
     payload = _json.loads(result.stdout)

@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-import httpx
+import httpx2
 import pytest
 import respx
 
@@ -70,10 +70,9 @@ def test_explicit_schema_flag_wins(tmp_path: Path) -> None:
     assert "dcim" in model.tags
 
 
-@respx.mock
-def test_profile_schema_url_used_when_set(tmp_path: Path) -> None:
-    respx.get("https://prod.example/api/schema/?format=json").mock(
-        return_value=httpx.Response(200, json=_minimal_schema_doc())
+def test_profile_schema_url_used_when_set(tmp_path: Path, httpx2_mock: respx.Router) -> None:
+    httpx2_mock.get("https://prod.example/api/schema/?format=json").respond(
+        200, json=_minimal_schema_doc()
     )
     paths = _paths(tmp_path)
     model = resolve_command_model(
@@ -84,10 +83,11 @@ def test_profile_schema_url_used_when_set(tmp_path: Path) -> None:
     assert "dcim" in model.tags
 
 
-@respx.mock
-def test_derived_schema_url_used_when_profile_has_no_schema_url(tmp_path: Path) -> None:
-    respx.get("https://nb.example/api/schema/?format=json").mock(
-        return_value=httpx.Response(200, json=_minimal_schema_doc())
+def test_derived_schema_url_used_when_profile_has_no_schema_url(
+    tmp_path: Path, httpx2_mock: respx.Router
+) -> None:
+    httpx2_mock.get("https://nb.example/api/schema/?format=json").respond(
+        200, json=_minimal_schema_doc()
     )
     paths = _paths(tmp_path)
     model = resolve_command_model(
@@ -98,10 +98,9 @@ def test_derived_schema_url_used_when_profile_has_no_schema_url(tmp_path: Path) 
     assert "dcim" in model.tags
 
 
-@respx.mock
-def test_cache_hit_skips_rebuild(tmp_path: Path) -> None:
-    route = respx.get("https://nb.example/api/schema/?format=json").mock(
-        return_value=httpx.Response(200, json=_minimal_schema_doc())
+def test_cache_hit_skips_rebuild(tmp_path: Path, httpx2_mock: respx.Router) -> None:
+    route = httpx2_mock.get("https://nb.example/api/schema/?format=json").respond(
+        200, json=_minimal_schema_doc()
     )
     paths = _paths(tmp_path)
     profile = _profile()
@@ -111,31 +110,29 @@ def test_cache_hit_skips_rebuild(tmp_path: Path) -> None:
     assert route.call_count == 2  # we always re-fetch to compare hash
 
 
-@respx.mock
 def test_offline_falls_back_to_cache_when_present(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], httpx2_mock: respx.Router
 ) -> None:
-    route = respx.get("https://nb.example/api/schema/?format=json").mock(
-        return_value=httpx.Response(200, json=_minimal_schema_doc())
+    route = httpx2_mock.get("https://nb.example/api/schema/?format=json").respond(
+        200, json=_minimal_schema_doc()
     )
     paths = _paths(tmp_path)
     profile = _profile()
     resolve_command_model(paths=paths, profile=profile, schema_override=None)
     capsys.readouterr()  # drain
 
-    route.mock(side_effect=httpx.ConnectError("offline"))
+    route.mock(side_effect=httpx2.ConnectError("offline"))
     model = resolve_command_model(paths=paths, profile=profile, schema_override=None)
     assert isinstance(model, CommandModel)
     err = capsys.readouterr().err
     assert "cached" in err.lower()
 
 
-@respx.mock
 def test_offline_no_cache_falls_back_to_bundled(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], httpx2_mock: respx.Router
 ) -> None:
-    respx.get("https://nb.example/api/schema/?format=json").mock(
-        side_effect=httpx.ConnectError("offline")
+    httpx2_mock.get("https://nb.example/api/schema/?format=json").mock(
+        side_effect=httpx2.ConnectError("offline")
     )
     paths = _paths(tmp_path)
     profile = _profile()
@@ -158,16 +155,15 @@ def _stale_the_only_cache_entry(paths: Paths, profile_name: str) -> str:
     return stale_file.stem
 
 
-@respx.mock
 def test_offline_format_stale_cache_persists_bundled_fallback(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], httpx2_mock: respx.Router
 ) -> None:
     """Issue #140: when the only cached entry is format-stale (hash-fresh) and
     NetBox is unreachable, the bundled fallback is persisted under the profile
     so the next invocation skips the per-call rebuild — without a fetch
     timestamp, so the TTL fast-path still refetches once NetBox returns."""
-    route = respx.get("https://nb.example/api/schema/?format=json").mock(
-        return_value=httpx.Response(200, json=_minimal_schema_doc())
+    route = httpx2_mock.get("https://nb.example/api/schema/?format=json").respond(
+        200, json=_minimal_schema_doc()
     )
     paths = _paths(tmp_path)
     profile = _profile()
@@ -175,7 +171,7 @@ def test_offline_format_stale_cache_persists_bundled_fallback(
     stale_hash = _stale_the_only_cache_entry(paths, "prod")
     capsys.readouterr()  # drain
 
-    route.mock(side_effect=httpx.ConnectError("offline"))
+    route.mock(side_effect=httpx2.ConnectError("offline"))
     first = resolve_command_model(paths=paths, profile=profile, schema_override=None)
     assert first.format_version == MODEL_FORMAT_VERSION
     assert "bundled" in capsys.readouterr().err.lower()
@@ -196,15 +192,14 @@ def test_offline_format_stale_cache_persists_bundled_fallback(
     assert "cached" in capsys.readouterr().err.lower()
 
 
-@respx.mock
 def test_offline_bundled_fallback_survives_unpersistable_profile_name(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], httpx2_mock: respx.Router
 ) -> None:
     """A profile name outside `_PROFILE_RE` (names aren't validated at config
     time) makes `CacheStore.save` raise `ValueError`; the offline bundled
     fallback must swallow it and still return the in-memory model."""
-    respx.get("https://nb.example/api/schema/?format=json").mock(
-        side_effect=httpx.ConnectError("offline")
+    httpx2_mock.get("https://nb.example/api/schema/?format=json").mock(
+        side_effect=httpx2.ConnectError("offline")
     )
     paths = _paths(tmp_path)
     model = resolve_command_model(
@@ -214,12 +209,11 @@ def test_offline_bundled_fallback_survives_unpersistable_profile_name(
     assert "bundled" in capsys.readouterr().err.lower()
 
 
-@respx.mock
 def test_offline_no_cache_no_bundled_raises(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, httpx2_mock: respx.Router
 ) -> None:
-    respx.get("https://nb.example/api/schema/?format=json").mock(
-        side_effect=httpx.ConnectError("offline")
+    httpx2_mock.get("https://nb.example/api/schema/?format=json").mock(
+        side_effect=httpx2.ConnectError("offline")
     )
     paths = _paths(tmp_path)
     profile = _profile()

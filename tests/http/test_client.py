@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-import httpx
+import httpx2
 import pytest
 import respx
 
@@ -20,23 +20,21 @@ class _FakeProfile:
         self.timeout: float = overrides.get("timeout", 5.0)
 
 
-@respx.mock
-def test_get_returns_parsed_json_with_auth_header() -> None:
-    respx.get("https://nb.example/api/dcim/devices/1/").mock(
-        return_value=httpx.Response(200, json={"id": 1, "name": "x"})
+def test_get_returns_parsed_json_with_auth_header(httpx2_mock: respx.Router) -> None:
+    httpx2_mock.get("https://nb.example/api/dcim/devices/1/").respond(
+        200, json={"id": 1, "name": "x"}
     )
     with NetBoxClient(_FakeProfile()) as client:
         body = client.get("/api/dcim/devices/1/")
     assert body == {"id": 1, "name": "x"}
-    sent = respx.calls.last.request
+    sent = httpx2_mock.calls.last.request
     assert sent.headers["Authorization"] == "Token tok"
     assert sent.headers["Accept"] == "application/json"
 
 
-@respx.mock
-def test_get_passes_query_params() -> None:
-    route = respx.get("https://nb.example/api/dcim/devices/").mock(
-        return_value=httpx.Response(200, json={"results": []})
+def test_get_passes_query_params(httpx2_mock: respx.Router) -> None:
+    route = httpx2_mock.get("https://nb.example/api/dcim/devices/").respond(
+        200, json={"results": []}
     )
     with NetBoxClient(_FakeProfile()) as client:
         client.get("/api/dcim/devices/", {"site_id": 42, "status": "active"})
@@ -44,52 +42,43 @@ def test_get_passes_query_params() -> None:
     assert qp == {"site_id": "42", "status": "active"}
 
 
-@respx.mock
-def test_paginate_follows_next_url() -> None:
+def test_paginate_follows_next_url(httpx2_mock: respx.Router) -> None:
     # Register the more-specific route first; respx resolves by first match.
-    respx.get("https://nb.example/api/dcim/devices/", params={"cursor": "p2"}).mock(
-        return_value=httpx.Response(
-            200,
-            json={"count": 3, "next": None, "previous": None, "results": [{"id": 3}]},
-        )
+    httpx2_mock.get("https://nb.example/api/dcim/devices/", params={"cursor": "p2"}).respond(
+        200,
+        json={"count": 3, "next": None, "previous": None, "results": [{"id": 3}]},
     )
-    respx.get("https://nb.example/api/dcim/devices/").mock(
-        return_value=httpx.Response(
-            200,
-            json={
-                "count": 3,
-                "next": "https://nb.example/api/dcim/devices/?cursor=p2",
-                "previous": None,
-                "results": [{"id": 1}, {"id": 2}],
-            },
-        )
+    httpx2_mock.get("https://nb.example/api/dcim/devices/").respond(
+        200,
+        json={
+            "count": 3,
+            "next": "https://nb.example/api/dcim/devices/?cursor=p2",
+            "previous": None,
+            "results": [{"id": 1}, {"id": 2}],
+        },
     )
     with NetBoxClient(_FakeProfile()) as client:
         records = list(client.paginate("/api/dcim/devices/"))
     assert [r["id"] for r in records] == [1, 2, 3]
 
 
-@respx.mock
-def test_paginate_stops_when_limit_reached() -> None:
-    respx.get("https://nb.example/api/dcim/devices/").mock(
-        return_value=httpx.Response(
-            200,
-            json={
-                "next": "https://nb.example/api/dcim/devices/?cursor=p2",
-                "results": [{"id": 1}, {"id": 2}, {"id": 3}],
-            },
-        )
+def test_paginate_stops_when_limit_reached(httpx2_mock: respx.Router) -> None:
+    httpx2_mock.get("https://nb.example/api/dcim/devices/").respond(
+        200,
+        json={
+            "next": "https://nb.example/api/dcim/devices/?cursor=p2",
+            "results": [{"id": 1}, {"id": 2}, {"id": 3}],
+        },
     )
     with NetBoxClient(_FakeProfile()) as client:
         records = list(client.paginate("/api/dcim/devices/", limit=2))
     assert [r["id"] for r in records] == [1, 2]
-    assert all("cursor" not in str(c.request.url) for c in respx.calls)
+    assert all("cursor" not in str(c.request.url) for c in httpx2_mock.calls)
 
 
-@respx.mock
-def test_get_raises_netbox_api_error_on_4xx() -> None:
-    respx.get("https://nb.example/api/dcim/devices/9999/").mock(
-        return_value=httpx.Response(404, json={"detail": "Not found."})
+def test_get_raises_netbox_api_error_on_4xx(httpx2_mock: respx.Router) -> None:
+    httpx2_mock.get("https://nb.example/api/dcim/devices/9999/").respond(
+        404, json={"detail": "Not found."}
     )
     with NetBoxClient(_FakeProfile()) as client, pytest.raises(NetBoxAPIError) as excinfo:
         client.get("/api/dcim/devices/9999/")
@@ -97,21 +86,21 @@ def test_get_raises_netbox_api_error_on_4xx() -> None:
     assert "Not found" in excinfo.value.body_snippet
 
 
+@pytest.mark.httpx2(base_url="https://nb.example")
 def test_get_raises_netbox_client_error_on_transport_failure(
     monkeypatch: pytest.MonkeyPatch,
+    httpx2_mock: respx.Router,
 ) -> None:
     monkeypatch.setattr("nsc.http.client.time.sleep", lambda _s: None)
-    with respx.mock(base_url="https://nb.example") as router:
-        router.get("/api/dcim/devices/").mock(side_effect=httpx.ConnectError("nope"))
-        with NetBoxClient(_FakeProfile()) as client, pytest.raises(NetBoxClientError):
-            client.get("/api/dcim/devices/")
+    httpx2_mock.get("/api/dcim/devices/").mock(side_effect=httpx2.ConnectError("nope"))
+    with NetBoxClient(_FakeProfile()) as client, pytest.raises(NetBoxClientError):
+        client.get("/api/dcim/devices/")
 
 
-@respx.mock
-def test_debug_writes_to_stderr(capsys: pytest.CaptureFixture[str]) -> None:
-    respx.get("https://nb.example/api/dcim/devices/").mock(
-        return_value=httpx.Response(200, json={"results": []})
-    )
+def test_debug_writes_to_stderr(
+    capsys: pytest.CaptureFixture[str], httpx2_mock: respx.Router
+) -> None:
+    httpx2_mock.get("https://nb.example/api/dcim/devices/").respond(200, json={"results": []})
     with NetBoxClient(_FakeProfile(), debug=True) as client:
         client.get("/api/dcim/devices/")
     err = capsys.readouterr().err
@@ -126,48 +115,48 @@ def test_debug_writes_to_stderr(capsys: pytest.CaptureFixture[str]) -> None:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.httpx2(base_url="https://nb.example")
 def test_get_5xx_retried_three_times_then_raises_apierror(
     monkeypatch: pytest.MonkeyPatch,
+    httpx2_mock: respx.Router,
 ) -> None:
     monkeypatch.setattr("nsc.http.client.time.sleep", lambda _s: None)
-    with respx.mock(base_url="https://nb.example") as router:
-        route = router.get("/api/dcim/devices/").mock(
-            return_value=httpx.Response(503, json={"detail": "down"})
-        )
-        with NetBoxClient(_FakeProfile()) as client, pytest.raises(NetBoxAPIError) as ei:
-            client.get("/api/dcim/devices/")
-        assert route.call_count == 3
-        assert ei.value.status_code == 503
+    route = httpx2_mock.get("/api/dcim/devices/").respond(503, json={"detail": "down"})
+    with NetBoxClient(_FakeProfile()) as client, pytest.raises(NetBoxAPIError) as ei:
+        client.get("/api/dcim/devices/")
+    assert route.call_count == 3
+    assert ei.value.status_code == 503
 
 
+@pytest.mark.httpx2(base_url="https://nb.example")
 def test_get_connect_error_retried_then_raises_clienterror(
     monkeypatch: pytest.MonkeyPatch,
+    httpx2_mock: respx.Router,
 ) -> None:
     monkeypatch.setattr("nsc.http.client.time.sleep", lambda _s: None)
-    with respx.mock(base_url="https://nb.example") as router:
-        route = router.get("/api/dcim/devices/").mock(side_effect=httpx.ConnectError("nope"))
-        with NetBoxClient(_FakeProfile()) as client, pytest.raises(NetBoxClientError):
-            client.get("/api/dcim/devices/")
-        assert route.call_count == 3
+    route = httpx2_mock.get("/api/dcim/devices/").mock(side_effect=httpx2.ConnectError("nope"))
+    with NetBoxClient(_FakeProfile()) as client, pytest.raises(NetBoxClientError):
+        client.get("/api/dcim/devices/")
+    assert route.call_count == 3
 
 
-def test_get_4xx_not_retried(monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.httpx2(base_url="https://nb.example")
+def test_get_4xx_not_retried(monkeypatch: pytest.MonkeyPatch, httpx2_mock: respx.Router) -> None:
     monkeypatch.setattr("nsc.http.client.time.sleep", lambda _s: None)
-    with respx.mock(base_url="https://nb.example") as router:
-        route = router.get("/api/dcim/devices/").mock(return_value=httpx.Response(404))
-        with NetBoxClient(_FakeProfile()) as client, pytest.raises(NetBoxAPIError):
-            client.get("/api/dcim/devices/")
-        assert route.call_count == 1
+    route = httpx2_mock.get("/api/dcim/devices/").respond(404)
+    with NetBoxClient(_FakeProfile()) as client, pytest.raises(NetBoxAPIError):
+        client.get("/api/dcim/devices/")
+    assert route.call_count == 1
 
 
-def test_get_writes_last_request_log(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.httpx2(base_url="https://nb.example")
+def test_get_writes_last_request_log(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, httpx2_mock: respx.Router
+) -> None:
     monkeypatch.setenv("NSC_HOME", str(tmp_path))
-    with respx.mock(base_url="https://nb.example") as router:
-        router.get("/api/dcim/devices/").mock(
-            return_value=httpx.Response(200, json={"results": []})
-        )
-        with NetBoxClient(_FakeProfile()) as client:
-            client.get("/api/dcim/devices/")
+    httpx2_mock.get("/api/dcim/devices/").respond(200, json={"results": []})
+    with NetBoxClient(_FakeProfile()) as client:
+        client.get("/api/dcim/devices/")
     log = tmp_path / "logs" / "last-request.json"
     assert log.exists()
     parsed = json.loads(log.read_text())
@@ -176,40 +165,38 @@ def test_get_writes_last_request_log(tmp_path: Path, monkeypatch: pytest.MonkeyP
     assert parsed["response"]["status_code"] == 200
 
 
-def test_paginate_writes_one_log_per_page(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.httpx2(base_url="https://nb.example")
+def test_paginate_writes_one_log_per_page(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, httpx2_mock: respx.Router
+) -> None:
     monkeypatch.setenv("NSC_HOME", str(tmp_path))
-    with respx.mock(base_url="https://nb.example") as router:
-        # Register the more-specific route first; respx resolves by first match.
-        router.get("/api/dcim/devices/", params={"page": "2"}).mock(
-            return_value=httpx.Response(
-                200,
-                json={"results": [{"id": 2}], "next": None},
-            )
-        )
-        router.get("/api/dcim/devices/").mock(
-            return_value=httpx.Response(
-                200,
-                json={
-                    "results": [{"id": 1}],
-                    "next": "https://nb.example/api/dcim/devices/?page=2",
-                },
-            )
-        )
-        with NetBoxClient(_FakeProfile()) as client:
-            ids = [r["id"] for r in client.paginate("/api/dcim/devices/")]
-        assert ids == [1, 2]
+    # Register the more-specific route first; respx resolves by first match.
+    httpx2_mock.get("/api/dcim/devices/", params={"page": "2"}).respond(
+        200,
+        json={"results": [{"id": 2}], "next": None},
+    )
+    httpx2_mock.get("/api/dcim/devices/").respond(
+        200,
+        json={
+            "results": [{"id": 1}],
+            "next": "https://nb.example/api/dcim/devices/?page=2",
+        },
+    )
+    with NetBoxClient(_FakeProfile()) as client:
+        ids = [r["id"] for r in client.paginate("/api/dcim/devices/")]
+    assert ids == [1, 2]
     parsed = json.loads((tmp_path / "logs" / "last-request.json").read_text())
     assert parsed["url"].endswith("page=2")
 
 
-def test_debug_mode_appends_to_audit_jsonl(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.httpx2(base_url="https://nb.example")
+def test_debug_mode_appends_to_audit_jsonl(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, httpx2_mock: respx.Router
+) -> None:
     monkeypatch.setenv("NSC_HOME", str(tmp_path))
-    with respx.mock(base_url="https://nb.example") as router:
-        router.get("/api/dcim/devices/").mock(
-            return_value=httpx.Response(200, json={"results": []})
-        )
-        with NetBoxClient(_FakeProfile(), debug=True) as client:
-            client.get("/api/dcim/devices/")
+    httpx2_mock.get("/api/dcim/devices/").respond(200, json={"results": []})
+    with NetBoxClient(_FakeProfile(), debug=True) as client:
+        client.get("/api/dcim/devices/")
     audit = tmp_path / "logs" / "audit.jsonl"
     assert audit.exists()
     assert len(audit.read_text().splitlines()) == 1
@@ -220,10 +207,9 @@ def test_debug_mode_appends_to_audit_jsonl(tmp_path: Path, monkeypatch: pytest.M
 # ---------------------------------------------------------------------------
 
 
-@respx.mock
-def test_post_sends_json_body_and_returns_response() -> None:
-    route = respx.post("https://nb.example/api/dcim/devices/").mock(
-        return_value=httpx.Response(201, json={"id": 247, "name": "rack-01"})
+def test_post_sends_json_body_and_returns_response(httpx2_mock: respx.Router) -> None:
+    route = httpx2_mock.post("https://nb.example/api/dcim/devices/").respond(
+        201, json={"id": 247, "name": "rack-01"}
     )
     client = NetBoxClient(_FakeProfile())
     body = client.post(
@@ -237,10 +223,9 @@ def test_post_sends_json_body_and_returns_response() -> None:
     assert sent == {"name": "rack-01"}
 
 
-@respx.mock
-def test_post_5xx_does_not_retry() -> None:
-    route = respx.post("https://nb.example/api/dcim/devices/").mock(
-        return_value=httpx.Response(503, json={"detail": "down"})
+def test_post_5xx_does_not_retry(httpx2_mock: respx.Router) -> None:
+    route = httpx2_mock.post("https://nb.example/api/dcim/devices/").respond(
+        503, json={"detail": "down"}
     )
     client = NetBoxClient(_FakeProfile())
     with pytest.raises(NetBoxAPIError):
@@ -252,26 +237,26 @@ def test_post_5xx_does_not_retry() -> None:
     assert route.call_count == 1
 
 
+@pytest.mark.httpx2(base_url="https://nb.example")
 def test_post_connect_error_retries_then_surfaces_transport(
     monkeypatch: pytest.MonkeyPatch,
+    httpx2_mock: respx.Router,
 ) -> None:
     monkeypatch.setattr("nsc.http.client.time.sleep", lambda _s: None)
-    with respx.mock(base_url="https://nb.example") as router:
-        route = router.post("/api/dcim/devices/").mock(side_effect=httpx.ConnectError("nope"))
-        client = NetBoxClient(_FakeProfile())
-        with pytest.raises(NetBoxClientError):
-            client.post(
-                "/api/dcim/devices/",
-                json={"name": "x"},
-                operation_id="dcim_devices_create",
-            )
-        assert route.call_count == 3
+    route = httpx2_mock.post("/api/dcim/devices/").mock(side_effect=httpx2.ConnectError("nope"))
+    client = NetBoxClient(_FakeProfile())
+    with pytest.raises(NetBoxClientError):
+        client.post(
+            "/api/dcim/devices/",
+            json={"name": "x"},
+            operation_id="dcim_devices_create",
+        )
+    assert route.call_count == 3
 
 
-@respx.mock
-def test_patch_sends_partial_body() -> None:
-    route = respx.patch("https://nb.example/api/dcim/devices/42/").mock(
-        return_value=httpx.Response(200, json={"id": 42, "status": "decommissioned"})
+def test_patch_sends_partial_body(httpx2_mock: respx.Router) -> None:
+    route = httpx2_mock.patch("https://nb.example/api/dcim/devices/42/").respond(
+        200, json={"id": 42, "status": "decommissioned"}
     )
     client = NetBoxClient(_FakeProfile())
     body = client.patch(
@@ -284,11 +269,8 @@ def test_patch_sends_partial_body() -> None:
     assert sent == {"status": "decommissioned"}
 
 
-@respx.mock
-def test_put_sends_full_body() -> None:
-    route = respx.put("https://nb.example/api/dcim/devices/42/").mock(
-        return_value=httpx.Response(200, json={"id": 42})
-    )
+def test_put_sends_full_body(httpx2_mock: respx.Router) -> None:
+    route = httpx2_mock.put("https://nb.example/api/dcim/devices/42/").respond(200, json={"id": 42})
     client = NetBoxClient(_FakeProfile())
     client.put(
         "/api/dcim/devices/42/",
@@ -298,21 +280,17 @@ def test_put_sends_full_body() -> None:
     assert route.called
 
 
-@respx.mock
-def test_delete_sends_no_body_returns_empty_dict() -> None:
-    route = respx.delete("https://nb.example/api/dcim/devices/42/").mock(
-        return_value=httpx.Response(204)
-    )
+def test_delete_sends_no_body_returns_empty_dict(httpx2_mock: respx.Router) -> None:
+    route = httpx2_mock.delete("https://nb.example/api/dcim/devices/42/").respond(204)
     client = NetBoxClient(_FakeProfile())
     result = client.delete("/api/dcim/devices/42/", operation_id="dcim_devices_destroy")
     assert result == {}
     assert route.called
 
 
-@respx.mock
-def test_delete_404_raises_apierror_with_status() -> None:
-    respx.delete("https://nb.example/api/dcim/devices/42/").mock(
-        return_value=httpx.Response(404, json={"detail": "Not found."})
+def test_delete_404_raises_apierror_with_status(httpx2_mock: respx.Router) -> None:
+    httpx2_mock.delete("https://nb.example/api/dcim/devices/42/").respond(
+        404, json={"detail": "Not found."}
     )
     client = NetBoxClient(_FakeProfile())
     with pytest.raises(NetBoxAPIError) as exc_info:
@@ -320,15 +298,13 @@ def test_delete_404_raises_apierror_with_status() -> None:
     assert exc_info.value.status_code == 404
 
 
-@respx.mock
 def test_audit_jsonl_appended_for_every_write_attempt(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    httpx2_mock: respx.Router,
 ) -> None:
     monkeypatch.setenv("NSC_HOME", str(tmp_path))
-    respx.post("https://nb.example/api/dcim/devices/").mock(
-        return_value=httpx.Response(201, json={"id": 1})
-    )
+    httpx2_mock.post("https://nb.example/api/dcim/devices/").respond(201, json={"id": 1})
     client = NetBoxClient(_FakeProfile())
     client.post(
         "/api/dcim/devices/",
@@ -345,36 +321,35 @@ def test_audit_jsonl_appended_for_every_write_attempt(
     assert entry["request"]["headers"]["Authorization"] == "<redacted>"
 
 
-@respx.mock
 def test_read_does_not_append_to_audit_jsonl_when_not_debug(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    httpx2_mock: respx.Router,
 ) -> None:
     monkeypatch.setenv("NSC_HOME", str(tmp_path))
-    respx.get("https://nb.example/api/dcim/devices/").mock(
-        return_value=httpx.Response(200, json={"results": []})
-    )
+    httpx2_mock.get("https://nb.example/api/dcim/devices/").respond(200, json={"results": []})
     client = NetBoxClient(_FakeProfile())
     client.get("/api/dcim/devices/")
     assert (tmp_path / "logs" / "last-request.json").exists()
     assert not (tmp_path / "logs" / "audit.jsonl").exists()
 
 
+@pytest.mark.httpx2(base_url="https://nb.example")
 def test_write_appends_audit_jsonl_once_per_attempt_on_retry(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    httpx2_mock: respx.Router,
 ) -> None:
     monkeypatch.setenv("NSC_HOME", str(tmp_path))
     monkeypatch.setattr("nsc.http.client.time.sleep", lambda _s: None)
-    with respx.mock(base_url="https://nb.example") as router:
-        router.post("/api/dcim/devices/").mock(side_effect=httpx.ConnectError("nope"))
-        client = NetBoxClient(_FakeProfile())
-        with pytest.raises(NetBoxClientError):
-            client.post(
-                "/api/dcim/devices/",
-                json={"name": "x"},
-                operation_id="dcim_devices_create",
-            )
+    httpx2_mock.post("/api/dcim/devices/").mock(side_effect=httpx2.ConnectError("nope"))
+    client = NetBoxClient(_FakeProfile())
+    with pytest.raises(NetBoxClientError):
+        client.post(
+            "/api/dcim/devices/",
+            json={"name": "x"},
+            operation_id="dcim_devices_create",
+        )
     audit_path = tmp_path / "logs" / "audit.jsonl"
     lines = audit_path.read_text(encoding="utf-8").strip().splitlines()
     assert len(lines) == 3

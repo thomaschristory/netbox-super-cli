@@ -7,7 +7,6 @@ from typing import Any
 
 import pytest
 import respx
-from httpx import Response
 from typer.testing import CliRunner
 
 from nsc.cli.app import app
@@ -26,17 +25,14 @@ def _seed(home: Path, body: str) -> None:
     (home / "config.yaml").write_text(body, encoding="utf-8")
 
 
-def _good_status() -> None:
-    respx.get("https://nb.example/api/status/").mock(
-        return_value=Response(200, json={"netbox-version": "4.5.9"})
-    )
-    respx.get("https://nb.example/api/users/tokens/").mock(
-        return_value=Response(200, json={"results": [{"user": {"username": "alice"}}]})
+def _good_status(httpx2_mock: respx.Router) -> None:
+    httpx2_mock.get("https://nb.example/api/status/").respond(200, json={"netbox-version": "4.5.9"})
+    httpx2_mock.get("https://nb.example/api/users/tokens/").respond(
+        200, json={"results": [{"user": {"username": "alice"}}]}
     )
 
 
-@respx.mock
-def test_login_bare_verifies_default_profile(home: Path) -> None:
+def test_login_bare_verifies_default_profile(home: Path, httpx2_mock: respx.Router) -> None:
     _seed(
         home,
         "default_profile: prod\n"
@@ -45,7 +41,7 @@ def test_login_bare_verifies_default_profile(home: Path) -> None:
         "    url: https://nb.example/\n"
         "    token: T123\n",
     )
-    _good_status()
+    _good_status(httpx2_mock)
     runner = CliRunner()
     result = runner.invoke(app, ["login"])
     assert result.exit_code == 0, result.stdout + result.stderr
@@ -53,16 +49,15 @@ def test_login_bare_verifies_default_profile(home: Path) -> None:
     assert "4.5.9" in result.stdout
 
 
-@respx.mock
-def test_login_bare_surfaces_auth_envelope_on_bad_token(home: Path) -> None:
+def test_login_bare_surfaces_auth_envelope_on_bad_token(
+    home: Path, httpx2_mock: respx.Router
+) -> None:
     _seed(
         home,
         "default_profile: prod\nprofiles:\n  prod:\n    url: https://nb.example/\n    token: BAD\n",
     )
-    respx.get("https://nb.example/api/status/").mock(
-        return_value=Response(200, json={"netbox-version": "4.5.9"})
-    )
-    respx.get("https://nb.example/api/users/tokens/").mock(return_value=Response(403, json={}))
+    httpx2_mock.get("https://nb.example/api/status/").respond(200, json={"netbox-version": "4.5.9"})
+    httpx2_mock.get("https://nb.example/api/users/tokens/").respond(403, json={})
     runner = CliRunner()
     result = runner.invoke(app, ["login"])
     assert result.exit_code == 8  # ErrorType.AUTH
@@ -70,9 +65,8 @@ def test_login_bare_surfaces_auth_envelope_on_bad_token(home: Path) -> None:
     assert "auth" in combined.lower() or "rejected" in combined.lower()
 
 
-@respx.mock
-def test_login_new_creates_and_verifies(home: Path) -> None:
-    _good_status()
+def test_login_new_creates_and_verifies(home: Path, httpx2_mock: respx.Router) -> None:
+    _good_status(httpx2_mock)
     runner = CliRunner()
     result = runner.invoke(
         app,
@@ -114,13 +108,14 @@ def test_login_new_refuses_to_clobber_existing_profile(home: Path) -> None:
     assert "--rotate" in combined
 
 
-@respx.mock
-def test_login_rotate_replaces_token_after_verifying_new_one(home: Path) -> None:
+def test_login_rotate_replaces_token_after_verifying_new_one(
+    home: Path, httpx2_mock: respx.Router
+) -> None:
     _seed(
         home,
         "default_profile: prod\nprofiles:\n  prod:\n    url: https://nb.example/\n    token: OLD\n",
     )
-    _good_status()
+    _good_status(httpx2_mock)
     runner = CliRunner()
     result = runner.invoke(
         app,
@@ -133,9 +128,8 @@ def test_login_rotate_replaces_token_after_verifying_new_one(home: Path) -> None
     assert "OLD" not in body
 
 
-@respx.mock
-def test_login_new_with_env_storage_writes_env_tag(home: Path) -> None:
-    _good_status()
+def test_login_new_with_env_storage_writes_env_tag(home: Path, httpx2_mock: respx.Router) -> None:
+    _good_status(httpx2_mock)
     runner = CliRunner()
     result = runner.invoke(
         app,
@@ -172,11 +166,10 @@ def _patch_resolve(monkeypatch: pytest.MonkeyPatch, calls: list[Any]) -> None:
     monkeypatch.setattr("nsc.cli.login_commands.resolve_command_model", _mock)
 
 
-@respx.mock
 def test_login_new_without_flag_prompts_yes_fetches(
-    home: Path, monkeypatch: pytest.MonkeyPatch
+    home: Path, monkeypatch: pytest.MonkeyPatch, httpx2_mock: respx.Router
 ) -> None:
-    _good_status()
+    _good_status(httpx2_mock)
     calls: list[Any] = []
     _patch_resolve(monkeypatch, calls)
     result = CliRunner().invoke(
@@ -189,11 +182,10 @@ def test_login_new_without_flag_prompts_yes_fetches(
     assert "Fetching schema" in result.output
 
 
-@respx.mock
 def test_login_new_without_flag_default_yes_fetches(
-    home: Path, monkeypatch: pytest.MonkeyPatch
+    home: Path, monkeypatch: pytest.MonkeyPatch, httpx2_mock: respx.Router
 ) -> None:
-    _good_status()
+    _good_status(httpx2_mock)
     calls: list[Any] = []
     _patch_resolve(monkeypatch, calls)
     result = CliRunner().invoke(
@@ -205,11 +197,10 @@ def test_login_new_without_flag_default_yes_fetches(
     assert len(calls) == 1
 
 
-@respx.mock
 def test_login_new_without_flag_prompts_no_skips(
-    home: Path, monkeypatch: pytest.MonkeyPatch
+    home: Path, monkeypatch: pytest.MonkeyPatch, httpx2_mock: respx.Router
 ) -> None:
-    _good_status()
+    _good_status(httpx2_mock)
     calls: list[Any] = []
     _patch_resolve(monkeypatch, calls)
     result = CliRunner().invoke(
@@ -221,11 +212,10 @@ def test_login_new_without_flag_prompts_no_skips(
     assert len(calls) == 0
 
 
-@respx.mock
 def test_login_new_fetch_schema_flag_skips_prompt(
-    home: Path, monkeypatch: pytest.MonkeyPatch
+    home: Path, monkeypatch: pytest.MonkeyPatch, httpx2_mock: respx.Router
 ) -> None:
-    _good_status()
+    _good_status(httpx2_mock)
     calls: list[Any] = []
     _patch_resolve(monkeypatch, calls)
     result = CliRunner().invoke(
@@ -238,9 +228,8 @@ def test_login_new_fetch_schema_flag_skips_prompt(
     assert "Fetching schema" in result.output
 
 
-@respx.mock
 def test_login_verify_fetch_schema_flag_fetches(
-    home: Path, monkeypatch: pytest.MonkeyPatch
+    home: Path, monkeypatch: pytest.MonkeyPatch, httpx2_mock: respx.Router
 ) -> None:
     _seed(
         home,
@@ -250,7 +239,7 @@ def test_login_verify_fetch_schema_flag_fetches(
         "    url: https://nb.example/\n"
         "    token: T123\n",
     )
-    _good_status()
+    _good_status(httpx2_mock)
     calls: list[Any] = []
     _patch_resolve(monkeypatch, calls)
     result = CliRunner().invoke(app, ["login", "--fetch-schema"])
@@ -259,9 +248,8 @@ def test_login_verify_fetch_schema_flag_fetches(
     assert "Fetching schema" in result.output
 
 
-@respx.mock
 def test_login_fetch_schema_failure_warns_and_exits_zero(
-    home: Path, monkeypatch: pytest.MonkeyPatch
+    home: Path, monkeypatch: pytest.MonkeyPatch, httpx2_mock: respx.Router
 ) -> None:
     _seed(
         home,
@@ -271,7 +259,7 @@ def test_login_fetch_schema_failure_warns_and_exits_zero(
         "    url: https://nb.example/\n"
         "    token: T123\n",
     )
-    _good_status()
+    _good_status(httpx2_mock)
 
     def _fail(**_: Any) -> Any:
         raise RuntimeError("network down")

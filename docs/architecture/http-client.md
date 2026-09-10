@@ -1,6 +1,6 @@
 # HTTP client
 
-`nsc/http/` is a thin wrapper around `httpx.Client`.
+`nsc/http/` is a thin wrapper around `httpx2.Client`.
 
 ## What it adds
 
@@ -27,7 +27,7 @@
 
 Bulk write commands accept `--workers N` (default 1, max 32) to keep up to N
 requests in flight. Concurrency is **thread-based**: a `ThreadPoolExecutor`
-fans the per-record loop out over the single sync `httpx.Client` — there is no
+fans the per-record loop out over the single sync `httpx2.Client` — there is no
 async path. Per-record `--on-error` semantics are preserved regardless of
 worker count. Audit appends are serialized by a module-level lock
 (`_APPEND_LOCK` in `nsc/http/audit.py`) wrapped around the whole
@@ -40,9 +40,9 @@ each record is one well-formed JSON line.
 
 A schema fetch may run before the first command request (only when the
 TTL fast-path misses — see [Caching](caching.md)); it uses its own
-short-lived `httpx.Client` in `nsc/schema/`, not this `NetBoxClient`.
+short-lived `httpx2.Client` in `nsc/schema/`, not this `NetBoxClient`.
 Command requests then go through a single `NetBoxClient` whose
-`httpx.Client` carries the auth header for the life of the process.
+`httpx2.Client` carries the auth header for the life of the process.
 Token rotation via `nsc login --rotate` does NOT invalidate the cached
 model (the schema hash is what keys the cache; the token never affected
 it).
@@ -91,7 +91,7 @@ contract.
 
 ## What it deliberately does not do
 
-- Async — sync only in v1, kept feasible by httpx if a future async path lands.
+- Async — sync only in v1, kept feasible by httpx2 if a future async path lands.
 - Connection pooling across profiles — each profile gets its own `Client`.
 - Caching responses — caching the command-model is enough; caching response
   payloads would surprise users.

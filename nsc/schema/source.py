@@ -66,7 +66,7 @@ def resolve_command_model(
     schema_refresh: SchemaRefresh = SchemaRefresh.ON_HASH_CHANGE,
     force_refresh: bool = False,
 ) -> CommandModel:
-    import httpx  # noqa: PLC0415  # deferred: keeps httpx off the CLI-startup path.
+    import httpx2  # noqa: PLC0415  # deferred: keeps httpx2 off the CLI-startup path.
 
     if schema_override is not None:
         loaded = load_schema(
@@ -89,7 +89,7 @@ def resolve_command_model(
 
     try:
         loaded = _fetch_schema(schema_url, profile)
-    except (httpx.RequestError, httpx.HTTPStatusError) as exc:
+    except (httpx2.RequestError, httpx2.HTTPStatusError) as exc:
         cached = _find_any_cached(paths, profile.name)
         if cached is not None:
             print(
@@ -113,12 +113,12 @@ def resolve_command_model(
 
 
 def _fetch_schema(url: str, profile: ResolvedProfile) -> LoadedSchema:
-    import httpx  # noqa: PLC0415  # deferred: keeps httpx off the CLI-startup path.
+    import httpx2  # noqa: PLC0415  # deferred: keeps httpx2 off the CLI-startup path.
 
     headers: dict[str, str] = {"Accept": "application/json"}
     if profile.token:
         headers["Authorization"] = f"Token {profile.token}"
-    with httpx.Client(verify=profile.verify_ssl, timeout=profile.timeout, headers=headers) as c:
+    with httpx2.Client(verify=profile.verify_ssl, timeout=profile.timeout, headers=headers) as c:
         response = c.get(url)
         response.raise_for_status()
         body = response.content

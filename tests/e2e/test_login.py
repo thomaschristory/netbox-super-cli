@@ -11,7 +11,7 @@ import json
 from collections.abc import Callable
 from pathlib import Path
 
-import httpx
+import httpx2
 import pytest
 
 
@@ -65,7 +65,7 @@ def test_login_new_creates_profile_against_live_netbox(
 
 def test_login_rotate_replaces_token_against_live_netbox(
     run_nsc: Callable[..., object],
-    netbox_client: httpx.Client,
+    netbox_client: httpx2.Client,
     nsc_url: str,
     nsc_token: str,
     tmp_nsc_home: Path,

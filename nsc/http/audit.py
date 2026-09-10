@@ -129,7 +129,7 @@ def _sanitize_url(url: str) -> str:
 
     The query string of a debug-mode GET can carry secret filter values
     (e.g. `?private_key=...`), and `Profile.url` permits `https://user:pass@host`
-    whose `user:pass@` httpx keeps in `str(request.url)`. Both are stripped so a
+    whose `user:pass@` httpx2 keeps in `str(request.url)`. Both are stripped so a
     `full` line cannot leak a credential through the one remaining string field.
 
     Robust to URLs with no query/userinfo (no-op) and to relative/edge URLs: if

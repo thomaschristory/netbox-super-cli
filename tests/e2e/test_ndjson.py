@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import httpx
+import httpx2
 import pytest
 
 pytestmark = pytest.mark.usefixtures("clean_tags")
@@ -23,7 +23,7 @@ def _write_ndjson(tmp_path: Path, records: list[dict[str, object]]) -> Path:
 
 def test_bulk_create_tags_from_ndjson_file(
     run_nsc,
-    netbox_client: httpx.Client,
+    netbox_client: httpx2.Client,
     tmp_path: Path,
 ) -> None:
     """Three tags created via NDJSON; verify all three exist on the server."""
@@ -54,7 +54,7 @@ def test_bulk_create_tags_from_ndjson_file(
 
 def test_ndjson_parse_failure_aborts_before_wire(
     run_nsc,
-    netbox_client: httpx.Client,
+    netbox_client: httpx2.Client,
     tmp_path: Path,
 ) -> None:
     """One bad line aborts the whole batch; no records are created on the server."""

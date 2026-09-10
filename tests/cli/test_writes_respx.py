@@ -23,15 +23,15 @@ def _bundled_schema_for_runtime(
     monkeypatch.setenv("NSC_HOME", str(fixture_profile_yaml))
 
 
-def _mock_schema(respx_mock: Any) -> None:
+def _mock_schema(respx_mock: respx.Router) -> None:
     bundled = next(Path("nsc/schemas/bundled").glob("*.json*"))
     body = (
         gzip.decompress(bundled.read_bytes())
         if bundled.name.endswith(".gz")
         else bundled.read_bytes()
     )
-    respx_mock.get("https://nb.example/api/schema/?format=json").mock(
-        return_value=httpx.Response(200, content=body, headers={"content-type": "application/json"})
+    respx_mock.get("https://nb.example/api/schema/?format=json").respond(
+        200, content=body, headers={"content-type": "application/json"}
     )
 
 
@@ -65,12 +65,10 @@ _VALID_DEVICE: dict[str, Any] = {
 }
 
 
-@respx.mock
-def test_create_dry_run_does_not_send(tmp_path: Path) -> None:
-    _mock_schema(respx.mock)
-    route = respx.post("https://nb.example/api/dcim/devices/").mock(
-        return_value=httpx.Response(201, json={"id": 1})
-    )
+@pytest.mark.httpx2(assert_all_called=False)
+def test_create_dry_run_does_not_send(tmp_path: Path, httpx2_mock: respx.Router) -> None:
+    _mock_schema(httpx2_mock)
+    route = httpx2_mock.post("https://nb.example/api/dcim/devices/").respond(201, json={"id": 1})
     payload = _payload(tmp_path, _VALID_DEVICE)
     result = CliRunner().invoke(
         app,
@@ -80,11 +78,10 @@ def test_create_dry_run_does_not_send(tmp_path: Path) -> None:
     assert route.call_count == 0  # nothing sent on dry-run
 
 
-@respx.mock
-def test_create_apply_sends_post(tmp_path: Path) -> None:
-    _mock_schema(respx.mock)
-    route = respx.post("https://nb.example/api/dcim/devices/").mock(
-        return_value=httpx.Response(201, json={"id": 1, "name": "rack-01"})
+def test_create_apply_sends_post(tmp_path: Path, httpx2_mock: respx.Router) -> None:
+    _mock_schema(httpx2_mock)
+    route = httpx2_mock.post("https://nb.example/api/dcim/devices/").respond(
+        201, json={"id": 1, "name": "rack-01"}
     )
     payload = _payload(tmp_path, _VALID_DEVICE)
     result = CliRunner().invoke(
@@ -97,13 +94,13 @@ def test_create_apply_sends_post(tmp_path: Path) -> None:
     assert body == _VALID_DEVICE
 
 
-@respx.mock
 def test_create_apply_validation_error_from_server_maps_to_validation_envelope(
     tmp_path: Path,
+    httpx2_mock: respx.Router,
 ) -> None:
-    _mock_schema(respx.mock)
-    respx.post("https://nb.example/api/dcim/devices/").mock(
-        return_value=httpx.Response(400, json={"name": ["This field may not be blank."]})
+    _mock_schema(httpx2_mock)
+    httpx2_mock.post("https://nb.example/api/dcim/devices/").respond(
+        400, json={"name": ["This field may not be blank."]}
     )
     payload = _payload(tmp_path, _VALID_DEVICE)
     result = CliRunner().invoke(
@@ -116,11 +113,10 @@ def test_create_apply_validation_error_from_server_maps_to_validation_envelope(
     assert parsed["status_code"] == 400
 
 
-@respx.mock
-def test_create_apply_conflict_409(tmp_path: Path) -> None:
-    _mock_schema(respx.mock)
-    respx.post("https://nb.example/api/dcim/devices/").mock(
-        return_value=httpx.Response(409, json={"detail": "duplicate"})
+def test_create_apply_conflict_409(tmp_path: Path, httpx2_mock: respx.Router) -> None:
+    _mock_schema(httpx2_mock)
+    httpx2_mock.post("https://nb.example/api/dcim/devices/").respond(
+        409, json={"detail": "duplicate"}
     )
     payload = _payload(tmp_path, _VALID_DEVICE)
     result = CliRunner().invoke(
@@ -132,11 +128,10 @@ def test_create_apply_conflict_409(tmp_path: Path) -> None:
     assert parsed["type"] == "conflict"
 
 
-@respx.mock
-def test_create_apply_auth_401(tmp_path: Path) -> None:
-    _mock_schema(respx.mock)
-    respx.post("https://nb.example/api/dcim/devices/").mock(
-        return_value=httpx.Response(401, json={"detail": "Invalid token."})
+def test_create_apply_auth_401(tmp_path: Path, httpx2_mock: respx.Router) -> None:
+    _mock_schema(httpx2_mock)
+    httpx2_mock.post("https://nb.example/api/dcim/devices/").respond(
+        401, json={"detail": "Invalid token."}
     )
     payload = _payload(tmp_path, _VALID_DEVICE)
     result = CliRunner().invoke(
@@ -148,11 +143,10 @@ def test_create_apply_auth_401(tmp_path: Path) -> None:
     assert parsed["type"] == "auth"
 
 
-@respx.mock
-def test_update_apply_sends_patch(tmp_path: Path) -> None:
-    _mock_schema(respx.mock)
-    route = respx.patch("https://nb.example/api/dcim/devices/42/").mock(
-        return_value=httpx.Response(200, json={"id": 42, "status": "decommissioning"})
+def test_update_apply_sends_patch(tmp_path: Path, httpx2_mock: respx.Router) -> None:
+    _mock_schema(httpx2_mock)
+    route = httpx2_mock.patch("https://nb.example/api/dcim/devices/42/").respond(
+        200, json={"id": 42, "status": "decommissioning"}
     )
     result = CliRunner().invoke(
         app,
@@ -174,10 +168,9 @@ def test_update_apply_sends_patch(tmp_path: Path) -> None:
     assert body == {"status": "decommissioning"}
 
 
-@respx.mock
-def test_delete_apply_204_returns_deleted_true() -> None:
-    _mock_schema(respx.mock)
-    respx.delete("https://nb.example/api/dcim/devices/42/").mock(return_value=httpx.Response(204))
+def test_delete_apply_204_returns_deleted_true(httpx2_mock: respx.Router) -> None:
+    _mock_schema(httpx2_mock)
+    httpx2_mock.delete("https://nb.example/api/dcim/devices/42/").respond(204)
     result = CliRunner().invoke(
         app,
         ["dcim", "devices", "delete", "42", "--apply", "--output", "json"],
@@ -187,11 +180,10 @@ def test_delete_apply_204_returns_deleted_true() -> None:
     assert parsed == {"deleted": True}
 
 
-@respx.mock
-def test_delete_apply_404_default_returns_already_absent() -> None:
-    _mock_schema(respx.mock)
-    respx.delete("https://nb.example/api/dcim/devices/42/").mock(
-        return_value=httpx.Response(404, json={"detail": "Not found."})
+def test_delete_apply_404_default_returns_already_absent(httpx2_mock: respx.Router) -> None:
+    _mock_schema(httpx2_mock)
+    httpx2_mock.delete("https://nb.example/api/dcim/devices/42/").respond(
+        404, json={"detail": "Not found."}
     )
     result = CliRunner().invoke(
         app,
@@ -202,11 +194,10 @@ def test_delete_apply_404_default_returns_already_absent() -> None:
     assert parsed == {"deleted": False, "reason": "already_absent"}
 
 
-@respx.mock
-def test_delete_apply_404_strict_returns_not_found_envelope() -> None:
-    _mock_schema(respx.mock)
-    respx.delete("https://nb.example/api/dcim/devices/42/").mock(
-        return_value=httpx.Response(404, json={"detail": "Not found."})
+def test_delete_apply_404_strict_returns_not_found_envelope(httpx2_mock: respx.Router) -> None:
+    _mock_schema(httpx2_mock)
+    httpx2_mock.delete("https://nb.example/api/dcim/devices/42/").respond(
+        404, json={"detail": "Not found."}
     )
     result = CliRunner().invoke(
         app,
@@ -217,12 +208,12 @@ def test_delete_apply_404_strict_returns_not_found_envelope() -> None:
     assert parsed["type"] == "not_found"
 
 
-@respx.mock
-def test_create_preflight_failure_short_circuits_with_exit_4(tmp_path: Path) -> None:
-    _mock_schema(respx.mock)
-    route = respx.post("https://nb.example/api/dcim/devices/").mock(
-        return_value=httpx.Response(201, json={"id": 1})
-    )
+@pytest.mark.httpx2(assert_all_called=False)
+def test_create_preflight_failure_short_circuits_with_exit_4(
+    tmp_path: Path, httpx2_mock: respx.Router
+) -> None:
+    _mock_schema(httpx2_mock)
+    route = httpx2_mock.post("https://nb.example/api/dcim/devices/").respond(201, json={"id": 1})
     # Missing required `name` — preflight should fail before --apply touches the wire.
     payload = _payload(tmp_path, {"comments": "no name"})
     result = CliRunner().invoke(
@@ -233,9 +224,8 @@ def test_create_preflight_failure_short_circuits_with_exit_4(tmp_path: Path) -> 
     assert route.call_count == 0
 
 
-@respx.mock
-def test_create_all_flag_refused(tmp_path: Path) -> None:
-    _mock_schema(respx.mock)
+def test_create_all_flag_refused(tmp_path: Path, httpx2_mock: respx.Router) -> None:
+    _mock_schema(httpx2_mock)
     payload = _payload(tmp_path, {"name": "x"})
     # `--all` is not a flag on write commands. Typer/click rejects unknown
     # flags with usage error (exit 2). This documents that the read-side
@@ -247,9 +237,8 @@ def test_create_all_flag_refused(tmp_path: Path) -> None:
     assert result.exit_code != 0
 
 
-@respx.mock
-def test_explain_renders_resolved_request(tmp_path: Path) -> None:
-    _mock_schema(respx.mock)
+def test_explain_renders_resolved_request(tmp_path: Path, httpx2_mock: respx.Router) -> None:
+    _mock_schema(httpx2_mock)
     payload = _payload(tmp_path, _VALID_DEVICE)
     result = CliRunner().invoke(
         app,
@@ -270,11 +259,11 @@ def test_explain_renders_resolved_request(tmp_path: Path) -> None:
     assert parsed["requests"][0]["method"] == "POST"
 
 
-@respx.mock
 def test_create_apply_writes_audit_jsonl_and_last_request_json(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     fixture_profile_yaml: Path,
+    httpx2_mock: respx.Router,
 ) -> None:
     home = tmp_path / "audit_home"
     home.mkdir()
@@ -282,10 +271,8 @@ def test_create_apply_writes_audit_jsonl_and_last_request_json(
         (fixture_profile_yaml / "config.yaml").read_text(encoding="utf-8"), encoding="utf-8"
     )
     monkeypatch.setenv("NSC_HOME", str(home))
-    _mock_schema(respx.mock)
-    respx.post("https://nb.example/api/dcim/devices/").mock(
-        return_value=httpx.Response(201, json={"id": 1})
-    )
+    _mock_schema(httpx2_mock)
+    httpx2_mock.post("https://nb.example/api/dcim/devices/").respond(201, json={"id": 1})
     payload = _payload(tmp_path, _VALID_DEVICE)
     result = CliRunner().invoke(
         app,
@@ -300,11 +287,11 @@ def test_create_apply_writes_audit_jsonl_and_last_request_json(
     assert last["request"]["headers"]["Authorization"] == "<redacted>"
 
 
-@respx.mock
 def test_dry_run_does_not_overwrite_last_request_json(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     fixture_profile_yaml: Path,
+    httpx2_mock: respx.Router,
 ) -> None:
     home = tmp_path / "audit_home"
     home.mkdir()
@@ -312,7 +299,7 @@ def test_dry_run_does_not_overwrite_last_request_json(
         (fixture_profile_yaml / "config.yaml").read_text(encoding="utf-8"), encoding="utf-8"
     )
     monkeypatch.setenv("NSC_HOME", str(home))
-    _mock_schema(respx.mock)
+    _mock_schema(httpx2_mock)
     payload = _payload(tmp_path, _VALID_DEVICE)
     CliRunner().invoke(app, ["dcim", "devices", "create", "-f", str(payload), "--output", "json"])
     audit = (home / "logs" / "audit.jsonl").read_text(encoding="utf-8").strip().splitlines()
@@ -336,11 +323,12 @@ def _bulk_records(n: int) -> list[dict[str, Any]]:
     return [{"name": f"r-{i}", "device_type": 1, "role": 1, "site": 1} for i in range(n)]
 
 
-@respx.mock
-def test_bulk_create_5_records_sends_one_post_with_array_body(tmp_path: Path) -> None:
-    _mock_schema(respx.mock)
-    route = respx.post("https://nb.example/api/dcim/devices/").mock(
-        return_value=httpx.Response(201, json=[{"id": i} for i in range(5)])
+def test_bulk_create_5_records_sends_one_post_with_array_body(
+    tmp_path: Path, httpx2_mock: respx.Router
+) -> None:
+    _mock_schema(httpx2_mock)
+    route = httpx2_mock.post("https://nb.example/api/dcim/devices/").respond(
+        201, json=[{"id": i} for i in range(5)]
     )
     payload = _payload(tmp_path, _bulk_records(5))
     result = CliRunner().invoke(
@@ -354,12 +342,11 @@ def test_bulk_create_5_records_sends_one_post_with_array_body(tmp_path: Path) ->
     assert [item["name"] for item in sent] == [f"r-{i}" for i in range(5)]
 
 
-@respx.mock
-def test_no_bulk_5_records_sends_5_sequential_posts(tmp_path: Path) -> None:
-    _mock_schema(respx.mock)
-    route = respx.post("https://nb.example/api/dcim/devices/").mock(
-        return_value=httpx.Response(201, json={"id": 1})
-    )
+def test_no_bulk_5_records_sends_5_sequential_posts(
+    tmp_path: Path, httpx2_mock: respx.Router
+) -> None:
+    _mock_schema(httpx2_mock)
+    route = httpx2_mock.post("https://nb.example/api/dcim/devices/").respond(201, json={"id": 1})
     payload = _payload(tmp_path, _bulk_records(5))
     result = CliRunner().invoke(
         app,
@@ -379,9 +366,10 @@ def test_no_bulk_5_records_sends_5_sequential_posts(tmp_path: Path) -> None:
     assert route.call_count == 5
 
 
-@respx.mock
-def test_loop_stop_on_third_record_400_returns_partial_progress(tmp_path: Path) -> None:
-    _mock_schema(respx.mock)
+def test_loop_stop_on_third_record_400_returns_partial_progress(
+    tmp_path: Path, httpx2_mock: respx.Router
+) -> None:
+    _mock_schema(httpx2_mock)
     call_count = {"n": 0}
 
     def responder(request: httpx.Request) -> httpx.Response:
@@ -390,7 +378,7 @@ def test_loop_stop_on_third_record_400_returns_partial_progress(tmp_path: Path) 
             return httpx.Response(400, json={"name": ["bad"]})
         return httpx.Response(201, json={"id": call_count["n"]})
 
-    respx.post("https://nb.example/api/dcim/devices/").mock(side_effect=responder)
+    httpx2_mock.post("https://nb.example/api/dcim/devices/").mock(side_effect=responder)
     payload = _payload(tmp_path, _bulk_records(5))
     result = CliRunner().invoke(
         app,
@@ -418,9 +406,10 @@ def test_loop_stop_on_third_record_400_returns_partial_progress(tmp_path: Path) 
     assert parsed["details"]["on_error"] == "stop"
 
 
-@respx.mock
-def test_loop_continue_with_two_failures_returns_summary_envelope(tmp_path: Path) -> None:
-    _mock_schema(respx.mock)
+def test_loop_continue_with_two_failures_returns_summary_envelope(
+    tmp_path: Path, httpx2_mock: respx.Router
+) -> None:
+    _mock_schema(httpx2_mock)
     call_count = {"n": 0}
 
     def responder(request: httpx.Request) -> httpx.Response:
@@ -431,7 +420,7 @@ def test_loop_continue_with_two_failures_returns_summary_envelope(tmp_path: Path
             return httpx.Response(401, json={"detail": "no auth"})
         return httpx.Response(201, json={"id": call_count["n"]})
 
-    respx.post("https://nb.example/api/dcim/devices/").mock(side_effect=responder)
+    httpx2_mock.post("https://nb.example/api/dcim/devices/").mock(side_effect=responder)
     payload = _payload(tmp_path, _bulk_records(5))
     result = CliRunner().invoke(
         app,
@@ -466,14 +455,14 @@ def test_loop_continue_with_two_failures_returns_summary_envelope(tmp_path: Path
     assert types == {"validation", "auth"}
 
 
-@respx.mock
 def test_loop_audit_log_has_one_entry_per_attempt(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     fixture_profile_yaml: Path,
+    httpx2_mock: respx.Router,
 ) -> None:
     home = _audit_home(tmp_path, monkeypatch, fixture_profile_yaml)
-    _mock_schema(respx.mock)
+    _mock_schema(httpx2_mock)
     call_count = {"n": 0}
 
     def responder(request: httpx.Request) -> httpx.Response:
@@ -482,7 +471,7 @@ def test_loop_audit_log_has_one_entry_per_attempt(
             return httpx.Response(400, json={"name": ["bad"]})
         return httpx.Response(201, json={"id": call_count["n"]})
 
-    respx.post("https://nb.example/api/dcim/devices/").mock(side_effect=responder)
+    httpx2_mock.post("https://nb.example/api/dcim/devices/").mock(side_effect=responder)
     payload = _payload(tmp_path, _bulk_records(3))
     CliRunner().invoke(
         app,
@@ -508,14 +497,15 @@ def test_loop_audit_log_has_one_entry_per_attempt(
     assert statuses == [None, "4xx", None]
 
 
-@respx.mock
-def test_bulk_on_non_bulk_endpoint_returns_client_error(tmp_path: Path) -> None:
+def test_bulk_on_non_bulk_endpoint_returns_client_error(
+    tmp_path: Path, httpx2_mock: respx.Router
+) -> None:
     """Pick an endpoint whose request_body.top_level is "object" (no array branch).
 
     The bundled `dcim_devices_partial_update` PATCH endpoint takes a single
     object body. Using PATCH against a single id with --bulk should be refused.
     """
-    _mock_schema(respx.mock)
+    _mock_schema(httpx2_mock)
     payload = _payload(tmp_path, [{"status": "active"}])
     result = CliRunner().invoke(
         app,
@@ -538,9 +528,10 @@ def test_bulk_on_non_bulk_endpoint_returns_client_error(tmp_path: Path) -> None:
     assert parsed["details"]["flag"] == "--bulk"
 
 
-@respx.mock
-def test_bulk_and_no_bulk_together_returns_client_error(tmp_path: Path) -> None:
-    _mock_schema(respx.mock)
+def test_bulk_and_no_bulk_together_returns_client_error(
+    tmp_path: Path, httpx2_mock: respx.Router
+) -> None:
+    _mock_schema(httpx2_mock)
     payload = _payload(tmp_path, [{"name": "x", "device_type": 1, "role": 1, "site": 1}])
     result = CliRunner().invoke(
         app,
@@ -562,9 +553,8 @@ def test_bulk_and_no_bulk_together_returns_client_error(tmp_path: Path) -> None:
     assert parsed["details"]["flag"] == "--bulk/--no-bulk"
 
 
-@respx.mock
-def test_explain_includes_bulk_reasoning(tmp_path: Path) -> None:
-    _mock_schema(respx.mock)
+def test_explain_includes_bulk_reasoning(tmp_path: Path, httpx2_mock: respx.Router) -> None:
+    _mock_schema(httpx2_mock)
     payload = _payload(tmp_path, _bulk_records(3))
     result = CliRunner().invoke(
         app,
@@ -576,14 +566,14 @@ def test_explain_includes_bulk_reasoning(tmp_path: Path) -> None:
     assert "3" in parsed["bulk_reasoning"]
 
 
-@respx.mock
 def test_dry_run_bulk_writes_one_audit_entry(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     fixture_profile_yaml: Path,
+    httpx2_mock: respx.Router,
 ) -> None:
     home = _audit_home(tmp_path, monkeypatch, fixture_profile_yaml)
-    _mock_schema(respx.mock)
+    _mock_schema(httpx2_mock)
     payload = _payload(tmp_path, _bulk_records(3))
     CliRunner().invoke(
         app,
@@ -600,9 +590,8 @@ def test_dry_run_bulk_writes_one_audit_entry(
 # Issue #3: concurrent per-record loop (--workers N).
 
 
-@respx.mock
-def test_workers_below_one_returns_client_error(tmp_path: Path) -> None:
-    _mock_schema(respx.mock)
+def test_workers_below_one_returns_client_error(tmp_path: Path, httpx2_mock: respx.Router) -> None:
+    _mock_schema(httpx2_mock)
     payload = _payload(tmp_path, _bulk_records(3))
     result = CliRunner().invoke(
         app,
@@ -626,17 +615,15 @@ def test_workers_below_one_returns_client_error(tmp_path: Path) -> None:
     assert parsed["details"]["flag"] == "--workers"
 
 
-@respx.mock
 def test_workers_loop_sends_every_record_and_audits_well_formed(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     fixture_profile_yaml: Path,
+    httpx2_mock: respx.Router,
 ) -> None:
     home = _audit_home(tmp_path, monkeypatch, fixture_profile_yaml)
-    _mock_schema(respx.mock)
-    route = respx.post("https://nb.example/api/dcim/devices/").mock(
-        return_value=httpx.Response(201, json={"id": 1})
-    )
+    _mock_schema(httpx2_mock)
+    route = httpx2_mock.post("https://nb.example/api/dcim/devices/").respond(201, json={"id": 1})
     payload = _payload(tmp_path, _bulk_records(20))
     result = CliRunner().invoke(
         app,
@@ -667,9 +654,10 @@ def test_workers_loop_sends_every_record_and_audits_well_formed(
     assert indices == set(range(20))
 
 
-@respx.mock
-def test_workers_continue_attempts_every_record_under_concurrency(tmp_path: Path) -> None:
-    _mock_schema(respx.mock)
+def test_workers_continue_attempts_every_record_under_concurrency(
+    tmp_path: Path, httpx2_mock: respx.Router
+) -> None:
+    _mock_schema(httpx2_mock)
     bad = {3, 7}
 
     def responder(request: httpx.Request) -> httpx.Response:
@@ -678,7 +666,7 @@ def test_workers_continue_attempts_every_record_under_concurrency(tmp_path: Path
             return httpx.Response(400, json={"name": ["bad"]})
         return httpx.Response(201, json={"id": 1})
 
-    respx.post("https://nb.example/api/dcim/devices/").mock(side_effect=responder)
+    httpx2_mock.post("https://nb.example/api/dcim/devices/").mock(side_effect=responder)
     payload = _payload(tmp_path, _bulk_records(10))
     result = CliRunner().invoke(
         app,
@@ -710,9 +698,8 @@ def test_workers_continue_attempts_every_record_under_concurrency(tmp_path: Path
     assert indices == [3, 7]
 
 
-@respx.mock
-def test_workers_above_cap_returns_client_error(tmp_path: Path) -> None:
-    _mock_schema(respx.mock)
+def test_workers_above_cap_returns_client_error(tmp_path: Path, httpx2_mock: respx.Router) -> None:
+    _mock_schema(httpx2_mock)
     payload = _payload(tmp_path, _bulk_records(3))
     result = CliRunner().invoke(
         app,
@@ -737,7 +724,7 @@ def test_workers_above_cap_returns_client_error(tmp_path: Path) -> None:
     assert "<= 32" in parsed["error"]
 
 
-def _run_stop_under_concurrency(tmp_path: Path) -> dict[str, Any]:
+def _run_stop_under_concurrency(tmp_path: Path, httpx2_mock: respx.Router) -> dict[str, Any]:
     """Run --workers 4 --on-error stop over 12 records where records 5 and 9
     fail (400). Returns the parsed top-level error envelope."""
     bad = {5, 9}
@@ -748,7 +735,7 @@ def _run_stop_under_concurrency(tmp_path: Path) -> dict[str, Any]:
             return httpx.Response(400, json={"name": ["bad"]})
         return httpx.Response(201, json={"id": idx})
 
-    respx.post("https://nb.example/api/dcim/devices/").mock(side_effect=responder)
+    httpx2_mock.post("https://nb.example/api/dcim/devices/").mock(side_effect=responder)
     payload = _payload(tmp_path, _bulk_records(12))
     result = CliRunner().invoke(
         app,
@@ -775,17 +762,18 @@ def _run_stop_under_concurrency(tmp_path: Path) -> dict[str, Any]:
     return json.loads(result.stdout)  # type: ignore[no-any-return]
 
 
-@respx.mock
+@pytest.mark.httpx2(assert_all_called=False)
 def test_workers_stop_surfaces_lowest_index_failure_deterministically(
     tmp_path: Path,
+    httpx2_mock: respx.Router,
 ) -> None:
     # The surfaced top-level failure under concurrency must be the LOWEST
     # failing record_index, stable across repeated runs (not completion order).
     seen: set[int] = set()
     for _ in range(8):
-        respx.reset()
-        _mock_schema(respx.mock)
-        parsed = _run_stop_under_concurrency(tmp_path)
+        httpx2_mock.reset()
+        _mock_schema(httpx2_mock)
+        parsed = _run_stop_under_concurrency(tmp_path, httpx2_mock)
         assert parsed["type"] == "validation"
         assert parsed["details"]["on_error"] == "stop"
         seen.add(parsed["record_index"])
