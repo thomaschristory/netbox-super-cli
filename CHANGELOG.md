@@ -2,7 +2,11 @@
 
 All notable changes to netbox-super-cli are tracked here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) loosely. From v1.0.0 onward, releases follow [Semantic Versioning](https://semver.org/) and the version in `pyproject.toml` matches the git tag. Pre-1.0 milestones (Phase 1-5) were pinned by tag while `pyproject.toml` stayed at `0.0.1`.
 
-## [Unreleased]
+## v1.7.0 — 2026-09-10
+
+Minor release. Migrates the HTTP stack from `httpx` to Pydantic's maintained
+`httpx2` fork, and keeps `httpx2` off the `nsc --help` cold-start path. No
+user-facing CLI or behavior changes.
 
 ### Changed
 
