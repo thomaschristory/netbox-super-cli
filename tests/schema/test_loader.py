@@ -7,7 +7,7 @@ import json
 from collections.abc import Iterator
 from pathlib import Path
 
-import httpx
+import httpx2
 import pytest
 import respx
 
@@ -32,10 +32,9 @@ def test_loads_from_local_file(tmp_path: Path) -> None:
     assert len(loaded.hash) == 64
 
 
-@respx.mock
-def test_loads_from_https_url() -> None:
+def test_loads_from_https_url(httpx2_mock: respx.Router) -> None:
     url = "https://netbox.example.com/api/schema/?format=json"
-    respx.get(url).mock(return_value=httpx.Response(200, json=MINIMAL))
+    httpx2_mock.get(url).respond(200, json=MINIMAL)
     loaded = load_schema(url)
     assert loaded.document.info.title == "NetBox"
     assert loaded.source == url
@@ -53,10 +52,9 @@ def test_non_json_raises(tmp_path: Path) -> None:
         load_schema(str(p))
 
 
-@respx.mock
-def test_http_error_raises_load_error() -> None:
+def test_http_error_raises_load_error(httpx2_mock: respx.Router) -> None:
     url = "https://netbox.example.com/api/schema/"
-    respx.get(url).mock(return_value=httpx.Response(500, text="boom"))
+    httpx2_mock.get(url).respond(500, text="boom")
     with pytest.raises(SchemaLoadError, match="500"):
         load_schema(url)
 
@@ -90,7 +88,7 @@ def test_gzip_bomb_local_file_rejected(tmp_path: Path) -> None:
         load_schema(str(p))
 
 
-class _CountingStream(httpx.SyncByteStream):
+class _CountingStream(httpx2.SyncByteStream):
     """A lazy byte stream that records how many chunks were actually pulled."""
 
     def __init__(self, chunk: bytes, count: int) -> None:
@@ -107,45 +105,37 @@ class _CountingStream(httpx.SyncByteStream):
         pass
 
 
-@respx.mock
-def test_oversized_http_body_aborts_mid_stream() -> None:
+def test_oversized_http_body_aborts_mid_stream(httpx2_mock: respx.Router) -> None:
     """Security audit L2: an over-cap HTTP body is rejected before the whole body is read."""
     url = "https://netbox.example.com/api/schema/?format=json"
     stream = _CountingStream(b"\x00" * (8 * 1024 * 1024), count=32)  # 256 MB if fully drained
-    respx.get(url).mock(return_value=httpx.Response(200, stream=stream))
+    httpx2_mock.get(url).respond(200, stream=stream)
     with pytest.raises(SchemaLoadError, match="exceeds"):
         load_schema(url)
     assert stream.pulled < 32  # aborted early, did not buffer the full body
 
 
-@respx.mock
-def test_content_encoding_gzip_bomb_rejected() -> None:
+def test_content_encoding_gzip_bomb_rejected(httpx2_mock: respx.Router) -> None:
     """Security audit L2: a Content-Encoding: gzip bomb is bounded, not inflated whole."""
     url = "https://netbox.example.com/api/schema/?format=json"
     bomb = _gzip.compress(b"\x00" * (200 * 1024 * 1024))
-    respx.get(url).mock(
-        return_value=httpx.Response(200, headers={"Content-Encoding": "gzip"}, content=bomb)
-    )
+    httpx2_mock.get(url).respond(200, headers={"Content-Encoding": "gzip"}, content=bomb)
     with pytest.raises(SchemaLoadError, match="exceeds"):
         load_schema(url)
 
 
-@respx.mock
-def test_gzip_bomb_http_url_rejected() -> None:
+def test_gzip_bomb_http_url_rejected(httpx2_mock: respx.Router) -> None:
     """Security audit L2: a .gz URL whose body decompresses past the cap is rejected."""
     url = "https://netbox.example.com/api/schema.json.gz"
     bomb = _gzip.compress(b"\x00" * (200 * 1024 * 1024))
-    respx.get(url).mock(return_value=httpx.Response(200, content=bomb))
+    httpx2_mock.get(url).respond(200, content=bomb)
     with pytest.raises(SchemaLoadError, match="exceeds"):
         load_schema(url)
 
 
-@respx.mock
-def test_unsupported_content_encoding_rejected() -> None:
+def test_unsupported_content_encoding_rejected(httpx2_mock: respx.Router) -> None:
     url = "https://netbox.example.com/api/schema/?format=json"
-    respx.get(url).mock(
-        return_value=httpx.Response(200, headers={"Content-Encoding": "br"}, content=b"{}")
-    )
+    httpx2_mock.get(url).respond(200, headers={"Content-Encoding": "br"}, content=b"{}")
     with pytest.raises(SchemaLoadError, match="unsupported Content-Encoding"):
         load_schema(url)
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import httpx
+import httpx2
 import pytest
 
 pytestmark = pytest.mark.usefixtures("clean_tags")
@@ -19,7 +19,7 @@ def _tag_yaml(tmp_path: Path, name: str) -> Path:
 
 def test_netbox_400_surfaces_as_validation_envelope(
     run_nsc,
-    netbox_client: httpx.Client,
+    netbox_client: httpx2.Client,
     tmp_path: Path,
 ) -> None:
     payload = _tag_yaml(tmp_path, "dup-3d")

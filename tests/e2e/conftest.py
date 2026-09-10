@@ -26,7 +26,7 @@ from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
-import httpx
+import httpx2
 import pytest
 
 
@@ -138,8 +138,8 @@ def run_nsc(
 
 
 @pytest.fixture
-def netbox_client(nsc_url: str, nsc_token: str) -> Iterator[httpx.Client]:
-    """Direct httpx client for fixture bootstrap / state assertions.
+def netbox_client(nsc_url: str, nsc_token: str) -> Iterator[httpx2.Client]:
+    """Direct httpx2 client for fixture bootstrap / state assertions.
 
     Tests use ``run_nsc`` to exercise the CLI; this client is for the test
     *infrastructure* — wiping state between tests, asserting "is the record
@@ -150,12 +150,12 @@ def netbox_client(nsc_url: str, nsc_token: str) -> Iterator[httpx.Client]:
         "Accept": "application/json",
         "Content-Type": "application/json",
     }
-    with httpx.Client(base_url=nsc_url, headers=headers, timeout=30.0) as client:
+    with httpx2.Client(base_url=nsc_url, headers=headers, timeout=30.0) as client:
         yield client
 
 
 @pytest.fixture
-def clean_tags(netbox_client: httpx.Client) -> Iterator[None]:
+def clean_tags(netbox_client: httpx2.Client) -> Iterator[None]:
     """Delete every tag in NetBox before and after the test."""
 
     def _wipe() -> None:

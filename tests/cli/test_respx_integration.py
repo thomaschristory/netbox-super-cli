@@ -6,7 +6,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-import httpx
+import httpx2
 import pytest
 import respx
 from typer.testing import CliRunner
@@ -22,27 +22,27 @@ def _bundled_schema_for_runtime(
     monkeypatch.setenv("NSC_HOME", str(fixture_profile_yaml))
 
 
-def _mock_schema(respx_mock: Any) -> None:
+def _mock_schema(respx_mock: respx.Router) -> None:
     bundled = next(Path("nsc/schemas/bundled").glob("*.json*"))
     if bundled.name.endswith(".gz"):
         body = gzip.decompress(bundled.read_bytes())
     else:
         body = bundled.read_bytes()
-    respx_mock.get("https://nb.example/api/schema/?format=json").mock(
-        return_value=httpx.Response(200, content=body, headers={"content-type": "application/json"})
+    respx_mock.get("https://nb.example/api/schema/?format=json").respond(
+        200, content=body, headers={"content-type": "application/json"}
     )
 
 
-@respx.mock
 def test_list_devices_paginates_via_all(
     fixture_response: Callable[[str], dict[str, Any]],
+    httpx2_mock: respx.Router,
 ) -> None:
-    _mock_schema(respx.mock)
-    respx.get("https://nb.example/api/dcim/devices/", params={"cursor": "p2"}).mock(
-        return_value=httpx.Response(200, json=fixture_response("dcim_devices_list_p2.json"))
+    _mock_schema(httpx2_mock)
+    httpx2_mock.get("https://nb.example/api/dcim/devices/", params={"cursor": "p2"}).respond(
+        200, json=fixture_response("dcim_devices_list_p2.json")
     )
-    respx.get("https://nb.example/api/dcim/devices/").mock(
-        return_value=httpx.Response(200, json=fixture_response("dcim_devices_list_p1.json"))
+    httpx2_mock.get("https://nb.example/api/dcim/devices/").respond(
+        200, json=fixture_response("dcim_devices_list_p1.json")
     )
     result = CliRunner().invoke(app, ["dcim", "devices", "list", "--all", "--output", "json"])
     assert result.exit_code == 0, (result.stdout, result.stderr)
@@ -50,13 +50,13 @@ def test_list_devices_paginates_via_all(
     assert [r["id"] for r in parsed] == [1, 2, 3]
 
 
-@respx.mock
 def test_list_devices_with_filter_passes_query_param(
     fixture_response: Callable[[str], dict[str, Any]],
+    httpx2_mock: respx.Router,
 ) -> None:
-    _mock_schema(respx.mock)
-    route = respx.get("https://nb.example/api/dcim/devices/").mock(
-        return_value=httpx.Response(200, json=fixture_response("dcim_devices_list_p2.json"))
+    _mock_schema(httpx2_mock)
+    route = httpx2_mock.get("https://nb.example/api/dcim/devices/").respond(
+        200, json=fixture_response("dcim_devices_list_p2.json")
     )
     result = CliRunner().invoke(
         app,
@@ -67,26 +67,26 @@ def test_list_devices_with_filter_passes_query_param(
     assert sent.get("site_id") == "42"
 
 
-@respx.mock
 def test_get_device_renders_single_object(
     fixture_response: Callable[[str], dict[str, Any]],
+    httpx2_mock: respx.Router,
 ) -> None:
-    _mock_schema(respx.mock)
-    respx.get("https://nb.example/api/dcim/devices/7/").mock(
-        return_value=httpx.Response(200, json=fixture_response("dcim_devices_get.json"))
+    _mock_schema(httpx2_mock)
+    httpx2_mock.get("https://nb.example/api/dcim/devices/7/").respond(
+        200, json=fixture_response("dcim_devices_get.json")
     )
     result = CliRunner().invoke(app, ["dcim", "devices", "get", "7", "--output", "json"])
     assert result.exit_code == 0, (result.stdout, result.stderr)
     assert json.loads(result.stdout)["id"] == 7
 
 
-@respx.mock
 def test_circuits_providers_list_csv(
     fixture_response: Callable[[str], dict[str, Any]],
+    httpx2_mock: respx.Router,
 ) -> None:
-    _mock_schema(respx.mock)
-    respx.get("https://nb.example/api/circuits/providers/").mock(
-        return_value=httpx.Response(200, json=fixture_response("circuits_providers_list.json"))
+    _mock_schema(httpx2_mock)
+    httpx2_mock.get("https://nb.example/api/circuits/providers/").respond(
+        200, json=fixture_response("circuits_providers_list.json")
     )
     result = CliRunner().invoke(app, ["circuits", "providers", "list", "--all", "--output", "csv"])
     assert result.exit_code == 0, (result.stdout, result.stderr)
@@ -94,13 +94,13 @@ def test_circuits_providers_list_csv(
     assert "Acme" in result.stdout
 
 
-@respx.mock
 def test_401_response_emits_auth_envelope(
     fixture_response: Callable[[str], dict[str, Any]],
+    httpx2_mock: respx.Router,
 ) -> None:
-    _mock_schema(respx.mock)
-    respx.get("https://nb.example/api/dcim/devices/").mock(
-        return_value=httpx.Response(401, json=fixture_response("auth_401.json"))
+    _mock_schema(httpx2_mock)
+    httpx2_mock.get("https://nb.example/api/dcim/devices/").respond(
+        401, json=fixture_response("auth_401.json")
     )
     result = CliRunner().invoke(app, ["dcim", "devices", "list", "--output", "json"])
     assert result.exit_code == 8  # EXIT_CODES[ErrorType.AUTH]
@@ -122,16 +122,16 @@ def test_401_response_emits_auth_envelope(
         (503, ErrorType.SERVER),
     ],
 )
-@respx.mock
 def test_read_http_status_maps_to_envelope_and_exit_code(
     status_code: int,
     expected_type: ErrorType,
     monkeypatch: pytest.MonkeyPatch,
+    httpx2_mock: respx.Router,
 ) -> None:
     monkeypatch.setattr("nsc.http.client.time.sleep", lambda _s: None)
-    _mock_schema(respx.mock)
-    respx.get("https://nb.example/api/dcim/devices/").mock(
-        return_value=httpx.Response(status_code, json={"detail": "x"})
+    _mock_schema(httpx2_mock)
+    httpx2_mock.get("https://nb.example/api/dcim/devices/").respond(
+        status_code, json={"detail": "x"}
     )
     result = CliRunner().invoke(app, ["dcim", "devices", "list", "--output", "json"])
     assert result.exit_code == EXIT_CODES[expected_type]
@@ -141,26 +141,28 @@ def test_read_http_status_maps_to_envelope_and_exit_code(
     assert parsed["status_code"] == status_code
 
 
-@respx.mock
 def test_read_connect_error_maps_to_transport_envelope(
     monkeypatch: pytest.MonkeyPatch,
+    httpx2_mock: respx.Router,
 ) -> None:
     monkeypatch.setattr("nsc.http.client.time.sleep", lambda _s: None)
-    _mock_schema(respx.mock)
-    respx.get("https://nb.example/api/dcim/devices/").mock(side_effect=httpx.ConnectError("nope"))
+    _mock_schema(httpx2_mock)
+    httpx2_mock.get("https://nb.example/api/dcim/devices/").mock(
+        side_effect=httpx2.ConnectError("nope")
+    )
     result = CliRunner().invoke(app, ["dcim", "devices", "list", "--output", "json"])
     assert result.exit_code == EXIT_CODES[ErrorType.TRANSPORT]
     parsed = json.loads(result.stdout)
     assert parsed["type"] == "transport"
 
 
-@respx.mock
 def test_piped_stdout_falls_back_to_json(
     fixture_response: Callable[[str], dict[str, Any]],
+    httpx2_mock: respx.Router,
 ) -> None:
-    _mock_schema(respx.mock)
-    respx.get("https://nb.example/api/dcim/devices/").mock(
-        return_value=httpx.Response(200, json=fixture_response("dcim_devices_list_p2.json"))
+    _mock_schema(httpx2_mock)
+    httpx2_mock.get("https://nb.example/api/dcim/devices/").respond(
+        200, json=fixture_response("dcim_devices_list_p2.json")
     )
     result = CliRunner().invoke(app, ["dcim", "devices", "list"])
     assert result.exit_code == 0, (result.stdout, result.stderr)

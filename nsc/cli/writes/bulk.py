@@ -1,6 +1,6 @@
 """Bulk routing brain (Phase 3c).
 
-Pure logic. No I/O, no Typer, no httpx. Three responsibilities:
+Pure logic. No I/O, no Typer, no httpx2. Three responsibilities:
 
 1. `detect_bulk_capability(operation)` — classify a parsed Operation as
    bulk-capable, single-only, or ambiguous (spec §4.5).
@@ -195,7 +195,7 @@ def run_loop(
     With `workers == 1` the loop is sequential and deterministic: requests run
     in input order and audit fires once per attempted request in that order.
     With `workers > 1` up to `workers` requests are in flight concurrently via
-    a thread pool (the NetBox client is sync httpx, so threads — not asyncio —
+    a thread pool (the NetBox client is sync httpx2, so threads — not asyncio —
     are the right mechanism). Each record's send/retry/audit is independent.
 
     On `on_error="stop"` the loop stops submitting *new* work after the first
@@ -211,7 +211,7 @@ def run_loop(
 
     `send_one` does the wire send; `audit_attempt` writes the audit entry;
     `to_envelope` converts a raised exception into an ErrorEnvelope. Callers
-    inject these so this loop has no dependency on httpx or the audit module.
+    inject these so this loop has no dependency on httpx2 or the audit module.
     """
     if workers < 1:
         raise ValueError(f"workers must be >= 1, got {workers}")
