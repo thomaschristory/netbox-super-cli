@@ -1,7 +1,7 @@
 """Cheap on-disk reads for completion.
 
 This module deliberately avoids importing `nsc.schema.source` (which pulls in
-httpx and the schema-build pipeline). It reads the cached `CommandModel`
+httpx2 and the schema-build pipeline). It reads the cached `CommandModel`
 JSON directly via `CacheStore`, which validates the file but performs no
 network I/O. Picking the newest cache file for a profile means we never need
 the live schema hash at TAB time.

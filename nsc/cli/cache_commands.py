@@ -44,14 +44,14 @@ def _load_config_or_empty() -> Config:
 
 
 def _fetch_live_hash(profile: Profile, *, default_timeout: float) -> str:
-    import httpx  # noqa: PLC0415  # deferred: keeps httpx off the CLI-startup path.
+    import httpx2  # noqa: PLC0415  # deferred: keeps httpx2 off the CLI-startup path.
 
     url = str(profile.url).rstrip("/") + "/api/schema/?format=json"
     headers = {"Accept": "application/json"}
     if profile.token:
         headers["Authorization"] = f"Token {profile.token}"
     timeout = profile.timeout if profile.timeout is not None else default_timeout
-    with httpx.Client(verify=profile.verify_ssl, timeout=timeout, headers=headers) as c:
+    with httpx2.Client(verify=profile.verify_ssl, timeout=timeout, headers=headers) as c:
         resp = c.get(url)
         resp.raise_for_status()
         return canonical_sha256(resp.content)

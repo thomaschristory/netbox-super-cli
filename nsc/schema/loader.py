@@ -120,10 +120,10 @@ def _decode_content_encoding(raw: bytes, encoding: str, source: str) -> bytes:
 
 
 def _fetch_http_body(source: str, *, verify_ssl: bool, timeout: float) -> bytes:
-    import httpx  # noqa: PLC0415  # deferred: keeps httpx off the CLI-startup path.
+    import httpx2  # noqa: PLC0415  # deferred: keeps httpx2 off the CLI-startup path.
 
     try:
-        with httpx.stream(
+        with httpx2.stream(
             "GET",
             source,
             verify=verify_ssl,
@@ -139,5 +139,5 @@ def _fetch_http_body(source: str, *, verify_ssl: bool, timeout: float) -> bytes:
             raw = _read_capped(response.iter_raw(), source)
             encoding = response.headers.get("content-encoding", "")
             return _decode_content_encoding(raw, encoding, source)
-    except httpx.HTTPError as exc:
+    except httpx2.HTTPError as exc:
         raise SchemaLoadError(f"{source}: request failed ({exc})") from exc

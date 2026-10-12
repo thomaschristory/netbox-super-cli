@@ -7,7 +7,7 @@ import secrets
 from collections.abc import Callable
 from pathlib import Path
 
-import httpx
+import httpx2
 import pytest
 
 
@@ -20,7 +20,7 @@ def _audit_lines(home: Path) -> list[dict[str, object]]:
 
 def test_user_password_is_redacted_in_audit(
     run_nsc: Callable[..., object],
-    netbox_client: httpx.Client,
+    netbox_client: httpx2.Client,
     tmp_nsc_home: Path,
     tmp_path: Path,
 ) -> None:

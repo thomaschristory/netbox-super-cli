@@ -47,12 +47,12 @@ def policy_for_method(method: HttpMethod) -> RetryPolicy:
 
 
 def classify_error(exc: BaseException) -> ErrorClass:
-    """Map an httpx transport exception to a retry-relevant class."""
-    import httpx  # noqa: PLC0415  # deferred: keeps httpx off the CLI-startup path.
+    """Map an httpx2 transport exception to a retry-relevant class."""
+    import httpx2  # noqa: PLC0415  # deferred: keeps httpx2 off the CLI-startup path.
 
-    if isinstance(exc, (httpx.ConnectError, httpx.ConnectTimeout)):
+    if isinstance(exc, (httpx2.ConnectError, httpx2.ConnectTimeout)):
         return ErrorClass.CONNECT
-    if isinstance(exc, httpx.ReadTimeout):
+    if isinstance(exc, httpx2.ReadTimeout):
         return ErrorClass.READ_TIMEOUT
     return ErrorClass.TRANSPORT_AMBIGUOUS
 

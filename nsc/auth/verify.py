@@ -24,7 +24,7 @@ from pydantic import BaseModel, ConfigDict
 from nsc.config.models import Profile
 
 if TYPE_CHECKING:
-    import httpx
+    import httpx2
 
 _DEFAULT_TIMEOUT = 10.0
 
@@ -69,7 +69,7 @@ def verify(profile: Profile, *, timeout: float = _DEFAULT_TIMEOUT) -> VerifyResu
 
     Raises `VerifyError` on any failure. Returns a `VerifyResult` on success.
     """
-    import httpx  # noqa: PLC0415  # deferred: keeps httpx off the CLI-startup path.
+    import httpx2  # noqa: PLC0415  # deferred: keeps httpx2 off the CLI-startup path.
 
     if not profile.token:
         raise VerifyError(message="profile has no token; cannot verify")
@@ -78,7 +78,7 @@ def verify(profile: Profile, *, timeout: float = _DEFAULT_TIMEOUT) -> VerifyResu
         "Authorization": f"Token {profile.token}",
         "Accept": "application/json",
     }
-    with httpx.Client(
+    with httpx2.Client(
         base_url=base,
         headers=headers,
         verify=profile.verify_ssl,
@@ -89,12 +89,12 @@ def verify(profile: Profile, *, timeout: float = _DEFAULT_TIMEOUT) -> VerifyResu
     return VerifyResult(username=username, netbox_version=version)
 
 
-def _probe_status(client: httpx.Client) -> str:
-    import httpx  # noqa: PLC0415  # deferred: keeps httpx off the CLI-startup path.
+def _probe_status(client: httpx2.Client) -> str:
+    import httpx2  # noqa: PLC0415  # deferred: keeps httpx2 off the CLI-startup path.
 
     try:
         response = client.get("/api/status/")
-    except (httpx.RequestError, OSError) as exc:
+    except (httpx2.RequestError, OSError) as exc:
         raise VerifyError(message=f"could not reach NetBox: {exc}") from exc
     if not response.is_success:
         raise VerifyError(
@@ -106,7 +106,7 @@ def _probe_status(client: httpx.Client) -> str:
     return str(version) if version else "unknown"
 
 
-def _probe_users_me(client: httpx.Client) -> str:
+def _probe_users_me(client: httpx2.Client) -> str:
     """Verify the token via `GET /api/users/tokens/?limit=1`.
 
     NetBox does not expose a top-level "current user" endpoint (`/api/users/me/`
@@ -117,11 +117,11 @@ def _probe_users_me(client: httpx.Client) -> str:
     calling user's identity in the common case. If the user has no visible
     tokens (an unusual admin state), we surface "(unknown)" rather than failing.
     """
-    import httpx  # noqa: PLC0415  # deferred: keeps httpx off the CLI-startup path.
+    import httpx2  # noqa: PLC0415  # deferred: keeps httpx2 off the CLI-startup path.
 
     try:
         response = client.get("/api/users/tokens/", params={"limit": 1})
-    except (httpx.RequestError, OSError) as exc:
+    except (httpx2.RequestError, OSError) as exc:
         raise VerifyError(message=f"token probe failed: {exc}") from exc
     if not response.is_success:
         raise VerifyError(
@@ -146,7 +146,7 @@ def _probe_users_me(client: httpx.Client) -> str:
     return "(unknown)"
 
 
-def _safe_json(response: httpx.Response) -> object:
+def _safe_json(response: httpx2.Response) -> object:
     try:
         return response.json()
     except ValueError:

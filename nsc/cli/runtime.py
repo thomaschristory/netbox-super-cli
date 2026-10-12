@@ -206,7 +206,7 @@ def resolve_object_colors(mode: ObjectColorMode, *, color: bool) -> bool:
 class RuntimeContext(BaseModel):
     """Per-invocation runtime state.
 
-    Not frozen because `client` (a NetBoxClient wrapping httpx.Client) is mutable.
+    Not frozen because `client` (a NetBoxClient wrapping httpx2.Client) is mutable.
     """
 
     model_config = ConfigDict(arbitrary_types_allowed=True, extra="forbid")

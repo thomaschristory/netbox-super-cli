@@ -1,7 +1,7 @@
 # Architecture overview
 
 `nsc` is layered around a framework-free "brain". The brain — schema parsing
-and the normalized command-model — knows nothing about Typer, Rich, or httpx.
+and the normalized command-model — knows nothing about Typer, Rich, or httpx2.
 The CLI layer consumes the brain; a future TUI could too without changing the
 brain.
 
@@ -11,7 +11,7 @@ nsc/
 ├── model/           # Normalized command-model (data only, framework-free)
 ├── builder/         # Schema → CommandModel
 ├── cli/             # Typer application; walks the model, registers commands
-├── http/            # Thin httpx wrapper: auth, retries, audit
+├── http/            # Thin httpx2 wrapper: auth, retries, audit
 ├── output/          # Formatters (table/json/jsonl/yaml/csv) + error envelope
 ├── config/          # Pydantic config models + ruamel.yaml writer
 ├── cache/           # On-disk cache for generated CommandModels

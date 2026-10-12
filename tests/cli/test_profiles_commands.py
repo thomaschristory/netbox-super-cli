@@ -7,7 +7,6 @@ from pathlib import Path
 
 import pytest
 import respx
-from httpx import Response
 from typer.testing import CliRunner
 
 from nsc.cli.app import app
@@ -27,12 +26,10 @@ def _seed(home: Path, body: str) -> None:
     (home / "config.yaml").write_text(body, encoding="utf-8")
 
 
-def _good_status() -> None:
-    respx.get("https://nb.example/api/status/").mock(
-        return_value=Response(200, json={"netbox-version": "4.5.9"})
-    )
-    respx.get("https://nb.example/api/users/tokens/").mock(
-        return_value=Response(200, json={"results": [{"user": {"username": "alice"}}]})
+def _good_status(httpx2_mock: respx.Router) -> None:
+    httpx2_mock.get("https://nb.example/api/status/").respond(200, json={"netbox-version": "4.5.9"})
+    httpx2_mock.get("https://nb.example/api/users/tokens/").respond(
+        200, json={"results": [{"user": {"username": "alice"}}]}
     )
 
 
@@ -76,9 +73,8 @@ def test_profiles_list_json_output(home: Path) -> None:
     assert any(p["name"] == "prod" for p in payload["profiles"])
 
 
-@respx.mock
-def test_profiles_add_writes_and_verifies(home: Path) -> None:
-    _good_status()
+def test_profiles_add_writes_and_verifies(home: Path, httpx2_mock: respx.Router) -> None:
+    _good_status(httpx2_mock)
     runner = CliRunner()
     result = runner.invoke(
         app,

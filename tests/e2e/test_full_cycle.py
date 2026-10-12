@@ -13,7 +13,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import httpx
+import httpx2
 import pytest
 
 pytestmark = pytest.mark.usefixtures("clean_tags")
@@ -55,7 +55,7 @@ def _write_tag_yaml_with_name(tmp_path: Path, *, name: str, slug: str) -> Path:
 
 def test_full_lifecycle_list_create_delete(
     run_nsc,
-    netbox_client: httpx.Client,
+    netbox_client: httpx2.Client,
     tmp_nsc_home: Path,
     tmp_path: Path,
 ) -> None:

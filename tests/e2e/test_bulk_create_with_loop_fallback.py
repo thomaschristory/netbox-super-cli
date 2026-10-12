@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import httpx
+import httpx2
 import pytest
 
 pytestmark = pytest.mark.usefixtures("clean_tags")
@@ -34,7 +34,7 @@ def _audit_lines(home: Path) -> list[dict]:
 
 def test_bulk_create_uses_single_request(
     run_nsc,
-    netbox_client: httpx.Client,
+    netbox_client: httpx2.Client,
     tmp_nsc_home: Path,
     tmp_path: Path,
 ) -> None:
@@ -58,7 +58,7 @@ def test_bulk_create_uses_single_request(
 
 def test_no_bulk_loop_fallback_uses_n_requests(
     run_nsc,
-    netbox_client: httpx.Client,
+    netbox_client: httpx2.Client,
     tmp_nsc_home: Path,
     tmp_path: Path,
 ) -> None:

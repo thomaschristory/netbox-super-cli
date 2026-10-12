@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import httpx
+import httpx2
 import pytest
 
 from nsc.http.retry import (
@@ -16,8 +16,8 @@ from nsc.http.retry import (
 from nsc.model.command_model import HttpMethod
 
 
-def _request(method: str = "GET") -> httpx.Request:
-    return httpx.Request(method, "https://nb.example/api/x/")
+def _request(method: str = "GET") -> httpx2.Request:
+    return httpx2.Request(method, "https://nb.example/api/x/")
 
 
 # --- policy_for_method -----------------------------------------------------------------
@@ -51,22 +51,22 @@ def test_default_attempts_and_backoff() -> None:
 
 
 def test_classify_connect_error_provably_no_op() -> None:
-    exc = httpx.ConnectError("nope", request=_request())
+    exc = httpx2.ConnectError("nope", request=_request())
     assert classify_error(exc) is ErrorClass.CONNECT
 
 
 def test_classify_connect_timeout_provably_no_op() -> None:
-    exc = httpx.ConnectTimeout("slow", request=_request())
+    exc = httpx2.ConnectTimeout("slow", request=_request())
     assert classify_error(exc) is ErrorClass.CONNECT
 
 
 def test_classify_read_timeout_NOT_connect() -> None:
-    exc = httpx.ReadTimeout("late", request=_request())
+    exc = httpx2.ReadTimeout("late", request=_request())
     assert classify_error(exc) is ErrorClass.READ_TIMEOUT
 
 
 def test_classify_remote_protocol_error_is_transport() -> None:
-    exc = httpx.RemoteProtocolError("garbled", request=_request())
+    exc = httpx2.RemoteProtocolError("garbled", request=_request())
     assert classify_error(exc) is ErrorClass.TRANSPORT_AMBIGUOUS
 
 

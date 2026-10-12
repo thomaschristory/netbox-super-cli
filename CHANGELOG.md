@@ -2,22 +2,36 @@
 
 All notable changes to netbox-super-cli are tracked here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) loosely. From v1.0.0 onward, releases follow [Semantic Versioning](https://semver.org/) and the version in `pyproject.toml` matches the git tag. Pre-1.0 milestones (Phase 1-5) were pinned by tag while `pyproject.toml` stayed at `0.0.1`.
 
-## [Unreleased]
+## v1.7.0 — 2026-09-10
+
+Minor release. Migrates the HTTP stack from `httpx` to Pydantic's maintained
+`httpx2` fork, and keeps `httpx2` off the `nsc --help` cold-start path. No
+user-facing CLI or behavior changes.
 
 ### Changed
 
-- **httpx is now kept off the `nsc --help` / cold-start path** ([#13]). httpx is
+- **Migrated the HTTP stack from `httpx` to `httpx2`** ([#146]). `httpx2` is
+  Pydantic's stewardship continuation of httpx (same author, API-identical) —
+  httpx itself has seen limited activity, and httpx2 is the reliably-maintained
+  path forward with timely security updates. The dependency floor is now
+  `httpx2>=2.5`; the source layer is a mechanical rename (`import httpx2`,
+  `httpx2.Client`/`httpx2.Response`/…). Test mocking moves from global `respx`
+  to the `pytest-httpx2` plugin's `httpx2_mock` fixture (a `respx.Router`, by
+  respx's own author), which targets httpx2's `httpcore2` transport. No
+  user-facing behavior or CLI surface changes.
+- **httpx2 is now kept off the `nsc --help` / cold-start path** ([#13]). httpx2 is
   the single heaviest import in the tree (~65ms cold), and nothing on the startup
   path needs an HTTP client. It was being pulled in eagerly through the
   runtime → client → retry chain (plus `cache`, `schema`, and `login`
-  command modules). All of these now import httpx lazily, at first request. Cold
-  startup drops by roughly httpx's import cost, bringing the median back under the
-  300ms project target. A new guard test (`test_lazy_httpx_import.py`) asserts
-  httpx never loads on `nsc --help`, and the startup benchmark's threshold is
+  command modules). All of these now import httpx2 lazily, at first request. Cold
+  startup drops by roughly httpx2's import cost, bringing the median back under the
+  300ms project target. A new guard test (`test_lazy_httpx2_import.py`) asserts
+  httpx2 never loads on `nsc --help`, and the startup benchmark's threshold is
   re-baselined to 300ms so an over-threshold skip once again signals a real
   regression instead of firing on every run.
 
 [#13]: https://github.com/thomaschristory/netbox-super-cli/issues/13
+[#146]: https://github.com/thomaschristory/netbox-super-cli/issues/146
 
 ## v1.6.3 — 2026-07-03
 

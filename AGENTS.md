@@ -15,7 +15,7 @@ This is the contributor guide for AI agents (and humans!) modifying this repo. T
 - `nsc/model/` — the normalized command tree (data only, framework-free). The "brain".
 - `nsc/builder/` — converts a parsed schema into a `CommandModel`.
 - `nsc/cli/` — the Typer app; consumes a `CommandModel`.
-- `nsc/http/` — thin httpx wrapper: auth, retries, audit log.
+- `nsc/http/` — thin httpx2 wrapper: auth, retries, audit log.
 - `nsc/output/` — formatters (table/json/jsonl/yaml/csv) + error envelope.
 - `nsc/config/` — config loader + Pydantic models + ruamel.yaml round-trip writer.
 - `nsc/cache/` — disk cache for generated command-models.

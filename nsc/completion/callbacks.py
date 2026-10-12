@@ -10,7 +10,7 @@ the `#82` note in `nsc/cli/app.py`).
 Every public function swallows exceptions and degrades to `[]`: a raised
 exception during completion would corrupt the user's shell prompt.
 
-Imports are kept lazy/cheap — no `nsc.cli`, no httpx — so loading this module
+Imports are kept lazy/cheap — no `nsc.cli`, no httpx2 — so loading this module
 never drags in the full app cold-start path.
 """
 

@@ -3,7 +3,7 @@
 Gated by the NSC_BENCH=1 env var so it doesn't run in normal `pytest` invocations.
 Threshold: median of three runs ≤ 300 ms on the CI runner against the bundled
 schema. The threshold matches the documented project target; startup normally
-lands comfortably under it since httpx is kept off the `--help` path (issue #13).
+lands comfortably under it since httpx2 is kept off the `--help` path (issue #13).
 An over-threshold run skips (soft signal) rather than failing — so a genuine
 future regression re-fires a now-rare `OVER THRESHOLD` skip instead of being lost
 in a skip that never stopped firing.

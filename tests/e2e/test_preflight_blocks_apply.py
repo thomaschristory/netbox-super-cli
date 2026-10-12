@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import httpx
+import httpx2
 import pytest
 
 pytestmark = pytest.mark.usefixtures("clean_tags")
@@ -13,7 +13,7 @@ pytestmark = pytest.mark.usefixtures("clean_tags")
 
 def test_missing_required_field_blocks_apply(
     run_nsc,
-    netbox_client: httpx.Client,
+    netbox_client: httpx2.Client,
     tmp_path: Path,
 ) -> None:
     # Tag without `slug` — spec §4.6 says required-field check fires before the wire.
