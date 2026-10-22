@@ -56,7 +56,7 @@ class AuditRedaction(StrEnum):
 
 class Defaults(_Frozen):
     output: OutputFormat = OutputFormat.TABLE
-    page_size: int = 50
+    page_size: int = Field(default=50, ge=1)
     timeout: float = 30.0
     schema_refresh: SchemaRefresh = SchemaRefresh.DAILY
     color_mode: ColorMode = ColorMode.AUTO

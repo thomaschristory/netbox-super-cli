@@ -19,7 +19,11 @@ All notable changes to netbox-super-cli are tracked here. Format follows [Keep a
   screen loads 100 rows at a time and fetches the next chunk (following NetBox
   `next` links) when the cursor reaches the last row or you press <kbd>m</kbd>.
   The header shows `N of M` (rows loaded vs. the server's `count`). Loading stops
-  at 10,000 rows with a hint to filter instead.
+  at 10,000 rows with a hint to filter instead. A page that fails mid-chunk
+  keeps the rows already received (retry with <kbd>m</kbd>), and a refresh no
+  longer drops selections made beyond the first chunk.
+- **A negative `--limit` is now a usage error** instead of a Python traceback,
+  and `defaults.page_size` must be at least 1.
 - **CLI `list` / `ls` / `search` now report truncation** ([#151]). When the
   default page size hides records the server still has, a one-line
   `nsc: showing 50 of 1234 results; pass --all ...` notice is printed on stderr

@@ -178,6 +178,11 @@ def test_apply_limit_with_limit_and_all_limit_wins() -> None:
     assert out == [0, 1, 2]
 
 
+def test_apply_limit_negative_limit_yields_nothing() -> None:
+    out = list(apply_limit(iter([{"id": 1}]), limit=-1, fetch_all=False, page_size=50))
+    assert out == []
+
+
 class _StubPager:
     def __init__(self, records: list[dict[str, Any]], *, total: int | None) -> None:
         self._it = iter(records)

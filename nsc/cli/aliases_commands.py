@@ -106,7 +106,7 @@ def register(app: typer.Typer) -> None:  # noqa: PLR0915
         output: Annotated[str | None, typer.Option("--output", "-o")] = None,
         compact: Annotated[bool, typer.Option("--compact")] = False,
         columns: Annotated[str | None, typer.Option("--columns")] = None,
-        limit: Annotated[int | None, typer.Option("--limit")] = None,
+        limit: Annotated[int | None, typer.Option("--limit", min=0)] = None,
         all_: Annotated[bool, typer.Option("--all")] = False,
         filter_: Annotated[list[str] | None, typer.Option("--filter")] = None,
     ) -> None:
@@ -276,7 +276,7 @@ def register(app: typer.Typer) -> None:  # noqa: PLR0915
         query: Annotated[str, typer.Argument(help="Search query string.")],
         output: Annotated[str | None, typer.Option("--output", "-o")] = None,
         compact: Annotated[bool, typer.Option("--compact")] = False,
-        limit: Annotated[int | None, typer.Option("--limit")] = None,
+        limit: Annotated[int | None, typer.Option("--limit", min=0)] = None,
         all_: Annotated[bool, typer.Option("--all")] = False,
     ) -> None:
         runtime = _runtime_from_ctx(ctx)

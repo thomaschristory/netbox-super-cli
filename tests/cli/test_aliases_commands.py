@@ -40,6 +40,21 @@ def test_ls_devices_invokes_list_endpoint(httpx2_mock: respx.Router) -> None:
     assert json.loads(result.stdout) == []
 
 
+@pytest.mark.httpx2(assert_all_called=False)
+@pytest.mark.parametrize(
+    "command", [["ls", "devices"], ["dcim", "devices", "list"], ["search", "x"]]
+)
+def test_negative_limit_is_a_usage_error(httpx2_mock: respx.Router, command: list[str]) -> None:
+    _mock_schema(httpx2_mock)
+    route = httpx2_mock.get("https://nb.example/api/dcim/devices/").respond(
+        200, json={"count": 0, "next": None, "previous": None, "results": []}
+    )
+    result = CliRunner().invoke(app, [*command, "--limit", "-1", "--output", "json"])
+    assert result.exit_code == 2, (result.exit_code, result.stdout, result.stderr)
+    assert isinstance(result.exception, SystemExit)
+    assert not route.called
+
+
 def test_ls_curated_singular_device_invokes_list_endpoint(httpx2_mock: respx.Router) -> None:
     _mock_schema(httpx2_mock)
     route = httpx2_mock.get("https://nb.example/api/dcim/devices/").respond(

@@ -257,7 +257,7 @@ def apply_limit(
 ) -> Iterator[dict[str, Any]]:
     cap: int | None
     if limit is not None:
-        cap = limit
+        cap = max(limit, 0)
     elif fetch_all:
         cap = None
     else:
