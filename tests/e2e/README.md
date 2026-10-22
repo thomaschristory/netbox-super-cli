@@ -134,3 +134,15 @@ Two events would make sense as triggers for revisiting this design:
 Until either of those happens, the `docker exec` token-install in
 `wait_for_netbox.sh` is the cleanest path to "deterministic auth in CI
 against NetBox 4.5.9." See `docs/superpowers/specs/2026-05-01-netbox-super-cli-phase-3-design.md` §8.2 for the original spec.
+
+## Branching e2e (`test_branching.py`)
+
+`test_branching.py` needs the NetBox Branching plugin, so it runs on its own
+stack: `tests/e2e/docker-compose.branching.yml` layers on top of the base
+compose file, builds `tests/e2e/branching/Dockerfile` (NetBox v4.7.3 +
+`netboxlabs-netbox-branching` 1.2.2), mounts `branching/plugins.py` (the
+plugin's `PLUGINS` / `DynamicSchemaDict` / `DATABASE_ROUTERS` settings), and
+adds an RQ worker because branch provisioning, sync, merge and revert are
+background jobs. The tests are skipped unless `NSC_E2E_BRANCHING=1`.
+
+    just e2e-branching

@@ -156,8 +156,8 @@ def test_diff_table_lists_changed_fields(httpx2_mock: respx.Router) -> None:
                 "object_type": "dcim.site",
                 "object_repr": "London",
                 "action": {"value": "update", "label": "Updated"},
-                "original": {"name": "Lon", "status": "planned", "slug": "lon"},
-                "modified": {"name": "London", "status": "active", "slug": "lon"},
+                "original_data": {"name": "Lon", "status": "planned", "slug": "lon"},
+                "modified_data": {"name": "London", "status": "active", "slug": "lon"},
             }
         ),
     )

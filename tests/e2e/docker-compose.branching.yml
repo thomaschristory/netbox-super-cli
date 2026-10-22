@@ -1,0 +1,45 @@
+# Override for the live NetBox Branching e2e job:
+#   docker compose -f tests/e2e/docker-compose.yml \
+#     -f tests/e2e/docker-compose.branching.yml up -d --build
+# Branch provisioning, sync, merge and revert run as background jobs, so this
+# stack also needs an RQ worker.
+
+x-branching-image: &branching-image
+  image: nsc-e2e-netbox-branching:${NETBOX_IMAGE_TAG:-v4.7.3}
+  pull_policy: never
+
+services:
+  netbox:
+    <<: *branching-image
+    build:
+      context: ./branching
+      args:
+        NETBOX_IMAGE: ${NETBOX_IMAGE:-netboxcommunity/netbox:v4.7.3}
+    volumes:
+      - ./branching/plugins.py:/etc/netbox/config/plugins.py:ro
+
+  netbox-worker:
+    <<: *branching-image
+    depends_on:
+      - netbox
+    # Exits until the netbox container has finished migrating; keep retrying.
+    restart: on-failure
+    command: ["/opt/netbox/venv/bin/python", "/opt/netbox/netbox/manage.py", "rqworker"]
+    environment:
+      DB_HOST: postgres
+      DB_NAME: netbox
+      DB_USER: netbox
+      DB_PASSWORD: netbox
+      REDIS_HOST: redis
+      REDIS_DATABASE: '0'
+      REDIS_PASSWORD: ''
+      REDIS_SSL: 'false'
+      REDIS_CACHE_HOST: redis-cache
+      REDIS_CACHE_DATABASE: '1'
+      REDIS_CACHE_PASSWORD: ''
+      REDIS_CACHE_SSL: 'false'
+      SECRET_KEY: '0123456789abcdef0123456789abcdef0123456789abcdef0123'
+      SKIP_SUPERUSER: 'true'
+      SKIP_STARTUP_SCRIPTS: 'true'
+    volumes:
+      - ./branching/plugins.py:/etc/netbox/config/plugins.py:ro

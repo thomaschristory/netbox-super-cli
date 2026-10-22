@@ -127,8 +127,8 @@ def _branch_row(branch: Branch, active: str | None) -> dict[str, Any]:
 
 
 def _changed_fields(change: dict[str, Any]) -> list[str]:
-    before = change.get("original") or {}
-    after = change.get("modified") or {}
+    before = change.get("original_data") or {}
+    after = change.get("modified_data") or {}
     keys = sorted(set(before) | set(after))
     return [k for k in keys if before.get(k) != after.get(k)]
 

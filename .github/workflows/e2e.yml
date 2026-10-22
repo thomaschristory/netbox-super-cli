@@ -6,6 +6,8 @@ on:
   pull_request:
     paths:
       - 'nsc/http/**'
+      - 'nsc/branching/**'
+      - 'nsc/cli/branch_commands.py'
       - 'nsc/auth/**'
       - 'nsc/cli/login_commands.py'
       - 'nsc/cli/profiles_commands.py'
@@ -57,3 +59,33 @@ jobs:
       - name: Stop NetBox
         if: always()
         run: docker compose -f tests/e2e/docker-compose.yml down -v
+
+  e2e-branching:
+    name: e2e-branching (v4.7.3 + branching 1.2.2)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      NETBOX_IMAGE: netboxcommunity/netbox:v4.7.3
+      COMPOSE: -f tests/e2e/docker-compose.yml -f tests/e2e/docker-compose.branching.yml
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884  # v10.3.0
+      - name: Sync deps
+        run: uv sync --frozen
+      - name: Build and start NetBox with Branching
+        run: docker compose $COMPOSE up -d --build
+      - name: Wait for NetBox
+        run: tests/e2e/wait_for_netbox.sh
+      - name: Run branching e2e tests
+        env:
+          NSC_E2E: '1'
+          NSC_E2E_BRANCHING: '1'
+          NSC_URL: http://127.0.0.1:8080
+          NSC_TOKEN: '0123456789abcdef0123456789abcdef01234567'
+        run: uv run pytest tests/e2e/test_branching.py -v
+      - name: Dump container logs on failure
+        if: failure()
+        run: docker compose $COMPOSE logs
+      - name: Stop NetBox
+        if: always()
+        run: docker compose $COMPOSE down -v

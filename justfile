@@ -54,6 +54,16 @@ e2e:
         docker compose -f tests/e2e/docker-compose.yml down -v; \
         exit $rc
 
+# Run the live NetBox Branching e2e tests (requires Docker): NetBox 4.7 +
+# netboxlabs-netbox-branching plus an RQ worker for branch jobs.
+e2e-branching:
+    docker compose -f tests/e2e/docker-compose.yml -f tests/e2e/docker-compose.branching.yml up -d --build
+    tests/e2e/wait_for_netbox.sh
+    NSC_E2E=1 NSC_E2E_BRANCHING=1 NSC_URL=http://127.0.0.1:8080 NSC_TOKEN=0123456789abcdef0123456789abcdef01234567 uv run pytest tests/e2e/test_branching.py -v; \
+        rc=$?; \
+        docker compose -f tests/e2e/docker-compose.yml -f tests/e2e/docker-compose.branching.yml down -v; \
+        exit $rc
+
 # Serve the docs site locally at http://127.0.0.1:8000 (preview only)
 docs:
     uv run zensical serve
