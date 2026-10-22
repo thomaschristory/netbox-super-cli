@@ -53,6 +53,19 @@ CHUNK_SIZE = 100
 MAX_LOADED_ROWS = 10_000
 
 
+def _take(pager: Any, n: int) -> tuple[list[dict[str, Any]], Exception | None]:
+    # Pulling one record at a time means a failed page fetch mid-chunk still
+    # hands back what the pager already gave up; those records are gone from
+    # its buffer and would otherwise be lost for good.
+    records: list[dict[str, Any]] = []
+    try:
+        for record in islice(pager, n):
+            records.append(record)
+    except (NetBoxAPIError, NetBoxClientError) as exc:
+        return records, exc
+    return records, None
+
+
 def _more_remaining(pager: Any, *, got: int, wanted: int) -> bool:
     if got < wanted:
         return False
@@ -128,6 +141,7 @@ class ListScreen(Screen[None]):
     def reload(self) -> None:
         # Pass the bound coroutine *function* (not a coroutine object) so an exclusive
         # cancel before the worker starts never leaves a coroutine un-awaited.
+        self._loading = True
         self.run_worker(self._reload, group="reload", exclusive=True)  # type: ignore[arg-type]
 
     async def _reload(self) -> None:
@@ -153,8 +167,8 @@ class ListScreen(Screen[None]):
             self._loading = False
             return
         self._pager = pager
-        self._populate(records)
         self._has_more = _more_remaining(pager, got=len(records), wanted=want)
+        self._populate(records, complete=not self._has_more)
         self._update_count()
         table.loading = False
         self._loading = False
@@ -172,10 +186,7 @@ class ListScreen(Screen[None]):
         pager = self._pager
         want = min(CHUNK_SIZE, MAX_LOADED_ROWS - len(self._records))
         try:
-            records = await asyncio.to_thread(lambda: list(islice(pager, want)))
-        except (NetBoxAPIError, NetBoxClientError) as exc:
-            self.notify(api_error_message(exc), severity="error", timeout=8)
-            return
+            records, error = await asyncio.to_thread(_take, pager, want)
         finally:
             self._loading_more = False
         # A reload while this chunk was in flight replaced the pager; its rows
@@ -183,7 +194,13 @@ class ListScreen(Screen[None]):
         if pager is not self._pager:
             return
         self._append(records)
-        self._has_more = _more_remaining(pager, got=len(records), wanted=want)
+        if error is None:
+            self._has_more = _more_remaining(pager, got=len(records), wanted=want)
+        else:
+            self._has_more = getattr(pager, "has_more", True) is not False
+            self.notify(api_error_message(error), severity="error", timeout=8)
+        if not self._has_more:
+            self._prune_selection(self._records)
         self._update_count()
 
     def _append(self, records: list[dict[str, Any]]) -> None:
@@ -208,8 +225,11 @@ class ListScreen(Screen[None]):
         if event.cursor_row >= self._table.row_count - 1:
             self.action_load_more()
 
-    def _populate(self, records: list[dict[str, Any]]) -> None:
-        self._prune_selection(records)
+    def _populate(self, records: list[dict[str, Any]], *, complete: bool) -> None:
+        # Selected ids beyond a partial first chunk may still exist server-side;
+        # only a fully loaded result set proves a selected id is gone.
+        if complete:
+            self._prune_selection(records)
         table = self._table
         table.clear(columns=True)
         sample = records[0] if records else None
