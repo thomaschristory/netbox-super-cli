@@ -16,8 +16,10 @@ nsc profiles add lab --url https://netbox-lab.local --token "$LAB_TOKEN"
 ```
 
 This is the scriptable equivalent of `nsc login --new --profile lab`. It runs
-the same verification (`GET /api/status/` plus `GET /api/users/tokens/?limit=1`)
-before persisting. Refuses if `lab` already exists.
+the same verification (`GET /api/status/` plus `GET /api/users/tokens/`)
+before persisting. Refuses if `lab` already exists. If the calling user cannot
+be identified reliably from the token, it reports `authenticated (user unknown)`
+(see [First run](../getting-started/first-run.md)).
 
 ## Add a profile interactively
 
@@ -45,7 +47,9 @@ nsc login --rotate --profile lab             # prompt for a new token, verify, t
 ```
 
 `nsc login` (bare or with `--profile`) verifies the token by probing
-`GET /api/status/` and `GET /api/users/tokens/?limit=1`; it writes no config.
+`GET /api/status/` and `GET /api/users/tokens/`; it writes no config. As with
+`nsc profiles add`, the user may be reported as unknown when the token alone
+does not pin down who is calling.
 `--fetch-schema` additionally force-refreshes the cached OpenAPI schema.
 `--rotate` requires `--profile`, prompts for the new token, verifies it
 *before* writing, and does **not** prompt for or fetch the schema. `--new` and

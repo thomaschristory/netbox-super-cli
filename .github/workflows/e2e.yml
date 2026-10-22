@@ -6,6 +6,9 @@ on:
   pull_request:
     paths:
       - 'nsc/http/**'
+      - 'nsc/auth/**'
+      - 'nsc/cli/login_commands.py'
+      - 'nsc/cli/profiles_commands.py'
       - 'nsc/cli/handlers.py'
       - 'nsc/cli/registration.py'
       - 'nsc/cli/writes/**'

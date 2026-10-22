@@ -8,7 +8,8 @@ users; `netbox_client` is reserved for state assertions and token minting.
 from __future__ import annotations
 
 import json
-from collections.abc import Callable
+import secrets
+from collections.abc import Callable, Iterator
 from pathlib import Path
 
 import httpx2
@@ -24,6 +25,42 @@ def _seed_minimal_config(home: Path, name: str, url: str, token: str) -> None:
     )
 
 
+_ADMIN = "admin"
+_UNKNOWN = "authenticated (user unknown)"
+
+
+def _assert_identity_is_admin_or_unknown(stdout: str) -> None:
+    # The fixture token belongs to `admin`. Whether nsc can pin that down
+    # depends on ALLOW_TOKEN_RETRIEVAL and on how many users hold tokens, so
+    # "unknown" is acceptable; naming anyone other than admin is not (#150).
+    assert f"authenticated as {_ADMIN}," in stdout or _UNKNOWN in stdout, stdout
+
+
+@pytest.fixture
+def second_user_token(netbox_client: httpx2.Client) -> Iterator[str]:
+    username = f"nsc-e2e-{secrets.token_hex(4)}"
+    created = netbox_client.post(
+        "/api/users/users/",
+        json={"username": username, "password": secrets.token_urlsafe(24)},
+    )
+    if created.status_code in (404, 405):
+        pytest.skip(f"this NetBox build refused user creation (status {created.status_code})")
+    created.raise_for_status()
+    user_id = created.json()["id"]
+    try:
+        minted = netbox_client.post(
+            "/api/users/tokens/",
+            json={"user": user_id, "description": "nsc e2e second user", "version": 1},
+        )
+        if minted.status_code in (404, 405, 500):
+            pytest.skip(f"this NetBox build refused token minting (status {minted.status_code})")
+        minted.raise_for_status()
+        yield username
+    finally:
+        # Deleting the user cascades to its tokens.
+        netbox_client.delete(f"/api/users/users/{user_id}/")
+
+
 def test_login_bare_against_live_netbox(
     run_nsc: Callable[..., object],
     nsc_url: str,
@@ -33,8 +70,22 @@ def test_login_bare_against_live_netbox(
     _seed_minimal_config(tmp_nsc_home, "e2e", nsc_url, nsc_token)
     result = run_nsc("login", "--profile", "e2e")
     assert result.returncode == 0, result.stdout + result.stderr  # type: ignore[attr-defined]
-    assert "authenticated as" in result.stdout  # type: ignore[attr-defined]
+    _assert_identity_is_admin_or_unknown(result.stdout)  # type: ignore[attr-defined]
     assert "NetBox" in result.stdout  # type: ignore[attr-defined]
+
+
+def test_login_does_not_report_another_users_token_owner(
+    run_nsc: Callable[..., object],
+    nsc_url: str,
+    nsc_token: str,
+    tmp_nsc_home: Path,
+    second_user_token: str,
+) -> None:
+    _seed_minimal_config(tmp_nsc_home, "e2e", nsc_url, nsc_token)
+    result = run_nsc("login", "--profile", "e2e")
+    assert result.returncode == 0, result.stdout + result.stderr  # type: ignore[attr-defined]
+    assert second_user_token not in result.stdout  # type: ignore[attr-defined]
+    _assert_identity_is_admin_or_unknown(result.stdout)  # type: ignore[attr-defined]
 
 
 def test_login_new_creates_profile_against_live_netbox(

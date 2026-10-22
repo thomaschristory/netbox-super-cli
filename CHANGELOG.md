@@ -2,6 +2,22 @@
 
 All notable changes to netbox-super-cli are tracked here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) loosely. From v1.0.0 onward, releases follow [Semantic Versioning](https://semver.org/) and the version in `pyproject.toml` matches the git tag. Pre-1.0 milestones (Phase 1-5) were pinned by tag while `pyproject.toml` stayed at `0.0.1`.
 
+## Unreleased
+
+### Fixed
+
+- **`nsc login` / `nsc profiles add` no longer report a random user** ([#150]).
+  The identity probe used to take the owner of the first row of
+  `/api/users/tokens/`, which for admins is often another user's token. The
+  caller is now identified from the token they presented: v2 (`nbt_…`) tokens
+  are looked up by their non-secret key id; v1 tokens are matched client-side
+  against the retrievable plaintext when NetBox exposes it
+  (`ALLOW_TOKEN_RETRIEVAL`; the plaintext is never sent in a query string), or
+  by every visible token sharing one owner. When the user cannot be determined reliably, nsc prints
+  `authenticated (user unknown)` instead of guessing.
+
+[#150]: https://github.com/thomaschristory/netbox-super-cli/issues/150
+
 ## v1.7.0 — 2026-09-10
 
 Minor release. Migrates the HTTP stack from `httpx` to Pydantic's maintained

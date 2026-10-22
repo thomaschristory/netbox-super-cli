@@ -65,6 +65,32 @@ def test_login_bare_surfaces_auth_envelope_on_bad_token(
     assert "auth" in combined.lower() or "rejected" in combined.lower()
 
 
+def test_login_reports_user_unknown_instead_of_arbitrary_token_owner(
+    home: Path, httpx2_mock: respx.Router
+) -> None:
+    _seed(
+        home,
+        "default_profile: prod\n"
+        "profiles:\n"
+        "  prod:\n"
+        "    url: https://nb.example/\n"
+        "    token: T123\n",
+    )
+    httpx2_mock.get("https://nb.example/api/status/").respond(200, json={"netbox-version": "4.5.1"})
+    httpx2_mock.get("https://nb.example/api/users/tokens/").respond(
+        200,
+        json={
+            "count": 2,
+            "next": None,
+            "results": [{"user": {"username": "coworker"}}, {"user": {"username": "me"}}],
+        },
+    )
+    result = CliRunner().invoke(app, ["login"])
+    assert result.exit_code == 0, result.stdout + result.stderr
+    assert "coworker" not in result.stdout
+    assert "authenticated (user unknown), NetBox 4.5.1" in result.stdout
+
+
 def test_login_new_creates_and_verifies(home: Path, httpx2_mock: respx.Router) -> None:
     _good_status(httpx2_mock)
     runner = CliRunner()

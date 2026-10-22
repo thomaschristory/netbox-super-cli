@@ -15,7 +15,7 @@ from typing import Annotated
 import typer
 from ruamel.yaml.comments import CommentedMap
 
-from nsc.auth.verify import VerifyError, verify
+from nsc.auth.verify import VerifyError, describe_identity, verify
 from nsc.cache.store import CacheStore
 from nsc.cli.runtime import emit_envelope
 from nsc.config.loader import ConfigParseError, load_config
@@ -173,7 +173,7 @@ def _do_add(name: str, url: str, token: str) -> None:
         entry["token"] = token
         profiles[name] = entry
         atomic_write(path, dump_round_trip(doc))
-    typer.echo(f"✓ added profile {name!r}; authenticated as {result.username}")
+    typer.echo(f"✓ added profile {name!r}; {describe_identity(result.username)}")
 
 
 def _do_remove(name: str, *, force: bool) -> None:
