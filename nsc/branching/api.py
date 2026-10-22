@@ -77,10 +77,11 @@ def run_action(
 
 
 def _conflicts(exc: NetBoxAPIError) -> list[dict[str, Any]] | None:
+    """The 409 conflict list; `None` if not a conflict, `[]` if unreadable."""
     if exc.status_code != _STATUS_CONFLICT:
         return None
     try:
-        body = json.loads(exc.body_snippet)
+        body = json.loads(exc.body)
     except ValueError:
         return []
     conflicts = body.get("conflicts") if isinstance(body, dict) else None

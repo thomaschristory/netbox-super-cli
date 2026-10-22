@@ -30,7 +30,7 @@ from nsc.branching.jobs import wait_for_job
 from nsc.branching.models import Branch, choice_value
 from nsc.branching.resolve import get_branch, require_ready
 from nsc.cache.store import ADHOC_PROFILE
-from nsc.cli.runtime import RuntimeContext, emit_envelope, map_error
+from nsc.cli.runtime import MAIN_BRANCH, RuntimeContext, emit_envelope, map_error
 from nsc.config.models import OutputFormat
 from nsc.http.client import NetBoxClient
 from nsc.http.errors import NetBoxAPIError, NetBoxClientError
@@ -179,7 +179,9 @@ def _require_saved_profile(runtime: RuntimeContext, name: str | None) -> None:
 
 
 def _use(runtime: RuntimeContext, branch: Branch) -> None:
-    _write_profile_branch(runtime, branch.name)
+    # A branch literally named "main" would read back as "force main"; its
+    # schema_id selects it unambiguously.
+    _write_profile_branch(runtime, branch.schema_id if branch.name == MAIN_BRANCH else branch.name)
     print(
         f"now using branch {branch.name} on profile {runtime.resolved_profile.name}",
         file=sys.stderr,

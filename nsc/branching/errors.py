@@ -50,9 +50,13 @@ class BranchNotReadyError(BranchError):
 
 class BranchConflictError(BranchError):
     def __init__(self, name: str, conflicts: list[dict[str, Any]]) -> None:
+        what = (
+            f"{len(conflicts)} unacknowledged conflict(s)"
+            if conflicts
+            else "unacknowledged conflicts (details unavailable)"
+        )
         super().__init__(
-            f"branch {name!r} has {len(conflicts)} unacknowledged conflict(s); "
-            "review them and re-run with --acknowledge-conflicts",
+            f"branch {name!r} has {what}; review them and re-run with --acknowledge-conflicts",
             branch=name,
         )
         self.conflicts = conflicts

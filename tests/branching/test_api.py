@@ -131,3 +131,29 @@ def test_list_changes_paginates(httpx2_mock: respx.Router) -> None:
         ids = [c["id"] for c in list_changes(client, _branch())]
     assert ids == [1, 2]
     assert route.calls[0].request.url.params["branch_id"] == "3"
+
+
+def test_run_action_409_large_body_keeps_all_conflicts(httpx2_mock: respx.Router) -> None:
+    conflicts = [
+        {
+            "id": i,
+            "object_repr": f"obj-{i}",
+            "conflicts": ["description"],
+            "conflicting_data": {"original": {"description": "x" * 200}},
+        }
+        for i in range(20)
+    ]
+    httpx2_mock.post(f"{BASE}/branches/3/merge/").respond(
+        409, json={"detail": "All conflicts must be acknowledged", "conflicts": conflicts}
+    )
+    with NetBoxClient(FakeProfile()) as client, pytest.raises(BranchConflictError) as info:
+        run_action(client, _branch(), "merge", commit=True)
+    assert len(info.value.conflicts) == 20
+
+
+def test_run_action_409_unparseable_says_details_unavailable(httpx2_mock: respx.Router) -> None:
+    httpx2_mock.post(f"{BASE}/branches/3/merge/").respond(409, text="<html>conflict</html>")
+    with NetBoxClient(FakeProfile()) as client, pytest.raises(BranchConflictError) as info:
+        run_action(client, _branch(), "merge", commit=True)
+    assert "details unavailable" in str(info.value)
+    assert "0 unacknowledged" not in str(info.value)

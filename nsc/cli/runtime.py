@@ -345,8 +345,25 @@ def map_error(
     *,
     operation_id: str | None = None,
     attempt_n: int | None = None,
+    branch: str | None = None,
 ) -> ErrorEnvelope:
-    """Translate a known nsc exception into an ErrorEnvelope. Unknown → internal."""
+    """Translate a known nsc exception into an ErrorEnvelope. Unknown → internal.
+
+    `branch` (the active branch, if any) is recorded in `details` so a failure
+    says which branch it happened in.
+    """
+    env = _map_error(exc, operation_id=operation_id, attempt_n=attempt_n)
+    if branch is None or "branch" in env.details:
+        return env
+    return env.model_copy(update={"details": {**env.details, "branch": branch}})
+
+
+def _map_error(
+    exc: BaseException,
+    *,
+    operation_id: str | None,
+    attempt_n: int | None,
+) -> ErrorEnvelope:
     if isinstance(exc, NetBoxAPIError):
         et = _api_error_type(exc.status_code)
         details: dict[str, Any] = {}

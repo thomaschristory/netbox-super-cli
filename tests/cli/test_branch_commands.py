@@ -249,3 +249,27 @@ def test_tui_receives_branch_name(
     result = _invoke("tui")
     assert result.exit_code == 0, result.output
     assert launched[0]["branch"] == "my-change"
+
+
+def test_use_branch_literally_named_main_stores_schema_id(
+    httpx2_mock: respx.Router, _home: Path
+) -> None:
+    _mock_schema(httpx2_mock)
+    data = branch_json(name="main", schema_id="mmmm1111")
+    httpx2_mock.get(BRANCHES, params={"name": "mmmm1111"}).respond(200, json=page())
+    httpx2_mock.get(BRANCHES, params={"schema_id": "mmmm1111"}).respond(200, json=page(data))
+    result = _invoke("branch", "use", "mmmm1111")
+    assert result.exit_code == 0, result.output
+    text = (_home / "config.yaml").read_text()
+    assert "branch: mmmm1111" in text
+
+
+@pytest.mark.httpx2(assert_all_called=False)
+def test_api_error_envelope_names_active_branch(httpx2_mock: respx.Router, _home: Path) -> None:
+    _mock_schema(httpx2_mock)
+    _set_profile_branch(_home, "my-change")
+    _mock_lookup(httpx2_mock)
+    httpx2_mock.get(f"{NB}/api/dcim/sites/").respond(400, json={"detail": "bad filter"})
+    result = _invoke("dcim", "sites", "list", "--output", "json")
+    assert result.exit_code == 4, result.output
+    assert json.loads(result.stdout)["details"]["branch"] == "my-change"

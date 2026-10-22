@@ -290,14 +290,15 @@ class NetBoxClient:
 
     def _raise_for_status(self, response: httpx2.Response) -> None:
         try:
-            body = response.text[:_BODY_SNIPPET_BYTES]
+            full = response.text
         except Exception:  # pragma: no cover
-            body = ""
+            full = ""
         raise NetBoxAPIError(
             status_code=response.status_code,
             url=str(response.request.url),
-            body_snippet=body,
+            body_snippet=full[:_BODY_SNIPPET_BYTES],
             headers=dict(response.headers),
+            body=full,
         )
 
     def _record_attempt(
