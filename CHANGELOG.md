@@ -11,8 +11,9 @@ All notable changes to netbox-super-cli are tracked here. Format follows [Keep a
   `/api/users/tokens/`, which for admins is often another user's token. The
   caller is now identified from the token they presented: v2 (`nbt_…`) tokens
   are looked up by their non-secret key id; v1 tokens are matched client-side
-  (the plaintext is never sent in a query string), or by every visible token
-  sharing one owner. When the user cannot be determined reliably, nsc prints
+  against the retrievable plaintext when NetBox exposes it
+  (`ALLOW_TOKEN_RETRIEVAL`; the plaintext is never sent in a query string), or
+  by every visible token sharing one owner. When the user cannot be determined reliably, nsc prints
   `authenticated (user unknown)` instead of guessing.
 
 [#150]: https://github.com/thomaschristory/netbox-super-cli/issues/150

@@ -119,8 +119,9 @@ def _probe_identity(client: httpx2.Client, token: str) -> str | None:
     * v2 (`nbt_<key>.<secret>`): filter by the non-secret key id. Key ids are
       unique, so a single matching row is the presented token.
     * v1: the plaintext must never go in a query string (proxy/access logs), so
-      fetch one page and match `key` client-side where NetBox exposes it
-      (`ALLOW_TOKEN_RETRIEVAL`). Failing that, if every token on a complete
+      fetch one page and match the plaintext client-side where NetBox exposes it
+      (`ALLOW_TOKEN_RETRIEVAL`): in `token` on 4.5+, in `key` on older servers.
+      Only v1 rows are compared. Failing that, if every token on a complete
       page belongs to one user, the caller's own token is among them unless
       object permissions hide it, which is rare enough to accept.
     """
@@ -150,7 +151,7 @@ def _probe_identity(client: httpx2.Client, token: str) -> str | None:
     if key_id is not None:
         matches = [r for r in rows if r.get("key") == key_id]
         return _username(matches[0]) if len(matches) == 1 else None
-    exact = [r for r in rows if r.get("key") == token]
+    exact = [r for r in rows if _v1_plaintext_matches(r, token)]
     if len(exact) == 1:
         return _username(exact[0])
     if body.get("next"):
@@ -159,6 +160,14 @@ def _probe_identity(client: httpx2.Client, token: str) -> str | None:
     if len(owners) == 1:
         return owners.pop()
     return None
+
+
+def _v1_plaintext_matches(row: dict[str, object], token: str) -> bool:
+    # NetBox 4.5+ returns a retrievable v1 plaintext in `token` (`key` is the v2
+    # id, null for v1); older servers put the plaintext in `key`.
+    if row.get("version") not in (1, None):
+        return False
+    return row.get("token") == token or row.get("key") == token
 
 
 def _v2_key_id(token: str) -> str | None:
