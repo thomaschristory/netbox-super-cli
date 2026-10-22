@@ -29,6 +29,12 @@ All notable changes to netbox-super-cli are tracked here. Format follows [Keep a
   `nsc: showing 50 of 1234 results; pass --all ...` notice is printed on stderr
   (stdout is unchanged). The default page also no longer fetches one extra page
   from the server just to discard it.
+- **Pages after the first keep multi-value filters** ([#151]). Following a
+  NetBox `next` link no longer drops repeated query keys, so
+  `--site a --site b --all` returns both sites on every page.
+- **Pagination works when NetBox is served under a sub-path** (`BASE_PATH`,
+  e.g. `https://host/netbox`). The second and later pages no longer 404 from a
+  doubled path prefix.
 
 ### Changed
 

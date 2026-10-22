@@ -76,3 +76,52 @@ def test_pager_handles_missing_count_and_results() -> None:
     assert list(pager) == []
     assert pager.total is None
     assert pager.has_more is False
+
+
+def test_pager_keeps_repeated_query_keys_from_next_link() -> None:
+    seen: list[tuple[str, dict[str, Any] | None]] = []
+
+    def fetch(path: str, params: dict[str, Any] | None) -> dict[str, Any]:
+        seen.append((path, params))
+        if len(seen) == 1:
+            return {
+                "count": 2,
+                "next": "https://nb.example/api/x/?limit=1&offset=1&site=a&site=b",
+                "results": [{"id": 1}],
+            }
+        return {"count": 2, "next": None, "results": [{"id": 2}]}
+
+    pager = Pager(fetch, "/api/x/", {"site": ["a", "b"]})
+    assert [r["id"] for r in pager] == [1, 2]
+    assert seen[1] == ("/api/x/", {"limit": "1", "offset": "1", "site": ["a", "b"]})
+
+
+def test_pager_strips_base_path_from_next_link() -> None:
+    seen: list[str] = []
+
+    def fetch(path: str, params: dict[str, Any] | None) -> dict[str, Any]:
+        seen.append(path)
+        if len(seen) == 1:
+            return {
+                "count": 2,
+                "next": "https://h/netbox/api/x/?offset=1",
+                "results": [{"id": 1}],
+            }
+        return {"count": 2, "next": None, "results": [{"id": 2}]}
+
+    pager = Pager(fetch, "/api/x/", None, base_path="/netbox")
+    assert [r["id"] for r in pager] == [1, 2]
+    assert seen == ["/api/x/", "/api/x/"]
+
+
+def test_pager_does_not_strip_partial_segment_match() -> None:
+    seen: list[str] = []
+
+    def fetch(path: str, params: dict[str, Any] | None) -> dict[str, Any]:
+        seen.append(path)
+        if len(seen) == 1:
+            return {"next": "https://h/netboxes/api/x/", "results": [{"id": 1}]}
+        return {"next": None, "results": []}
+
+    list(Pager(fetch, "/api/x/", None, base_path="/netbox"))
+    assert seen[1] == "/netboxes/api/x/"

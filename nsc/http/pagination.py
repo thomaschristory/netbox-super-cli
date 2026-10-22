@@ -10,12 +10,20 @@ from urllib.parse import parse_qs, urlsplit
 FetchPage = Callable[[str, dict[str, Any] | None], dict[str, Any]]
 
 
-def _split_next(url: str) -> tuple[str, dict[str, Any] | None]:
+def _split_next(url: str, base_path: str = "") -> tuple[str, dict[str, Any] | None]:
     # next URLs are absolute; split them so respx (and httpx2) can match on
     # path + params independently rather than a raw string.
     parsed = urlsplit(url)
+    path = parsed.path
+    # NetBox's next link already carries the deployment's BASE_PATH, which the
+    # client's base_url would otherwise prepend a second time.
+    prefix = base_path.rstrip("/")
+    if prefix and (path == prefix or path.startswith(prefix + "/")):
+        path = path[len(prefix) :] or "/"
     qs = parse_qs(parsed.query, keep_blank_values=True)
-    return parsed.path, ({k: v[0] for k, v in qs.items()} if qs else None)
+    # Array filters (site, status, tag, ...) repeat their key; keep every value.
+    params = {k: v if len(v) > 1 else v[0] for k, v in qs.items()}
+    return path, (params or None)
 
 
 class Pager(Iterator[dict[str, Any]]):
@@ -33,8 +41,10 @@ class Pager(Iterator[dict[str, Any]]):
         params: dict[str, Any] | None = None,
         *,
         limit: int | None = None,
+        base_path: str = "",
     ) -> None:
         self._fetch = fetch
+        self._base_path = base_path
         self._pending: tuple[str, dict[str, Any] | None] | None = (path, params)
         self._buffer: deque[dict[str, Any]] = deque()
         self._limit = limit
@@ -65,4 +75,4 @@ class Pager(Iterator[dict[str, Any]]):
             self.total = count
         self._buffer.extend(payload.get("results") or [])
         nxt = payload.get("next")
-        self._pending = _split_next(nxt) if isinstance(nxt, str) and nxt else None
+        self._pending = _split_next(nxt, self._base_path) if isinstance(nxt, str) and nxt else None

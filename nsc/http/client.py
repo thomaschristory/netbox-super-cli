@@ -7,6 +7,7 @@ import time
 from datetime import UTC, datetime
 from types import TracebackType
 from typing import TYPE_CHECKING, Any, Protocol, cast
+from urllib.parse import urlsplit
 
 from nsc.config.models import AuditRedaction
 from nsc.config.settings import default_paths
@@ -168,7 +169,7 @@ class NetBoxClient:
         *,
         limit: int | None = None,
     ) -> Pager:
-        return Pager(self._get_page, path, params, limit=limit)
+        return Pager(self._get_page, path, params, limit=limit, base_path=urlsplit(self._url).path)
 
     def _get_page(self, path: str, params: dict[str, Any] | None) -> dict[str, Any]:
         return _parse_json(self._send_with_retry(HttpMethod.GET, path, params=params))
