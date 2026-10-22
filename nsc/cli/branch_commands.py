@@ -16,12 +16,17 @@ from typing import Annotated, Any, NoReturn
 import typer
 
 from nsc.branching.api import (
+    Action,
+    archive_branch,
     create_branch,
+    delete_branch,
     list_branches,
     list_changes,
+    run_action,
     wait_until_ready,
 )
 from nsc.branching.errors import BranchError
+from nsc.branching.jobs import wait_for_job
 from nsc.branching.models import Branch, choice_value
 from nsc.branching.resolve import get_branch, require_ready
 from nsc.cache.store import ADHOC_PROFILE
@@ -276,6 +281,157 @@ def diff_cmd(ctx: typer.Context, name: _OptionalName = None, output: _Output = N
         _emit(runtime, changes)
 
 
+def _job_row(job: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": job.get("id"),
+        "status": choice_value(job.get("status")),
+        "completed": job.get("completed"),
+        "error": job.get("error") or "",
+    }
+
+
+def _print_job_log(job: dict[str, Any]) -> None:
+    entries = job.get("log_entries") or (job.get("data") or {}).get("log") or []
+    for entry in entries:
+        if isinstance(entry, dict):
+            print(f"  [{entry.get('level', 'info')}] {entry.get('message', '')}", file=sys.stderr)
+
+
+def _run_job(
+    ctx: typer.Context,
+    action: Action,
+    name: str | None,
+    *,
+    apply: bool,
+    acknowledge_conflicts: bool,
+    no_wait: bool,
+    timeout: float,
+) -> None:
+    runtime = _runtime_from_ctx(ctx)
+    ref = _target_ref(runtime, name)
+    with _session(runtime) as client:
+        branch = get_branch(client, ref)
+        mode = (
+            f"applied: {action} {branch.name}"
+            if apply
+            else (f"dry-run: {action} {branch.name} (pass --apply to commit)")
+        )
+        print(mode, file=sys.stderr)
+        job = run_action(
+            client, branch, action, commit=apply, acknowledge_conflicts=acknowledge_conflicts
+        )
+        if not no_wait:
+            job = wait_for_job(client, job, branch=branch, timeout=timeout, sleep=time.sleep)
+    _print_job_log(job)
+    if runtime.output_format in (OutputFormat.TABLE, OutputFormat.CSV):
+        _emit(runtime, [_job_row(job)], _JOB_COLUMNS)
+    else:
+        _emit(runtime, job)
+
+
+def sync_cmd(
+    ctx: typer.Context,
+    name: _OptionalName = None,
+    apply: _Apply = False,
+    acknowledge_conflicts: _AckConflicts = False,
+    no_wait: _NoWait = False,
+    timeout: _Timeout = _DEFAULT_TIMEOUT,
+    output: _Output = None,
+) -> None:
+    """Pull main's changes into a branch (dry-run unless --apply)."""
+    _run_job(
+        ctx,
+        "sync",
+        name,
+        apply=apply,
+        acknowledge_conflicts=acknowledge_conflicts,
+        no_wait=no_wait,
+        timeout=timeout,
+    )
+
+
+def merge_cmd(
+    ctx: typer.Context,
+    name: _OptionalName = None,
+    apply: _Apply = False,
+    acknowledge_conflicts: _AckConflicts = False,
+    no_wait: _NoWait = False,
+    timeout: _Timeout = _DEFAULT_TIMEOUT,
+    output: _Output = None,
+) -> None:
+    """Merge a branch into main (dry-run unless --apply)."""
+    _run_job(
+        ctx,
+        "merge",
+        name,
+        apply=apply,
+        acknowledge_conflicts=acknowledge_conflicts,
+        no_wait=no_wait,
+        timeout=timeout,
+    )
+
+
+def revert_cmd(
+    ctx: typer.Context,
+    name: _OptionalName = None,
+    apply: _Apply = False,
+    no_wait: _NoWait = False,
+    timeout: _Timeout = _DEFAULT_TIMEOUT,
+    output: _Output = None,
+) -> None:
+    """Undo a merged branch on main (dry-run unless --apply)."""
+    _run_job(
+        ctx,
+        "revert",
+        name,
+        apply=apply,
+        acknowledge_conflicts=False,
+        no_wait=no_wait,
+        timeout=timeout,
+    )
+
+
+def archive_cmd(
+    ctx: typer.Context,
+    name: _OptionalName = None,
+    apply: _Apply = False,
+    output: _Output = None,
+) -> None:
+    """Archive a merged branch, dropping its schema (preview unless --apply)."""
+    runtime = _runtime_from_ctx(ctx)
+    ref = _target_ref(runtime, name)
+    with _session(runtime) as client:
+        branch = get_branch(client, ref)
+        if not apply:
+            print(
+                f"would archive branch {branch.name} (status {branch.status}); pass --apply",
+                file=sys.stderr,
+            )
+            return
+        archived = archive_branch(client, branch)
+    _emit(runtime, archived.model_dump())
+
+
+def delete_cmd(
+    ctx: typer.Context,
+    name: Annotated[str, typer.Argument(help="Branch name or schema_id.")],
+    apply: _Apply = False,
+    output: _Output = None,
+) -> None:
+    """Delete a branch (preview unless --apply)."""
+    runtime = _runtime_from_ctx(ctx)
+    with _session(runtime) as client:
+        branch = get_branch(client, name)
+        if not apply:
+            print(
+                f"would delete branch {branch.name} (status {branch.status}); pass --apply",
+                file=sys.stderr,
+            )
+            return
+        delete_branch(client, branch)
+    print(f"deleted branch {branch.name}", file=sys.stderr)
+
+
 _COMMANDS: list[tuple[str, Callable[..., None]]] = [
     ("list", list_cmd),
     ("show", show_cmd),
@@ -283,6 +439,11 @@ _COMMANDS: list[tuple[str, Callable[..., None]]] = [
     ("create", create_cmd),
     ("use", use_cmd),
     ("diff", diff_cmd),
+    ("sync", sync_cmd),
+    ("merge", merge_cmd),
+    ("revert", revert_cmd),
+    ("archive", archive_cmd),
+    ("delete", delete_cmd),
 ]
 
 
