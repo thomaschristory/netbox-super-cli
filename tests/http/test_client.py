@@ -357,3 +357,56 @@ def test_write_appends_audit_jsonl_once_per_attempt_on_retry(
     assert [e["attempt_n"] for e in entries] == [1, 2, 3]
     assert [e["final_attempt"] for e in entries] == [False, False, True]
     assert all(e["error_kind"] == "transport" for e in entries)
+
+
+def test_paginate_exposes_total_and_has_more(httpx2_mock: respx.Router) -> None:
+    httpx2_mock.get("https://nb.example/api/dcim/devices/").respond(
+        200,
+        json={
+            "count": 250,
+            "next": "https://nb.example/api/dcim/devices/?offset=50",
+            "results": [{"id": i} for i in range(50)],
+        },
+    )
+    with NetBoxClient(_FakeProfile()) as client:
+        pager = client.paginate("/api/dcim/devices/")
+        first = [next(pager) for _ in range(50)]
+    assert len(first) == 50
+    assert pager.total == 250
+    assert pager.has_more is True
+    assert len(httpx2_mock.calls) == 1
+
+
+def test_paginate_follows_next_url_under_base_path(httpx2_mock: respx.Router) -> None:
+    httpx2_mock.get("https://nb.example/netbox/api/dcim/devices/", params={"offset": "1"}).respond(
+        200, json={"count": 2, "next": None, "results": [{"id": 2}]}
+    )
+    httpx2_mock.get("https://nb.example/netbox/api/dcim/devices/").respond(
+        200,
+        json={
+            "count": 2,
+            "next": "https://nb.example/netbox/api/dcim/devices/?offset=1",
+            "results": [{"id": 1}],
+        },
+    )
+    with NetBoxClient(_FakeProfile(url="https://nb.example/netbox/")) as client:
+        records = list(client.paginate("/api/dcim/devices/"))
+    assert [r["id"] for r in records] == [1, 2]
+
+
+def test_paginate_preserves_repeated_filters_on_later_pages(httpx2_mock: respx.Router) -> None:
+    page2 = httpx2_mock.get("https://nb.example/api/dcim/devices/", params={"offset": "1"}).respond(
+        200, json={"count": 2, "next": None, "results": [{"id": 2}]}
+    )
+    httpx2_mock.get("https://nb.example/api/dcim/devices/").respond(
+        200,
+        json={
+            "count": 2,
+            "next": "https://nb.example/api/dcim/devices/?offset=1&site=a&site=b",
+            "results": [{"id": 1}],
+        },
+    )
+    with NetBoxClient(_FakeProfile()) as client:
+        records = list(client.paginate("/api/dcim/devices/", {"site": ["a", "b"]}))
+    assert [r["id"] for r in records] == [1, 2]
+    assert page2.calls.last.request.url.params.get_list("site") == ["a", "b"]

@@ -10,7 +10,13 @@ from typing import Any, TextIO
 
 import typer
 
-from nsc.cli.runtime import RuntimeContext, apply_limit, emit_envelope, map_error
+from nsc.cli.runtime import (
+    RuntimeContext,
+    apply_limit,
+    emit_envelope,
+    map_error,
+    truncation_notice,
+)
 from nsc.cli.writes.apply import ResolvedRequest
 from nsc.cli.writes.apply import resolve as resolve_request
 from nsc.cli.writes.bulk import (
@@ -124,6 +130,9 @@ def handle_list(
                 page_size=ctx.page_size,
             )
         )
+        notice = truncation_notice(len(rows), iterator, limit=ctx.limit, fetch_all=ctx.fetch_all)
+        if notice is not None:
+            print(notice, file=sys.stderr)
         columns = ctx.resolve_columns(op_tag, op_resource, operation)
         render(
             rows,

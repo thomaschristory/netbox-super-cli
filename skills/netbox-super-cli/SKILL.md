@@ -182,7 +182,9 @@ operation.
   device-type), fetch once, partition locally.
 - **Pagination defaults:** `list` returns the first page (50 rows by
   default). Pass `--all` to follow `next` links until exhausted, or
-  `--limit N` for a hard cap. `nsc commands --schema <path-or-url>
+  `--limit N` for a hard cap. If the default page truncated the result,
+  a `nsc: showing N of M results` notice goes to stderr — treat it as a
+  cue to re-run with `--all`. `nsc commands --schema <path-or-url>
   --output json` reveals every resource's parameters (which fields can
   be filtered server-side).
 - **Don't run `nsc commands` per-resource in a loop.** It serializes

@@ -178,6 +178,78 @@ def test_apply_limit_with_limit_and_all_limit_wins() -> None:
     assert out == [0, 1, 2]
 
 
+def test_apply_limit_negative_limit_yields_nothing() -> None:
+    out = list(apply_limit(iter([{"id": 1}]), limit=-1, fetch_all=False, page_size=50))
+    assert out == []
+
+
+class _StubPager:
+    def __init__(self, records: list[dict[str, Any]], *, total: int | None) -> None:
+        self._it = iter(records)
+        self._remaining = len(records)
+        self.total = total
+        self.pulled = 0
+
+    def __iter__(self) -> _StubPager:
+        return self
+
+    def __next__(self) -> dict[str, Any]:
+        record = next(self._it)
+        self.pulled += 1
+        self._remaining -= 1
+        return record
+
+    @property
+    def has_more(self) -> bool:
+        return self._remaining > 0
+
+
+def test_apply_limit_does_not_pull_past_the_cap() -> None:
+    pager = _StubPager([{"id": i} for i in range(100)], total=100)
+    out = list(apply_limit(pager, limit=None, fetch_all=False, page_size=50))
+    assert len(out) == 50
+    assert pager.pulled == 50
+
+
+def _list_op() -> Operation:
+    return Operation(operation_id="x", http_method=HttpMethod.GET, path="/api/x/", parameters=[])
+
+
+def test_handle_list_reports_truncation_on_stderr(capsys: pytest.CaptureFixture[str]) -> None:
+    client = MagicMock()
+    client.paginate.return_value = _StubPager([{"id": i} for i in range(80)], total=1234)
+    buf = io.StringIO()
+    handle_list(_list_op(), "t", "r", _ctx(client, page_size=50), stream=buf)
+    assert len(json.loads(buf.getvalue())) == 50
+    err = capsys.readouterr().err
+    assert "50 of 1234" in err
+    assert "--all" in err
+
+
+def test_handle_list_truncation_without_total_still_reports(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    client = MagicMock()
+    client.paginate.return_value = _StubPager([{"id": i} for i in range(80)], total=None)
+    handle_list(_list_op(), "t", "r", _ctx(client, page_size=50), stream=io.StringIO())
+    err = capsys.readouterr().err
+    assert "first 50" in err
+    assert "--all" in err
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [{"fetch_all": True}, {"limit": 10}, {"page_size": 100}],
+)
+def test_handle_list_silent_when_not_truncated_by_default_cap(
+    capsys: pytest.CaptureFixture[str], overrides: dict[str, Any]
+) -> None:
+    client = MagicMock()
+    client.paginate.return_value = _StubPager([{"id": i} for i in range(80)], total=80)
+    handle_list(_list_op(), "t", "r", _ctx(client, **overrides), stream=io.StringIO())
+    assert capsys.readouterr().err == ""
+
+
 def test_handle_list_emits_envelope_on_api_error(monkeypatch: pytest.MonkeyPatch) -> None:
     """handle_list should catch NetBoxAPIError and exit with mapped code."""
     operation = Operation(

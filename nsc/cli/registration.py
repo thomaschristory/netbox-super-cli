@@ -339,7 +339,7 @@ def _build_global_flag_params() -> tuple[inspect.Parameter, ...]:
             name="limit",
             kind=inspect.Parameter.KEYWORD_ONLY,
             annotation=int | None,
-            default=typer.Option(None, "--limit"),
+            default=typer.Option(None, "--limit", min=0),
         ),
         inspect.Parameter(
             name="all_",

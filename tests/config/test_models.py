@@ -22,6 +22,12 @@ def test_defaults_have_sensible_values() -> None:
     assert d.schema_refresh is SchemaRefresh.DAILY
 
 
+@pytest.mark.parametrize("size", [0, -1])
+def test_defaults_rejects_non_positive_page_size(size: int) -> None:
+    with pytest.raises(ValidationError):
+        Defaults(page_size=size)
+
+
 def test_profile_minimum_fields() -> None:
     p = Profile(name="prod", url="https://nb.example/")
     assert p.name == "prod"

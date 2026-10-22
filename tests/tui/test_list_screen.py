@@ -1,12 +1,18 @@
 from __future__ import annotations
 
+import asyncio
+import threading
 from typing import Any
+from urllib.parse import urlencode
 
 import pytest
 from textual.app import App, ComposeResult
+from textual.coordinate import Coordinate
 from textual.widgets import DataTable, Input, Static
 
+import nsc.tui.screens.list as list_mod
 from nsc.http.errors import NetBoxAPIError
+from nsc.http.pagination import Pager
 from nsc.model.command_model import (
     CommandModel,
     FieldShape,
@@ -759,3 +765,295 @@ async def test_list_header_falls_back_to_raw_key_when_defs_unavailable() -> None
         table = screen.query_one(DataTable)
         headers = [str(col.label) for col in table.ordered_columns]
         assert "custom_fields.rack_role" in headers
+
+
+class _PagedClient(_FakeClient):
+    """Serves ``total`` records in NetBox-style pages of 50 via the real Pager."""
+
+    def __init__(self, total: int) -> None:
+        super().__init__([])
+        self._total = total
+        self.page_requests = 0
+
+    def _fetch(self, path: str, params: dict[str, Any] | None) -> dict[str, Any]:
+        self.page_requests += 1
+        offset = int((params or {}).get("offset", 0))
+        end = min(offset + 50, self._total)
+        nxt = f"https://nb.example{path}?offset={end}" if end < self._total else None
+        return {
+            "count": self._total,
+            "next": nxt,
+            "results": [{"id": i, "name": f"dev{i}"} for i in range(offset, end)],
+        }
+
+    def paginate(  # type: ignore[override]
+        self, path: str, params: dict[str, Any] | None = None, *, limit: int | None = None
+    ) -> Any:
+        self.calls.append((path, params))
+        return Pager(self._fetch, path, params, limit=limit)
+
+
+async def _settle(app: App[None], pilot: Any) -> None:
+    await pilot.pause()
+    await app.workers.wait_for_complete()
+    await pilot.pause()
+
+
+@pytest.mark.asyncio
+async def test_list_loads_first_chunk_and_shows_n_of_m() -> None:
+    client = _PagedClient(250)
+    app = _ListApp(client)
+    async with app.run_test() as pilot:
+        await _settle(app, pilot)
+        screen = app.screen
+        assert isinstance(screen, ListScreen)
+        assert screen.query_one(DataTable).row_count == 100
+        assert client.page_requests == 2
+        assert screen.sub_title == "100 of 250"
+
+
+@pytest.mark.asyncio
+async def test_load_more_appends_next_chunk_until_exhausted() -> None:
+    client = _PagedClient(250)
+    app = _ListApp(client)
+    async with app.run_test() as pilot:
+        await _settle(app, pilot)
+        screen = app.screen
+        assert isinstance(screen, ListScreen)
+        screen.action_load_more()
+        await _settle(app, pilot)
+        assert screen.query_one(DataTable).row_count == 200
+        screen.action_load_more()
+        await _settle(app, pilot)
+        table = screen.query_one(DataTable)
+        assert table.row_count == 250
+        assert screen.sub_title == "250 of 250"
+        requests = client.page_requests
+        screen.action_load_more()
+        await _settle(app, pilot)
+        assert client.page_requests == requests
+        assert len(client.calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_cursor_reaching_bottom_loads_more() -> None:
+    client = _PagedClient(250)
+    app = _ListApp(client)
+    async with app.run_test() as pilot:
+        await _settle(app, pilot)
+        screen = app.screen
+        assert isinstance(screen, ListScreen)
+        screen.action_cursor_bottom()
+        await _settle(app, pilot)
+        assert screen.query_one(DataTable).row_count == 200
+
+
+@pytest.mark.asyncio
+async def test_load_more_stops_at_cap(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(list_mod, "MAX_LOADED_ROWS", 150)
+    client = _PagedClient(250)
+    app = _ListApp(client)
+    async with app.run_test() as pilot:
+        await _settle(app, pilot)
+        screen = app.screen
+        assert isinstance(screen, ListScreen)
+        screen.action_load_more()
+        await _settle(app, pilot)
+        screen.action_load_more()
+        await _settle(app, pilot)
+        assert screen.query_one(DataTable).row_count == 150
+        assert screen.sub_title.startswith("150 of 250")
+        assert "filter" in screen.sub_title
+
+
+@pytest.mark.asyncio
+async def test_reload_restarts_from_first_page() -> None:
+    client = _PagedClient(250)
+    app = _ListApp(client)
+    async with app.run_test() as pilot:
+        await _settle(app, pilot)
+        screen = app.screen
+        assert isinstance(screen, ListScreen)
+        screen.action_load_more()
+        await _settle(app, pilot)
+        screen.action_refresh_list()
+        await _settle(app, pilot)
+        assert screen.query_one(DataTable).row_count == 100
+        assert screen.sub_title == "100 of 250"
+
+
+class _GatedPagedClient(_PagedClient):
+    """A `_PagedClient` whose page fetches can block, or fail once, on demand.
+
+    Record ids are offset by the ``base`` query param so rows from a stale query
+    are distinguishable from the current one.
+    """
+
+    def __init__(self, total: int) -> None:
+        super().__init__(total)
+        self.gate = threading.Event()
+        self.gate.set()
+        self.entered = threading.Event()
+        self.block_from: int | None = None
+        self.fail_offsets: set[int] = set()
+        self.requested_offsets: list[int] = []
+
+    def _fetch(self, path: str, params: dict[str, Any] | None) -> dict[str, Any]:
+        params = dict(params or {})
+        offset = int(params.get("offset", 0))
+        base = int(params.get("base", 0))
+        self.requested_offsets.append(offset)
+        if self.block_from is not None and offset >= self.block_from:
+            self.entered.set()
+            assert self.gate.wait(10)
+        if offset in self.fail_offsets:
+            self.fail_offsets.discard(offset)
+            raise NetBoxAPIError(status_code=503, url=path, body_snippet="boom", headers={})
+        self.page_requests += 1
+        end = min(offset + 50, self._total)
+        query = urlencode({**params, "offset": end})
+        nxt = f"https://nb.example{path}?{query}" if end < self._total else None
+        return {
+            "count": self._total,
+            "next": nxt,
+            "results": [{"id": base + i, "name": f"dev{i}"} for i in range(offset, end)],
+        }
+
+
+def _ids(screen: ListScreen) -> list[Any]:
+    return [r.get("id") for r in screen._records]
+
+
+async def _wait_until(pilot: Any, predicate: Any) -> None:
+    for _ in range(500):
+        if predicate():
+            return
+        await pilot.pause(0.01)
+    raise AssertionError("condition never became true")
+
+
+@pytest.mark.asyncio
+async def test_load_more_keeps_rows_pulled_before_a_failed_page() -> None:
+    client = _GatedPagedClient(300)
+    app = _ListApp(client)
+    async with app.run_test() as pilot:
+        await _settle(app, pilot)
+        screen = app.screen
+        assert isinstance(screen, ListScreen)
+        client.fail_offsets = {150}
+        screen.action_load_more()
+        await _settle(app, pilot)
+        assert _ids(screen) == list(range(150))
+        assert screen._has_more is True
+        screen.action_load_more()
+        await _settle(app, pilot)
+        assert _ids(screen) == list(range(250))
+        screen.action_load_more()
+        await _settle(app, pilot)
+        assert _ids(screen) == list(range(300))
+        assert screen.sub_title == "300 of 300"
+
+
+@pytest.mark.asyncio
+async def test_stale_load_more_is_discarded_after_reload() -> None:
+    client = _GatedPagedClient(250)
+    app = _ListApp(client)
+    async with app.run_test() as pilot:
+        await _settle(app, pilot)
+        screen = app.screen
+        assert isinstance(screen, ListScreen)
+        client.block_from = 100
+        client.gate.clear()
+        screen.action_load_more()
+        assert await asyncio.to_thread(client.entered.wait, 5)
+        old_pager = screen._pager
+        screen.apply_filters({"base": "1000"})
+        await _wait_until(pilot, lambda: screen._pager is not old_pager and not screen._loading)
+        client.gate.set()
+        await _settle(app, pilot)
+        assert screen.query_one(DataTable).row_count == 100
+        assert _ids(screen) == [1000 + i for i in range(100)]
+        assert screen.sub_title == "100 of 250"
+
+
+@pytest.mark.asyncio
+async def test_repeated_load_more_while_loading_fetches_chunk_once() -> None:
+    client = _GatedPagedClient(250)
+    app = _ListApp(client)
+    async with app.run_test() as pilot:
+        await _settle(app, pilot)
+        screen = app.screen
+        assert isinstance(screen, ListScreen)
+        client.block_from = 100
+        client.gate.clear()
+        screen.action_load_more()
+        assert await asyncio.to_thread(client.entered.wait, 5)
+        screen.action_load_more()
+        screen.action_load_more()
+        await pilot.pause()
+        client.gate.set()
+        await _settle(app, pilot)
+        assert client.requested_offsets == [0, 50, 100, 150]
+        assert _ids(screen) == list(range(200))
+
+
+@pytest.mark.asyncio
+async def test_load_more_is_ignored_while_reload_in_flight() -> None:
+    client = _GatedPagedClient(250)
+    app = _ListApp(client)
+    async with app.run_test() as pilot:
+        await _settle(app, pilot)
+        screen = app.screen
+        assert isinstance(screen, ListScreen)
+        client.block_from = 0
+        client.gate.clear()
+        screen.action_refresh_list()
+        screen.action_load_more()
+        assert await asyncio.to_thread(client.entered.wait, 5)
+        screen.action_load_more()
+        await pilot.pause()
+        client.gate.set()
+        await _settle(app, pilot)
+        assert client.requested_offsets == [0, 50, 0, 50]
+        assert _ids(screen) == list(range(100))
+
+
+@pytest.mark.asyncio
+async def test_reload_keeps_selection_beyond_first_chunk() -> None:
+    client = _GatedPagedClient(300)
+    app = _ListApp(client)
+    async with app.run_test() as pilot:
+        await _settle(app, pilot)
+        screen = app.screen
+        assert isinstance(screen, ListScreen)
+        screen.action_load_more()
+        await _settle(app, pilot)
+        screen.selection.toggle(150)
+        screen.selection.toggle(160)
+        screen.action_refresh_list()
+        await _settle(app, pilot)
+        assert screen.selection.ids() == (150, 160)
+        screen.action_load_more()
+        await _settle(app, pilot)
+        table = screen.query_one(DataTable)
+        markers = [str(table.get_cell_at(Coordinate(row, 0))) for row in (150, 151)]
+        assert markers == ["*", " "]
+
+
+@pytest.mark.asyncio
+async def test_selection_is_pruned_once_full_result_set_is_loaded() -> None:
+    client = _GatedPagedClient(150)
+    app = _ListApp(client)
+    async with app.run_test() as pilot:
+        await _settle(app, pilot)
+        screen = app.screen
+        assert isinstance(screen, ListScreen)
+        screen.selection.toggle(10)
+        screen.selection.toggle(9999)
+        screen.action_refresh_list()
+        await _settle(app, pilot)
+        assert screen.selection.ids() == (10, 9999)
+        screen.action_load_more()
+        await _settle(app, pilot)
+        assert screen._has_more is False
+        assert screen.selection.ids() == (10,)
