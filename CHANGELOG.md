@@ -4,6 +4,13 @@ All notable changes to netbox-super-cli are tracked here. Format follows [Keep a
 
 ## Unreleased
 
+## v1.8.0 — 2026-10-22
+
+Minor release. Adds NetBox Branching support (`--branch`, `NSC_BRANCH`,
+`nsc branch …`), so changes can be staged in a branch, reviewed and merged.
+Also adds OS keyring token storage, lazy TUI pagination with CLI truncation
+notices, and a fix for `nsc login` reporting the wrong user.
+
 ### Added
 
 - **NetBox Branching support** ([#166]). Run any command inside a
