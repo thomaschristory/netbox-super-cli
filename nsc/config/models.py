@@ -64,10 +64,38 @@ class Defaults(_Frozen):
     audit_redaction: AuditRedaction = AuditRedaction.SAFE
 
 
+class KeyringRef:
+    """A `!keyring NAME` token reference, resolved against the OS keyring on use.
+
+    Kept unresolved at load time so that commands which never send a request
+    (completion, `nsc config`, `nsc profiles`) never touch the keyring.
+
+    Deliberately a plain class rather than a dataclass/model: Pydantic then
+    validates it by `isinstance` only, so a YAML mapping under `token:` can
+    never coerce into one — only the loader's `!keyring` constructor can.
+    """
+
+    __slots__ = ("name",)
+
+    def __init__(self, name: str) -> None:
+        self.name = name
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, KeyringRef) and other.name == self.name
+
+    def __hash__(self) -> int:
+        return hash((KeyringRef, self.name))
+
+    def __repr__(self) -> str:
+        return f"KeyringRef(name={self.name!r})"
+
+
 class Profile(_Frozen):
+    model_config = ConfigDict(frozen=True, extra="forbid", arbitrary_types_allowed=True)
+
     name: str
     url: HttpUrl
-    token: str | None = None
+    token: str | KeyringRef | None = None
     verify_ssl: bool = True
     schema_url: HttpUrl | None = None
     timeout: float | None = None

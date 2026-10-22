@@ -31,7 +31,8 @@ nsc login --new --profile staging --url https://netbox-staging.local  # subseque
 `nsc login --new` requires both `--profile` and `--url`, then prompts for the
 token (hidden input) and runs verification before persisting. Add `--store env
 --env-var NAME` to store the token as an `!env NAME` reference instead of
-plaintext. Refuses (exit 12) if the profile already exists.
+plaintext, or `--store keyring` to put it in the OS keyring behind a
+`!keyring NAME` reference (see [OS keyring storage](keyring.md)). Refuses (exit 12) if the profile already exists.
 
 After a successful `--new`, `nsc` interactively asks **"Fetch and cache the
 live schema now?"** (default **yes**) — accept it to pre-warm the command-model
@@ -78,7 +79,12 @@ profiles:
 ```
 
 Then `export NSC_PROD_TOKEN=…` in your shell rc or load it from a secrets manager
-at session start. Keyring-backed storage is on the post-1.0 roadmap.
+at session start.
+
+To keep the token in the OS keyring instead (macOS Keychain, Secret Service,
+Windows Credential Manager), use `token: !keyring NAME`, which
+`nsc login --store keyring` writes for you. See
+[OS keyring storage](keyring.md).
 
 ## Editing the file directly
 
@@ -89,7 +95,7 @@ nsc config set defaults.page_size 100
 nsc config edit                              # opens $EDITOR
 ```
 
-`config set` round-trips through `ruamel.yaml` so comments and the `!env` tags survive.
+`config set` round-trips through `ruamel.yaml` so comments and the `!env` / `!keyring` tags survive.
 
 ## Per-invocation overrides
 

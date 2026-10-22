@@ -15,6 +15,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, HttpUrl, SkipValidation
 
+from nsc.auth.keyring_store import KeyringStoreError, resolve_token
 from nsc.cache.store import ADHOC_PROFILE
 from nsc.config.models import ColorMode, Config, ObjectColorMode, OutputFormat, Profile
 from nsc.config.settings import default_paths
@@ -117,7 +118,11 @@ def resolve_profile(
     base, base_name = _select_base_profile(config, overrides, env)
 
     url = _first_set(overrides.url, env.get("NSC_URL"), str(base.url) if base else None)
-    token = _first_set(overrides.token, env.get("NSC_TOKEN"), base.token if base else None)
+    # Flag/env overrides win before the keyring is consulted, so `--token`
+    # works even when the profile's `!keyring` entry or backend is missing.
+    token = _first_set(overrides.token, env.get("NSC_TOKEN"))
+    if token is None and base is not None:
+        token = _first_set(resolve_token(base))
     if url is None or token is None:
         raise NoProfileError(
             "no NetBox URL/token configured (set NSC_URL+NSC_TOKEN, "
@@ -333,7 +338,7 @@ def map_error(
             operation_id=operation_id,
             details={"cause": "connect", "retry_safe": True},
         )
-    if isinstance(exc, (NoProfileError, UnknownProfileError)):
+    if isinstance(exc, (NoProfileError, UnknownProfileError, KeyringStoreError)):
         return ErrorEnvelope(error=str(exc), type=ErrorType.CONFIG)
     return ErrorEnvelope(
         error=f"internal error: {exc}",

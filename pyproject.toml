@@ -37,6 +37,9 @@ dependencies = [
     "ruamel.yaml>=0.18",
     "structlog>=24.1",
     "platformdirs>=4.2",
+    # Core (not an extra): `!keyring` must work in a plain `pipx`/`uv tool`
+    # install. Imported lazily, so it costs nothing at startup when unused.
+    "keyring>=25.0",
 ]
 
 [project.scripts]

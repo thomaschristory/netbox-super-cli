@@ -21,7 +21,7 @@ All fields below describe `~/.nsc/config.yaml`.
 |---|---|---|
 | `name` | `<class 'str'>` | _(required)_ |
 | `url` | `<class 'pydantic.networks.HttpUrl'>` | _(required)_ |
-| `token` | `str | None` | `None` |
+| `token` | `str | KeyringRef | None` | `None` |
 | `verify_ssl` | `<class 'bool'>` | `True` |
 | `schema_url` | `pydantic.networks.HttpUrl | None` | `None` |
 | `timeout` | `float | None` | `None` |

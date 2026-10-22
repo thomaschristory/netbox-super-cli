@@ -4,6 +4,19 @@ All notable changes to netbox-super-cli are tracked here. Format follows [Keep a
 
 ## Unreleased
 
+### Added
+
+- **OS keyring token storage** ([#1]). A new `token: !keyring NAME` config tag
+  resolves the token from the OS keyring (macOS Keychain, Secret Service,
+  Windows Credential Manager) under service `nsc`, username `NAME`.
+  `nsc login --new|--rotate --store keyring [--keyring-name NAME]` verifies the
+  token, writes it to the keyring, and stores only the `!keyring` reference in
+  `~/.nsc/config.yaml`, so the plaintext token never touches disk. References
+  are resolved lazily, only when a command needs the token. A missing entry or
+  an unavailable backend yields a `config` error envelope (exit 12). `keyring`
+  is a new core dependency, imported lazily so it adds no startup cost. See
+  the new [OS keyring storage guide](docs/guides/keyring.md).
+
 ### Fixed
 
 - **`nsc login` / `nsc profiles add` no longer report a random user** ([#150]).
@@ -41,7 +54,12 @@ All notable changes to netbox-super-cli are tracked here. Format follows [Keep a
 - `NetBoxClient.paginate` now returns a lazy, resumable `Pager`
   (`nsc/http/pagination.py`) exposing the server `total` and `has_more`, shared
   by the CLI and the TUI.
+- `nsc login --store` now rejects unknown values. Previously any value other
+  than `env` silently fell back to plaintext, so a typo could write the token
+  to disk. `nsc login --rotate` with no `--store` keeps an existing
+  `!keyring` reference instead of replacing it with plaintext.
 
+[#1]: https://github.com/thomaschristory/netbox-super-cli/issues/1
 [#150]: https://github.com/thomaschristory/netbox-super-cli/issues/150
 [#151]: https://github.com/thomaschristory/netbox-super-cli/issues/151
 
