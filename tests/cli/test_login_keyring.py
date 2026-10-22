@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import gzip
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -263,7 +264,8 @@ def test_login_new_rejects_unknown_store_before_prompting(home: Path) -> None:
         input="T123\nn\n",
     )
     assert result.exit_code == 2
-    assert "--store must be one of" in result.output
+    plain = re.sub(r"\x1b\[[0-9;]*m", "", result.output)
+    assert "--store must be one of" in plain
     assert not (home / "config.yaml").exists()
 
 
