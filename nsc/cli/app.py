@@ -73,19 +73,27 @@ def _extract_global_overrides(args: list[str]) -> CLIOverrides:
         "-o": "output",
         "--branch": "branch",
     }
+    # Only `--branch` is root-only: dynamic commands may define their own
+    # `--branch` filter (e.g. the Branching plugin's changes list), which must
+    # not switch the whole invocation into a branch.
+    root_only = {"--branch"}
+    seen_subcommand = False
     i = 0
     while i < len(args):
         a = args[i]
         if a.startswith("--") and "=" in a:
             flag, _, value = a.partition("=")
-            if flag in two_arg:
+            if flag in two_arg and not (seen_subcommand and flag in root_only):
                 kwargs[two_arg[flag]] = value
             i += 1
             continue
         if a in two_arg and i + 1 < len(args):
-            kwargs[two_arg[a]] = args[i + 1]
+            if not (seen_subcommand and a in root_only):
+                kwargs[two_arg[a]] = args[i + 1]
             i += 2
             continue
+        if not a.startswith("-"):
+            seen_subcommand = True
         if a == "--insecure":
             kwargs["insecure"] = True
             i += 1

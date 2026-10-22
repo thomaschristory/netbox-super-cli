@@ -13,6 +13,7 @@ import typer
 # different, rejected type on the vendored-click line). See issue #82.
 from typer._types import TyperChoice as ChoiceType
 
+from nsc.branching.errors import BranchError
 from nsc.cli.handlers import (
     handle_create,
     handle_custom_action,
@@ -22,7 +23,7 @@ from nsc.cli.handlers import (
     handle_list,
     handle_update,
 )
-from nsc.cli.runtime import RuntimeContext
+from nsc.cli.runtime import RuntimeContext, emit_envelope, map_error
 from nsc.config.models import OutputFormat
 from nsc.http.errors import NetBoxAPIError, NetBoxClientError
 from nsc.model.command_model import (
@@ -196,14 +197,20 @@ def _build_read_closure(
         explicit_filters = [
             (item.split("=", 1)[0], item.split("=", 1)[1]) for item in filters_raw if "=" in item
         ]
+        try:
+            filters = _resolve_saved_filters(
+                ctx, tag_name, resource_name, operation.path, saved_name, explicit_filters, kwargs
+            )
+        except BranchError as exc:
+            env = map_error(exc, branch=ctx.branch.name if ctx.branch else None)
+            fmt = OutputFormat(output) if output else ctx.output_format
+            raise typer.Exit(emit_envelope(env, output_format=fmt, color=ctx.color_stderr)) from exc
         update: dict[str, Any] = {
             "compact": compact,
             "columns_override": columns_csv.split(",") if columns_csv else None,
             "limit": limit,
             "fetch_all": fetch_all,
-            "filters": _resolve_saved_filters(
-                ctx, tag_name, resource_name, operation.path, saved_name, explicit_filters, kwargs
-            ),
+            "filters": filters,
         }
         if output:
             update["output_format"] = OutputFormat(output)

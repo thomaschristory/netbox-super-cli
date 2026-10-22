@@ -4,6 +4,15 @@ All notable changes to netbox-super-cli are tracked here. Format follows [Keep a
 
 ## Unreleased
 
+### Fixed
+
+- **`--branch` after a subcommand no longer switches branches** ([#170]). It is
+  a global option only before the subcommand. After it, `--branch` belongs to
+  that command (for example a plugin's `branch` filter) and is left alone.
+- **Branch failures while loading `--saved` filters honour `-o json`** ([#173]).
+  They now emit the structured envelope (exit 12/9) in the requested format
+  instead of falling through to the catch-all table renderer.
+
 ## v1.8.0 — 2026-10-22
 
 Minor release. Adds NetBox Branching support (`--branch`, `NSC_BRANCH`,
@@ -91,6 +100,8 @@ notices, and a fix for `nsc login` reporting the wrong user.
 
 [#1]: https://github.com/thomaschristory/netbox-super-cli/issues/1
 [#166]: https://github.com/thomaschristory/netbox-super-cli/issues/166
+[#170]: https://github.com/thomaschristory/netbox-super-cli/issues/170
+[#173]: https://github.com/thomaschristory/netbox-super-cli/issues/173
 [#150]: https://github.com/thomaschristory/netbox-super-cli/issues/150
 [#151]: https://github.com/thomaschristory/netbox-super-cli/issues/151
 

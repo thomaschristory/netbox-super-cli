@@ -273,3 +273,19 @@ def test_api_error_envelope_names_active_branch(httpx2_mock: respx.Router, _home
     result = _invoke("dcim", "sites", "list", "--output", "json")
     assert result.exit_code == 4, result.output
     assert json.loads(result.stdout)["details"]["branch"] == "my-change"
+
+
+@pytest.mark.httpx2(assert_all_called=False)
+def test_saved_filter_branch_failure_honours_json_output(
+    httpx2_mock: respx.Router, _home: Path
+) -> None:
+    _mock_schema(httpx2_mock)
+    _set_profile_branch(_home, "my-change")
+    _mock_lookup(httpx2_mock, status={"value": "merged"})
+    sites = httpx2_mock.get(url__startswith=f"{NB}/api/dcim/sites/").respond(200, json=page())
+    result = _invoke("dcim", "sites", "list", "--saved", "mine", "--output", "json")
+    assert result.exit_code == 12, (result.exit_code, result.output, result.exception)
+    envelope = json.loads(result.stdout)
+    assert envelope["type"] == "config"
+    assert envelope["details"]["branch"] == "my-change"
+    assert not sites.called

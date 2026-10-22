@@ -133,3 +133,20 @@ def test_map_error_job_failed_details() -> None:
     env = map_error(BranchJobFailedError("x", {"id": 7, "error": "nope"}))
     assert env.details["job_id"] == 7
     assert env.details["job_error"] == "nope"
+
+
+def test_branch_after_subcommand_is_not_global() -> None:
+    # A dynamic command's own --branch filter (e.g. the plugin's changes list)
+    # must not switch the whole invocation into a branch.
+    args = ["plugins", "branching", "changes", "list", "--branch", "x"]
+    assert _extract_global_overrides(args).branch is None
+    assert _extract_global_overrides([*args[:-2], "--branch=x"]).branch is None
+
+
+def test_branch_before_subcommand_is_global_and_other_flags_still_scan() -> None:
+    overrides = _extract_global_overrides(
+        ["--profile", "p", "--branch", "x", "dcim", "sites", "list", "--output", "json"]
+    )
+    assert overrides.branch == "x"
+    assert overrides.profile == "p"
+    assert overrides.output == "json"
