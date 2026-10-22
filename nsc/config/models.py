@@ -99,6 +99,7 @@ class Profile(_Frozen):
     verify_ssl: bool = True
     schema_url: HttpUrl | None = None
     timeout: float | None = None
+    branch: str | None = None
 
 
 class Config(_Frozen):

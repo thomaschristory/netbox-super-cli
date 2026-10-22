@@ -4,11 +4,14 @@ from __future__ import annotations
 
 import os
 import sys
+from collections.abc import Callable
 from dataclasses import dataclass
 
+from nsc.branching.resolve import get_branch, require_ready
 from nsc.cli.runtime import (
     CLIOverrides,
     RuntimeContext,
+    resolve_branch_selection,
     resolve_color,
     resolve_object_colors,
     resolve_profile,
@@ -43,16 +46,21 @@ def build_runtime_context(state: GlobalState) -> RuntimeContext:
         is_tty=sys.stdout.isatty(),
         default=state.config.defaults.output,
     )
+    branch = resolve_branch_selection(state.config, state.overrides, env=os.environ)
     client = NetBoxClient(
         profile,  # type: ignore[arg-type]
         debug=state.debug,
         redaction=state.config.defaults.audit_redaction,
         profile_name=profile.name,
+        branch_resolver=_branch_resolver(branch.name) if branch else None,
     )
+    if branch is not None:
+        print(f"⎇ branch: {branch.name}", file=sys.stderr)
     color = resolve_color(state.config.defaults.color_mode, is_tty=sys.stdout.isatty())
     object_color_mode = _resolve_object_color_mode(state)
     return RuntimeContext(
         resolved_profile=profile,
+        branch=branch,
         config=state.config,
         command_model=model,
         client=client,
@@ -63,6 +71,13 @@ def build_runtime_context(state: GlobalState) -> RuntimeContext:
         color_stderr=resolve_color(state.config.defaults.color_mode, is_tty=sys.stderr.isatty()),
         object_colors=resolve_object_colors(object_color_mode, color=color),
     )
+
+
+def _branch_resolver(ref: str) -> Callable[[NetBoxClient], str]:
+    def resolve(client: NetBoxClient) -> str:
+        return require_ready(get_branch(client, ref)).schema_id
+
+    return resolve
 
 
 def _resolve_object_color_mode(state: GlobalState) -> ObjectColorMode:

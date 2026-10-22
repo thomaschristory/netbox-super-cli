@@ -70,6 +70,7 @@ def _extract_global_overrides(args: list[str]) -> CLIOverrides:
         "--schema": "schema_override",
         "--output": "output",
         "-o": "output",
+        "--branch": "branch",
     }
     i = 0
     while i < len(args):
@@ -351,6 +352,13 @@ def _root(
             help="Render NetBox-native object colors (role/tag/…) in table output.",
         ),
     ] = None,
+    branch: Annotated[
+        str | None,
+        typer.Option(
+            "--branch",
+            help="Run in this NetBox Branching branch (name or schema_id); 'main' forces main.",
+        ),
+    ] = None,
     debug: Annotated[bool, typer.Option("--debug")] = False,
 ) -> None:
     """Root callback — global options live here."""
@@ -363,6 +371,7 @@ def _root(
         refresh_schema=refresh_schema,
         output=output,
         object_colors=object_colors,
+        branch=branch,
     )
     try:
         config = load_config(default_paths().config_file)
