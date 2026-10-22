@@ -18,7 +18,7 @@ from typing import Annotated
 import typer
 from ruamel.yaml.comments import CommentedMap, TaggedScalar
 
-from nsc.auth.verify import VerifyError, verify
+from nsc.auth.verify import VerifyError, describe_identity, verify
 from nsc.cli.runtime import ResolvedProfile, emit_envelope
 from nsc.config.loader import ConfigParseError, load_config
 from nsc.config.models import OutputFormat, Profile
@@ -114,8 +114,8 @@ def _replace_token(profile: str, token_value: object) -> None:
         atomic_write(path, dump_round_trip(doc))
 
 
-def _print_success(username: str, version: str) -> None:
-    typer.echo(f"✓ authenticated as {username}, NetBox {version}")
+def _print_success(username: str | None, version: str) -> None:
+    typer.echo(f"✓ {describe_identity(username)}, NetBox {version}")
 
 
 def _fetch_schema_for_login(profile: Profile, token: str) -> None:

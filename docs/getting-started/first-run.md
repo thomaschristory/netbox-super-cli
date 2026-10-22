@@ -54,9 +54,13 @@ nsc login --rotate --profile prod  # rotate the token
 nsc login --fetch-schema           # verify, then fetch & cache the live schema
 ```
 
-`nsc login` probes `GET /api/status/` and `GET /api/users/tokens/?limit=1`
+`nsc login` probes `GET /api/status/` and `GET /api/users/tokens/`
 (both must succeed) and prints `✓ authenticated as <user>, NetBox <version>`
-on success. On failure it emits the standard auth error envelope
+on success. NetBox has no "current user" endpoint, so the user is derived from
+the token you presented; when that can't be done reliably (e.g. a v1 token
+held by an admin who can see other users' tokens) it prints
+`✓ authenticated (user unknown), NetBox <version>` rather than guessing.
+On failure it emits the standard auth error envelope
 (`type: auth`, exit 8).
 
 `--new` requires both `--profile` and `--url`, prompts for the token
