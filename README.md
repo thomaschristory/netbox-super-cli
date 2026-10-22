@@ -29,6 +29,7 @@ One binary, any NetBox version, every plugin endpoint — the schema, not hand-w
 - **Plugins just work.** If your install has plugins, their endpoints appear as commands automatically.
 - **Multi-instance.** Named profiles per NetBox instance, plus env-var overrides.
 - **Safe by default.** POST/PATCH/PUT/DELETE preview as dry-runs unless you pass `--apply`.
+- **NetBox Branching.** Stage changes in a branch (`--branch`, `NSC_BRANCH`, `nsc branch use`), review with `nsc branch diff`, merge with `nsc branch merge --apply`. See [the guide](docs/guides/branching.md).
 - **Agent-friendly.** Deterministic command shape, machine-readable JSON output, stable error envelope with documented exit codes.
 - **Interactive TUI.** `nsc tui` opens a keyboard-driven terminal UI — see below.
 

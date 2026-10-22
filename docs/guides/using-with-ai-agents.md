@@ -13,6 +13,7 @@ correctly without trial-and-error.
 | Stable machine output | `--output json` everywhere; data on stdout, errors as JSON on stderr (or stdout when `--output json`), non-zero exit on failure |
 | Stable error envelope | `{error, type, endpoint, method, status_code, operation_id, details}` — locked schema, see [Exit codes](../reference/exit-codes.md) |
 | Safe by default | Writes preview as dry-runs; `--apply` is the only path to mutation |
+| Reviewable staging | With NetBox Branching, `NSC_BRANCH=<name>` routes every write into a branch; `nsc branch diff` is the review artefact — see [NetBox Branching](branching.md) |
 | Auditable | `~/.nsc/logs/audit.jsonl` records every wire request and response (passwords redacted) |
 
 ## Bundled portable Skill

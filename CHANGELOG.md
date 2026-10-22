@@ -6,6 +6,21 @@ All notable changes to netbox-super-cli are tracked here. Format follows [Keep a
 
 ### Added
 
+- **NetBox Branching support** ([#166]). Run any command inside a
+  [NetBox Branching](https://netboxlabs.com/docs/extensions/branching/) branch
+  with `--branch NAME`, `NSC_BRANCH`, or a sticky per-profile branch set by
+  `nsc branch use NAME` (`--branch main` forces main). nsc resolves the name
+  to the plugin's `schema_id` and sends `X-NetBox-Branch` on every request.
+  Each command run in a branch prints `⎇ branch: <name>` on stderr, and the
+  TUI header shows it. A missing or non-`ready` branch fails loudly (exit
+  9/12) and never falls back to main. New `nsc branch` group: `list`, `show`,
+  `current`, `create` (waits until ready, `--use`), `use` / `use --main`,
+  `diff`, and `sync` / `merge` / `revert` / `archive` / `delete`. Like every
+  nsc write, these are dry-run unless you pass `--apply`. Conflicts exit 10
+  with `details.conflicts`, and `--acknowledge-conflicts` proceeds anyway.
+  Targets NetBox 4.7 with `netboxlabs-netbox-branching` 1.2.x; a new
+  `e2e-branching` CI job runs it live. See the
+  [branching guide](docs/guides/branching.md).
 - **OS keyring token storage** ([#1]). A new `token: !keyring NAME` config tag
   resolves the token from the OS keyring (macOS Keychain, Secret Service,
   Windows Credential Manager) under service `nsc`, username `NAME`.
@@ -68,6 +83,7 @@ All notable changes to netbox-super-cli are tracked here. Format follows [Keep a
   `!keyring` reference instead of replacing it with plaintext.
 
 [#1]: https://github.com/thomaschristory/netbox-super-cli/issues/1
+[#166]: https://github.com/thomaschristory/netbox-super-cli/issues/166
 [#150]: https://github.com/thomaschristory/netbox-super-cli/issues/150
 [#151]: https://github.com/thomaschristory/netbox-super-cli/issues/151
 
