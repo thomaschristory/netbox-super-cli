@@ -227,3 +227,9 @@ ModalScreen > Vertical {
     text-align: center;
     color: $text-muted;
 }
+
+/* Active NetBox branch: make it impossible to miss which schema you edit. */
+App.-branch Header {
+    background: $warning;
+    color: $text;
+}

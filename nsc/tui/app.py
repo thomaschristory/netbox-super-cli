@@ -39,8 +39,12 @@ class NscTuiApp(App[None]):
         save_search: Callable[[str, str, str, dict[str, str]], None] | None = None,
         delete_search: Callable[[str, str, str], None] | None = None,
         saved_filter_store: Any | None = None,
+        branch: str | None = None,
     ) -> None:
         super().__init__()
+        if branch is not None:
+            self.title = f"nsc ⎇ {branch}"
+            self.add_class("-branch")
         self._model = model
         self._client = client
         self._initial_resource = initial_resource
@@ -174,6 +178,7 @@ def run_tui(
     save_search: Callable[[str, str, str, dict[str, str]], None] | None = None,
     delete_search: Callable[[str, str, str], None] | None = None,
     saved_filter_store: Any | None = None,
+    branch: str | None = None,
 ) -> None:
     NscTuiApp(
         model,
@@ -186,4 +191,5 @@ def run_tui(
         save_search=save_search,
         delete_search=delete_search,
         saved_filter_store=saved_filter_store,
+        branch=branch,
     ).run()

@@ -222,3 +222,30 @@ def test_use_main_works_when_active_branch_is_merged(
     result = _invoke("branch", "use", "--main")
     assert result.exit_code == 0, result.output
     assert "branch:" not in (_home / "config.yaml").read_text()
+
+
+@pytest.mark.httpx2(assert_all_called=False)
+def test_tui_refuses_to_start_on_unusable_branch(
+    httpx2_mock: respx.Router, _home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    launched: list[object] = []
+    monkeypatch.setattr("nsc.tui.run_tui", lambda *a, **k: launched.append(k))
+    _mock_schema(httpx2_mock)
+    _set_profile_branch(_home, "my-change")
+    _mock_lookup(httpx2_mock, status={"value": "merged"})
+    result = _invoke("tui")
+    assert result.exit_code == 12, result.output
+    assert launched == []
+
+
+def test_tui_receives_branch_name(
+    httpx2_mock: respx.Router, _home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    launched: list[dict[str, object]] = []
+    monkeypatch.setattr("nsc.tui.run_tui", lambda *a, **k: launched.append(k))
+    _mock_schema(httpx2_mock)
+    _set_profile_branch(_home, "my-change")
+    _mock_lookup(httpx2_mock)
+    result = _invoke("tui")
+    assert result.exit_code == 0, result.output
+    assert launched[0]["branch"] == "my-change"

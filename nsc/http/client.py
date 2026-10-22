@@ -196,7 +196,7 @@ class NetBoxClient:
     ) -> httpx2.Response:
         import httpx2  # noqa: PLC0415  # deferred: keeps httpx2 off the CLI-startup path.
 
-        self._ensure_branch()
+        self.ensure_branch()
         policy = policy_for_method(method)
         attempt = 0
         is_write = method not in {HttpMethod.GET, HttpMethod.HEAD, HttpMethod.OPTIONS}
@@ -257,7 +257,7 @@ class NetBoxClient:
                 self._raise_for_status(response)
             time.sleep(backoff_delay(policy, attempt=attempt))
 
-    def _ensure_branch(self) -> None:
+    def ensure_branch(self) -> None:
         # Resolved lazily so commands that never hit NetBox pay nothing. Bulk
         # writes run on worker threads, so resolution is serialized: no request
         # may leave before the header is set, and a failed resolution is replayed
