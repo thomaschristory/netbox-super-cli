@@ -34,6 +34,11 @@ The active branch comes from the first of these that is set:
 `--branch main` or `NSC_BRANCH=main` forces main for that invocation even when
 the profile has a sticky branch.
 
+`--branch` is a global option and must come **before** the subcommand
+(`nsc --branch X dcim sites list`). After the subcommand, `--branch` belongs to
+that command, for example the Branching plugin's own `changes list` filter, and
+doesn't switch branches.
+
 `nsc branch use` needs a saved profile to store the branch on. With only
 `NSC_URL`/`NSC_TOKEN` set (no profile), use `NSC_BRANCH` or `--branch`.
 
