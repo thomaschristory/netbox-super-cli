@@ -13,7 +13,7 @@ from nsc.branching.errors import (
     BranchNotReadyError,
 )
 from nsc.cli import globals as globals_mod
-from nsc.cli.app import _extract_global_overrides
+from nsc.cli.app import _extract_global_overrides, _first_non_option
 from nsc.cli.globals import GlobalState, build_runtime_context
 from nsc.cli.runtime import BranchSelection, CLIOverrides, map_error, resolve_branch_selection
 from nsc.config.loader import load_config
@@ -150,3 +150,8 @@ def test_branch_before_subcommand_is_global_and_other_flags_still_scan() -> None
     assert overrides.branch == "x"
     assert overrides.profile == "p"
     assert overrides.output == "json"
+
+
+def test_first_non_option_skips_branch_value() -> None:
+    assert _first_non_option(["--branch", "x", "profiles", "list"]) == "profiles"
+    assert _first_non_option(["--branch=x", "profiles", "list"]) == "profiles"

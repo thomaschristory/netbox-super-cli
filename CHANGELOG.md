@@ -10,8 +10,10 @@ All notable changes to netbox-super-cli are tracked here. Format follows [Keep a
   a global option only before the subcommand. After it, `--branch` belongs to
   that command (for example a plugin's `branch` filter) and is left alone.
 - **Branch failures while loading `--saved` filters honour `-o json`** ([#173]).
-  They now emit the structured envelope (exit 12/9) in the requested format
-  instead of falling through to the catch-all table renderer.
+  They now emit the branch error's structured envelope (with its usual exit
+  code) in the requested format instead of falling through to the catch-all
+  table renderer. `nsc --branch X <meta command>` (e.g. `profiles list`) is
+  also recognised as a meta command again instead of bootstrapping the schema.
 
 ## v1.8.0 — 2026-10-22
 

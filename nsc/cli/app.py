@@ -142,6 +142,7 @@ def _first_non_option(args: list[str]) -> str | None:
         "--schema",
         "--output",
         "-o",
+        "--branch",
     }
     for a in args:
         if skip_next:
