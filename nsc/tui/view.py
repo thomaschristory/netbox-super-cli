@@ -27,6 +27,17 @@ def choose_columns(
     return list(_FALLBACK)
 
 
+def count_label(loaded: int, total: int | None, *, has_more: bool, capped: bool) -> str:
+    """The list screen's "N of M" status line."""
+    if total is not None:
+        label = f"{loaded} of {total}"
+    else:
+        label = f"{loaded}+ loaded" if has_more else f"{loaded} loaded"
+    if capped:
+        label += " (row cap reached; refine with a filter)"
+    return label
+
+
 def detail_path(list_path: str, record_id: object) -> str:
     """Build a single-record detail path from a list endpoint path and an id."""
     if "{id}" in list_path:

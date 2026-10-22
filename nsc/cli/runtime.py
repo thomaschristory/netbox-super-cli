@@ -7,6 +7,7 @@ pipeline in the root Typer callback and consumed by the dynamic handlers.
 
 from __future__ import annotations
 
+import itertools
 import sys
 import uuid
 from collections.abc import Iterable, Iterator, Mapping
@@ -261,10 +262,20 @@ def apply_limit(
         cap = None
     else:
         cap = page_size
-    for n, record in enumerate(iterator):
-        if cap is not None and n >= cap:
-            return
-        yield record
+    # islice stops before pulling record cap+1, so a lazy pager never fetches
+    # a page whose records would only be discarded.
+    yield from itertools.islice(iterator, cap)
+
+
+def truncation_notice(
+    rows: int, source: object, *, limit: int | None, fetch_all: bool
+) -> str | None:
+    """Stderr hint when the default page-size cap hid records the server still has."""
+    if limit is not None or fetch_all or getattr(source, "has_more", False) is not True:
+        return None
+    total = getattr(source, "total", None)
+    shown = f"{rows} of {total}" if isinstance(total, int) else f"the first {rows}"
+    return f"nsc: showing {shown} results; pass --all to fetch everything or --limit N."
 
 
 def _audit_log_path() -> str | None:

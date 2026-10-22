@@ -50,6 +50,7 @@ KEYMAP: tuple[KeyBinding, ...] = (
     _b("enter", "open_detail", "Open", "list"),
     _b("slash", "open_filters", "Filter", "list"),
     _b("r", "refresh_list", "Refresh", "list"),
+    _b("m", "load_more", "Load more", "list"),
     _b("v space", "toggle_select", "Select", "list"),
     _b("c", "create_record", "Create", "list"),
     _b("f", "edit_columns", "Fields", "list"),

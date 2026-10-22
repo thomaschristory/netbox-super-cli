@@ -4,11 +4,9 @@ from __future__ import annotations
 
 import sys
 import time
-from collections.abc import Iterator
 from datetime import UTC, datetime
 from types import TracebackType
 from typing import TYPE_CHECKING, Any, Protocol, cast
-from urllib.parse import parse_qs, urlsplit
 
 from nsc.config.models import AuditRedaction
 from nsc.config.settings import default_paths
@@ -18,6 +16,7 @@ from nsc.http.audit import (
     write_last_request,
 )
 from nsc.http.errors import NetBoxAPIError, NetBoxClientError
+from nsc.http.pagination import Pager
 from nsc.http.retry import (
     ErrorClass,
     backoff_delay,
@@ -168,29 +167,11 @@ class NetBoxClient:
         params: dict[str, Any] | None = None,
         *,
         limit: int | None = None,
-    ) -> Iterator[dict[str, Any]]:
-        url: str | None = path
-        first = True
-        emitted = 0
-        while url is not None:
-            if first:
-                req_path, req_params = url, params
-            else:
-                # next URLs are absolute; split them so respx (and httpx2) can
-                # match on path + params independently rather than a raw string.
-                parsed = urlsplit(url)
-                req_path = parsed.path
-                qs = parse_qs(parsed.query, keep_blank_values=True)
-                req_params = {k: v[0] for k, v in qs.items()} if qs else None
-            response = self._send_with_retry(HttpMethod.GET, req_path, params=req_params)
-            payload = _parse_json(response)
-            for record in payload.get("results", []):
-                yield record
-                emitted += 1
-                if limit is not None and emitted >= limit:
-                    return
-            url = payload.get("next")
-            first = False
+    ) -> Pager:
+        return Pager(self._get_page, path, params, limit=limit)
+
+    def _get_page(self, path: str, params: dict[str, Any] | None) -> dict[str, Any]:
+        return _parse_json(self._send_with_retry(HttpMethod.GET, path, params=params))
 
     def _send_with_retry(
         self,

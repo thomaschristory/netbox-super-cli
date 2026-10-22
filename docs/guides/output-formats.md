@@ -79,3 +79,8 @@ nsc dcim devices list --filter status=active --all
 
 `--all` shows a Rich progress bar on TTY. For machine output, prefer
 `--output json --all` and pipe.
+
+When the default page hides records the server still has, `nsc` prints a
+one-line notice on **stderr** (stdout stays clean for pipes), e.g.
+`nsc: showing 50 of 1234 results; pass --all to fetch everything or --limit N.`
+No notice is printed when you pass `--all` or an explicit `--limit`.

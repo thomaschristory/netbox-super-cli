@@ -6,7 +6,9 @@ import pytest
 from textual.app import App, ComposeResult
 from textual.widgets import DataTable, Input, Static
 
+import nsc.tui.screens.list as list_mod
 from nsc.http.errors import NetBoxAPIError
+from nsc.http.pagination import Pager
 from nsc.model.command_model import (
     CommandModel,
     FieldShape,
@@ -759,3 +761,118 @@ async def test_list_header_falls_back_to_raw_key_when_defs_unavailable() -> None
         table = screen.query_one(DataTable)
         headers = [str(col.label) for col in table.ordered_columns]
         assert "custom_fields.rack_role" in headers
+
+
+class _PagedClient(_FakeClient):
+    """Serves ``total`` records in NetBox-style pages of 50 via the real Pager."""
+
+    def __init__(self, total: int) -> None:
+        super().__init__([])
+        self._total = total
+        self.page_requests = 0
+
+    def _fetch(self, path: str, params: dict[str, Any] | None) -> dict[str, Any]:
+        self.page_requests += 1
+        offset = int((params or {}).get("offset", 0))
+        end = min(offset + 50, self._total)
+        nxt = f"https://nb.example{path}?offset={end}" if end < self._total else None
+        return {
+            "count": self._total,
+            "next": nxt,
+            "results": [{"id": i, "name": f"dev{i}"} for i in range(offset, end)],
+        }
+
+    def paginate(  # type: ignore[override]
+        self, path: str, params: dict[str, Any] | None = None, *, limit: int | None = None
+    ) -> Any:
+        self.calls.append((path, params))
+        return Pager(self._fetch, path, params, limit=limit)
+
+
+async def _settle(app: App[None], pilot: Any) -> None:
+    await pilot.pause()
+    await app.workers.wait_for_complete()
+    await pilot.pause()
+
+
+@pytest.mark.asyncio
+async def test_list_loads_first_chunk_and_shows_n_of_m() -> None:
+    client = _PagedClient(250)
+    app = _ListApp(client)
+    async with app.run_test() as pilot:
+        await _settle(app, pilot)
+        screen = app.screen
+        assert isinstance(screen, ListScreen)
+        assert screen.query_one(DataTable).row_count == 100
+        assert client.page_requests == 2
+        assert screen.sub_title == "100 of 250"
+
+
+@pytest.mark.asyncio
+async def test_load_more_appends_next_chunk_until_exhausted() -> None:
+    client = _PagedClient(250)
+    app = _ListApp(client)
+    async with app.run_test() as pilot:
+        await _settle(app, pilot)
+        screen = app.screen
+        assert isinstance(screen, ListScreen)
+        screen.action_load_more()
+        await _settle(app, pilot)
+        assert screen.query_one(DataTable).row_count == 200
+        screen.action_load_more()
+        await _settle(app, pilot)
+        table = screen.query_one(DataTable)
+        assert table.row_count == 250
+        assert screen.sub_title == "250 of 250"
+        requests = client.page_requests
+        screen.action_load_more()
+        await _settle(app, pilot)
+        assert client.page_requests == requests
+        assert len(client.calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_cursor_reaching_bottom_loads_more() -> None:
+    client = _PagedClient(250)
+    app = _ListApp(client)
+    async with app.run_test() as pilot:
+        await _settle(app, pilot)
+        screen = app.screen
+        assert isinstance(screen, ListScreen)
+        screen.action_cursor_bottom()
+        await _settle(app, pilot)
+        assert screen.query_one(DataTable).row_count == 200
+
+
+@pytest.mark.asyncio
+async def test_load_more_stops_at_cap(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(list_mod, "MAX_LOADED_ROWS", 150)
+    client = _PagedClient(250)
+    app = _ListApp(client)
+    async with app.run_test() as pilot:
+        await _settle(app, pilot)
+        screen = app.screen
+        assert isinstance(screen, ListScreen)
+        screen.action_load_more()
+        await _settle(app, pilot)
+        screen.action_load_more()
+        await _settle(app, pilot)
+        assert screen.query_one(DataTable).row_count == 150
+        assert screen.sub_title.startswith("150 of 250")
+        assert "filter" in screen.sub_title
+
+
+@pytest.mark.asyncio
+async def test_reload_restarts_from_first_page() -> None:
+    client = _PagedClient(250)
+    app = _ListApp(client)
+    async with app.run_test() as pilot:
+        await _settle(app, pilot)
+        screen = app.screen
+        assert isinstance(screen, ListScreen)
+        screen.action_load_more()
+        await _settle(app, pilot)
+        screen.action_refresh_list()
+        await _settle(app, pilot)
+        assert screen.query_one(DataTable).row_count == 100
+        assert screen.sub_title == "100 of 250"

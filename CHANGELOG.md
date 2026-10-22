@@ -15,8 +15,25 @@ All notable changes to netbox-super-cli are tracked here. Format follows [Keep a
   (`ALLOW_TOKEN_RETRIEVAL`; the plaintext is never sent in a query string), or
   by every visible token sharing one owner. When the user cannot be determined reliably, nsc prints
   `authenticated (user unknown)` instead of guessing.
+- **`nsc tui` lists are no longer capped at the first page** ([#151]). The list
+  screen loads 100 rows at a time and fetches the next chunk (following NetBox
+  `next` links) when the cursor reaches the last row or you press <kbd>m</kbd>.
+  The header shows `N of M` (rows loaded vs. the server's `count`). Loading stops
+  at 10,000 rows with a hint to filter instead.
+- **CLI `list` / `ls` / `search` now report truncation** ([#151]). When the
+  default page size hides records the server still has, a one-line
+  `nsc: showing 50 of 1234 results; pass --all ...` notice is printed on stderr
+  (stdout is unchanged). The default page also no longer fetches one extra page
+  from the server just to discard it.
+
+### Changed
+
+- `NetBoxClient.paginate` now returns a lazy, resumable `Pager`
+  (`nsc/http/pagination.py`) exposing the server `total` and `has_more`, shared
+  by the CLI and the TUI.
 
 [#150]: https://github.com/thomaschristory/netbox-super-cli/issues/150
+[#151]: https://github.com/thomaschristory/netbox-super-cli/issues/151
 
 ## v1.7.0 — 2026-09-10
 

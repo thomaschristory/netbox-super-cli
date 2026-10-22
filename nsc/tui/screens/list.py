@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from itertools import islice
 from typing import Any, ClassVar, Protocol
 
 from textual.app import ComposeResult
@@ -17,7 +18,7 @@ from nsc.tui._bindings import textual_bindings
 from nsc.tui.errors import api_error_message
 from nsc.tui.nav import can_go_back
 from nsc.tui.selection import Selection
-from nsc.tui.view import build_rows, choose_columns
+from nsc.tui.view import build_rows, choose_columns, count_label
 
 
 class _Client(Protocol):
@@ -44,6 +45,18 @@ class _Client(Protocol):
         operation_id: str | None = None,
         sensitive_paths: tuple[str, ...] = (),
     ) -> dict[str, Any]: ...
+
+
+CHUNK_SIZE = 100
+# Every loaded row lives in a DataTable; past this the TUI gets sluggish and a
+# filter is the better tool than scrolling.
+MAX_LOADED_ROWS = 10_000
+
+
+def _more_remaining(pager: Any, *, got: int, wanted: int) -> bool:
+    if got < wanted:
+        return False
+    return getattr(pager, "has_more", True) is not False
 
 
 _MARKER_HEADER = " "
@@ -77,6 +90,10 @@ class ListScreen(Screen[None]):
         self._records: list[dict[str, Any]] = []
         self._columns: list[str] = []
         self._selection: Selection = Selection()
+        self._pager: Any = None
+        self._has_more = False
+        self._loading = False
+        self._loading_more = False
         self.title = f"{tag} / {resource_name}"
 
     def compose(self) -> ComposeResult:
@@ -120,16 +137,76 @@ class ListScreen(Screen[None]):
         # clearing here would flicker the wheel off mid-load.
         table = self._table
         table.loading = True
+        self._loading = True
+        params = self._params()
+        want = min(CHUNK_SIZE, MAX_LOADED_ROWS)
+
+        def _first_chunk() -> tuple[Any, list[dict[str, Any]]]:
+            pager = self._client.paginate(self._op.path, params)
+            return pager, list(islice(pager, want))
+
         try:
-            records = await asyncio.to_thread(
-                lambda: list(self._client.paginate(self._op.path, self._params(), limit=200))
-            )
+            pager, records = await asyncio.to_thread(_first_chunk)
         except (NetBoxAPIError, NetBoxClientError) as exc:
             self.notify(api_error_message(exc), severity="error", timeout=8)
             table.loading = False
+            self._loading = False
             return
+        self._pager = pager
         self._populate(records)
+        self._has_more = _more_remaining(pager, got=len(records), wanted=want)
+        self._update_count()
         table.loading = False
+        self._loading = False
+
+    def action_load_more(self) -> None:
+        if self._loading or self._loading_more or not self._has_more or self._pager is None:
+            return
+        if len(self._records) >= MAX_LOADED_ROWS:
+            self.notify("Row cap reached — refine with a filter (/) to narrow the list.")
+            return
+        self._loading_more = True
+        self.run_worker(self._load_more, group="load_more", exclusive=True)  # type: ignore[arg-type]
+
+    async def _load_more(self) -> None:
+        pager = self._pager
+        want = min(CHUNK_SIZE, MAX_LOADED_ROWS - len(self._records))
+        try:
+            records = await asyncio.to_thread(lambda: list(islice(pager, want)))
+        except (NetBoxAPIError, NetBoxClientError) as exc:
+            self.notify(api_error_message(exc), severity="error", timeout=8)
+            return
+        finally:
+            self._loading_more = False
+        # A reload while this chunk was in flight replaced the pager; its rows
+        # belong to a stale query and must not be appended.
+        if pager is not self._pager:
+            return
+        self._append(records)
+        self._has_more = _more_remaining(pager, got=len(records), wanted=want)
+        self._update_count()
+
+    def _append(self, records: list[dict[str, Any]]) -> None:
+        table = self._table
+        object_colors = bool(getattr(self.app, "object_colors", False))
+        rows = build_rows(records, self._columns, object_colors=object_colors)
+        for record, row in zip(records, rows, strict=True):
+            table.add_row(self._marker_for(record.get("id")), *row)
+        self._records.extend(records)
+
+    def _update_count(self) -> None:
+        total = getattr(self._pager, "total", None)
+        loaded = len(self._records)
+        self.sub_title = count_label(
+            loaded,
+            total if isinstance(total, int) else None,
+            has_more=self._has_more,
+            capped=self._has_more and loaded >= MAX_LOADED_ROWS,
+        )
+
+    def on_data_table_row_highlighted(self, event: DataTable.RowHighlighted) -> None:
+        if event.cursor_row >= self._table.row_count - 1:
+            self.action_load_more()
 
     def _populate(self, records: list[dict[str, Any]]) -> None:
         self._prune_selection(records)

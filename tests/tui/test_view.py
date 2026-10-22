@@ -3,7 +3,23 @@ from __future__ import annotations
 from rich.text import Text
 
 from nsc.model.command_model import Operation
-from nsc.tui.view import build_rows, choose_columns
+from nsc.tui.view import build_rows, choose_columns, count_label
+
+
+def test_count_label_with_known_total() -> None:
+    assert count_label(100, 250, has_more=True, capped=False) == "100 of 250"
+    assert count_label(250, 250, has_more=False, capped=False) == "250 of 250"
+
+
+def test_count_label_without_total() -> None:
+    assert count_label(100, None, has_more=True, capped=False) == "100+ loaded"
+    assert count_label(7, None, has_more=False, capped=False) == "7 loaded"
+
+
+def test_count_label_flags_the_cap() -> None:
+    label = count_label(10000, 50000, has_more=True, capped=True)
+    assert label.startswith("10000 of 50000")
+    assert "filter" in label
 
 
 def _op(default_columns: list[str] | None) -> Operation:

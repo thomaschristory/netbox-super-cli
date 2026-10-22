@@ -50,11 +50,18 @@ Opening a resource shows a paginated table.
 | <kbd>Enter</kbd> | Open the record's detail |
 | <kbd>/</kbd> | Open the filter builder |
 | <kbd>r</kbd> | Refresh |
+| <kbd>m</kbd> | Load the next 100 rows |
 | <kbd>f</kbd> | Choose columns |
 | <kbd>v</kbd> / <kbd>Space</kbd> | Toggle multi-select on a row |
 | <kbd>c</kbd> | Create a new record |
 | <kbd>B</kbd> | Bulk-edit the selected rows |
 | <kbd>Esc</kbd> | Back |
+
+The list loads 100 rows at a time. Moving the cursor onto the last row (or
+pressing <kbd>m</kbd>) fetches the next 100, following NetBox's `next` links.
+The header shows how many rows are loaded out of the server's total, e.g.
+`100 of 1234`. Loading stops at 10,000 rows; past that, narrow the list with a
+filter.
 
 While the list fetches, a loading wheel shows on the table; the rest of the UI
 stays responsive.
