@@ -6,6 +6,9 @@ Three modes (mutually exclusive):
 * `--new --profile <name>` — create a new profile entry, then verify.
 * `--rotate --profile <name>` — prompt for a new token, verify, replace in storage.
 
+`--store keyring` puts the token in the OS keyring and writes only a
+`!keyring NAME` reference to the config file; the plaintext never touches disk.
+
 All three end with `verify()`; only success persists changes (for `--rotate`)
 or returns 0 (for bare). Cache is never touched.
 """
@@ -18,10 +21,11 @@ from typing import Annotated
 import typer
 from ruamel.yaml.comments import CommentedMap, TaggedScalar
 
+from nsc.auth.keyring_store import KeyringStoreError, resolve_token, set_secret
 from nsc.auth.verify import VerifyError, describe_identity, verify
 from nsc.cli.runtime import ResolvedProfile, emit_envelope
 from nsc.config.loader import ConfigParseError, load_config
-from nsc.config.models import OutputFormat, Profile
+from nsc.config.models import KeyringRef, OutputFormat, Profile
 from nsc.config.settings import default_paths
 from nsc.config.writer import (
     acquire_lock,
@@ -37,9 +41,84 @@ def _config_path() -> Path:
     return default_paths().config_file
 
 
+_STORE_PLAINTEXT = "plaintext"
+_STORE_ENV = "env"
+_STORE_KEYRING = "keyring"
+_STORES = (_STORE_PLAINTEXT, _STORE_ENV, _STORE_KEYRING)
+
+
 def _env_tagged(var_name: str) -> object:
     """Build a `!env <VARNAME>` scalar that ruamel will emit with its tag intact."""
     return TaggedScalar(value=var_name, style=None, tag="!env")
+
+
+def _keyring_tagged(name: str) -> object:
+    """Build a `!keyring <NAME>` scalar that ruamel will emit with its tag intact."""
+    return TaggedScalar(value=name, style=None, tag="!keyring")
+
+
+def _normalize_store(store: str | None, *, default: str) -> str:
+    # Reject unknown values: silently falling back to plaintext on a typo such
+    # as `--store keyrnig` would write the secret to disk.
+    value = (store or default).strip().lower()
+    if value not in _STORES:
+        raise typer.BadParameter(f"--store must be one of: {', '.join(_STORES)}")
+    return value
+
+
+def _normalize_keyring_name(name: str | None) -> str | None:
+    # The loader strips `!keyring` values and rejects empty ones, so the writer
+    # must agree or the stored secret is unreachable / the config unloadable.
+    if name is None:
+        return None
+    value = name.strip()
+    if not value:
+        raise typer.BadParameter("--keyring-name must not be empty")
+    return value
+
+
+def _store_token(
+    store: str,
+    *,
+    token: str,
+    env_var: str | None,
+    keyring_name: str,
+    profile_name: str,
+) -> object:
+    """Persist `token` per `store` and return the config value referencing it."""
+    if store == _STORE_ENV:
+        if not env_var:
+            raise typer.BadParameter("--store=env requires --env-var <NAME>")
+        return _env_tagged(env_var)
+    if store == _STORE_KEYRING:
+        holder = _other_keyring_holder(keyring_name, profile_name)
+        if holder is not None:
+            code = _emit_config_envelope(
+                f"OS keyring entry {keyring_name!r} is already used by profile {holder!r}; "
+                f"overwriting it would change that profile's token. "
+                f"Pass `--keyring-name <unique-name>` to store this token separately."
+            )
+            raise typer.Exit(code=code)
+        try:
+            set_secret(keyring_name, token)
+        except KeyringStoreError as exc:
+            code = _emit_keyring_envelope(exc)
+            raise typer.Exit(code=code) from exc
+        return _keyring_tagged(keyring_name)
+    return token
+
+
+def _other_keyring_holder(keyring_name: str, profile_name: str) -> str | None:
+    try:
+        config = load_config(_config_path())
+    except ConfigParseError:
+        return None
+    for name, profile in config.profiles.items():
+        if name == profile_name:
+            continue
+        if isinstance(profile.token, KeyringRef) and profile.token.name == keyring_name:
+            return name
+    return None
 
 
 def _emit_auth_envelope(
@@ -62,6 +141,15 @@ def _emit_auth_envelope(
 
 def _emit_config_envelope(message: str) -> int:
     env = ErrorEnvelope(error=message, type=ErrorType.CONFIG)
+    return emit_envelope(env, output_format=OutputFormat.TABLE)
+
+
+def _emit_keyring_envelope(exc: KeyringStoreError) -> int:
+    env = ErrorEnvelope(
+        error=str(exc),
+        type=ErrorType.CONFIG,
+        details={"keyring_name": exc.keyring_name},
+    )
     return emit_envelope(env, output_format=OutputFormat.TABLE)
 
 
@@ -155,13 +243,30 @@ def register(app: typer.Typer) -> None:
         ] = False,
         url: Annotated[str | None, typer.Option("--url")] = None,
         store: Annotated[
-            str, typer.Option("--store", help="Token storage: plaintext|env.")
-        ] = "plaintext",
+            str | None,
+            typer.Option(
+                "--store",
+                help=(
+                    "Token storage: plaintext|env|keyring. Default: plaintext for --new; "
+                    "--rotate keeps an existing !keyring reference, else plaintext."
+                ),
+            ),
+        ] = None,
         env_var: Annotated[
             str | None,
             typer.Option(
                 "--env-var",
                 help="Environment variable name (required when --store=env).",
+            ),
+        ] = None,
+        keyring_name: Annotated[
+            str | None,
+            typer.Option(
+                "--keyring-name",
+                help=(
+                    "OS keyring entry name for --store=keyring (service 'nsc'). "
+                    "Default: the existing !keyring name on --rotate, else the profile name."
+                ),
             ),
         ] = None,
         fetch_schema: Annotated[
@@ -174,12 +279,20 @@ def register(app: typer.Typer) -> None:
     ) -> None:
         if new and rotate:
             raise typer.BadParameter("--new and --rotate are mutually exclusive")
+        keyring_name = _normalize_keyring_name(keyring_name)
 
         if new:
-            _do_login_new(profile, url, store, env_var, fetch_schema=fetch_schema)
+            _do_login_new(
+                profile,
+                url,
+                _normalize_store(store, default=_STORE_PLAINTEXT),
+                env_var,
+                keyring_name,
+                fetch_schema=fetch_schema,
+            )
             return
         if rotate:
-            _do_login_rotate(profile, store, env_var)
+            _do_login_rotate(profile, store, env_var, keyring_name)
             return
         _do_login_verify(profile, fetch_schema=fetch_schema)
 
@@ -197,7 +310,12 @@ def _do_login_verify(profile_name: str | None, *, fetch_schema: bool = False) ->
     if name not in config.profiles:
         code = _emit_config_envelope(f"profile {name!r} not in config")
         raise typer.Exit(code=code)
-    profile = config.profiles[name]
+    try:
+        token = resolve_token(config.profiles[name])
+    except KeyringStoreError as exc:
+        code = _emit_keyring_envelope(exc)
+        raise typer.Exit(code=code) from exc
+    profile = config.profiles[name].model_copy(update={"token": token})
     try:
         result = verify(profile)
     except VerifyError as exc:
@@ -209,7 +327,6 @@ def _do_login_verify(profile_name: str | None, *, fetch_schema: bool = False) ->
         raise typer.Exit(code=code) from exc
     _print_success(result.username, result.netbox_version)
     if fetch_schema:
-        token = profile.token
         if token is None:
             typer.echo("Warning: token not available from config; skipping schema fetch.", err=True)
             return
@@ -221,6 +338,7 @@ def _do_login_new(
     url: str | None,
     store: str,
     env_var: str | None,
+    keyring_name: str | None,
     *,
     fetch_schema: bool = False,
 ) -> None:
@@ -239,15 +357,10 @@ def _do_login_new(
             err=True,
         )
         raise typer.Exit(code=12)
+    if store == _STORE_ENV and not env_var:
+        raise typer.BadParameter("--store=env requires --env-var <NAME>")
     token_input = typer.prompt("Token", hide_input=True)
     token_for_verify = token_input.strip()
-    token_value: object
-    if store.lower() == "env":
-        if not env_var:
-            raise typer.BadParameter("--store=env requires --env-var <NAME>")
-        token_value = _env_tagged(env_var)
-    else:
-        token_value = token_for_verify
 
     candidate = Profile(name=profile_name, url=url, token=token_for_verify)  # type: ignore[arg-type]
     try:
@@ -259,6 +372,13 @@ def _do_login_new(
             user_check_status=exc.user_check_status,
         )
         raise typer.Exit(code=code) from exc
+    token_value = _store_token(
+        store,
+        token=token_for_verify,
+        env_var=env_var,
+        keyring_name=keyring_name or profile_name,
+        profile_name=profile_name,
+    )
     set_default = (existing_config is None) or (existing_config.default_profile is None)
     _write_profile_entry(
         profile=profile_name,
@@ -273,12 +393,20 @@ def _do_login_new(
 
 def _do_login_rotate(
     profile_name: str | None,
-    store: str,
+    store_option: str | None,
     env_var: str | None,
+    keyring_name: str | None,
 ) -> None:
     if profile_name is None:
         raise typer.BadParameter("--rotate requires --profile <name>")
     profile = _resolved_profile(profile_name)
+    existing_ref = profile.token if isinstance(profile.token, KeyringRef) else None
+    store = _normalize_store(
+        store_option,
+        default=_STORE_KEYRING if existing_ref is not None else _STORE_PLAINTEXT,
+    )
+    if store == _STORE_ENV and not env_var:
+        raise typer.BadParameter("--store=env requires --env-var <NAME>")
     new_token = typer.prompt("New token", hide_input=True).strip()
 
     candidate = Profile(
@@ -299,12 +427,12 @@ def _do_login_rotate(
         )
         raise typer.Exit(code=code) from exc
 
-    token_value: object
-    if store.lower() == "env":
-        if not env_var:
-            raise typer.BadParameter("--store=env requires --env-var <NAME>")
-        token_value = _env_tagged(env_var)
-    else:
-        token_value = new_token
+    token_value = _store_token(
+        store,
+        token=new_token,
+        env_var=env_var,
+        keyring_name=keyring_name or (existing_ref.name if existing_ref else profile_name),
+        profile_name=profile_name,
+    )
     _replace_token(profile_name, token_value)
     _print_success(result.username, result.netbox_version)

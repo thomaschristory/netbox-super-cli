@@ -4,6 +4,27 @@ All notable changes to netbox-super-cli are tracked here. Format follows [Keep a
 
 ## Unreleased
 
+### Added
+
+- **OS keyring token storage** ([#1]). A new `token: !keyring NAME` config tag
+  resolves the token from the OS keyring (macOS Keychain, Secret Service,
+  Windows Credential Manager) under service `nsc`, username `NAME`.
+  `nsc login --new|--rotate --store keyring [--keyring-name NAME]` verifies the
+  token, writes it to the keyring, and stores only the `!keyring` reference in
+  `~/.nsc/config.yaml`, so the plaintext token never touches disk. Any
+  invocation that builds the dynamic command tree reads the keyring, including
+  bare `nsc` and `nsc --help`; shell completion and the meta commands
+  (`config`, `profiles`, `cache`, `init`, `commands`, `skill`) do not. A missing
+  entry or an unavailable backend yields a `config` error envelope (exit 12),
+  except that `--help` on a static command still prints usage. `nsc login`
+  refuses to overwrite a keyring entry that another profile still references
+  (for example after `nsc profiles rename`) and asks for a distinct
+  `--keyring-name`. `keyring`
+  is a new core dependency, imported lazily so it adds no startup cost. See
+  the new [OS keyring storage guide](docs/guides/keyring.md).
+  `--keyring-name` is stripped of surrounding whitespace, and a blank name is
+  rejected as a usage error before the token prompt.
+
 ### Fixed
 
 - **`nsc login` / `nsc profiles add` no longer report a random user** ([#150]).
@@ -41,7 +62,12 @@ All notable changes to netbox-super-cli are tracked here. Format follows [Keep a
 - `NetBoxClient.paginate` now returns a lazy, resumable `Pager`
   (`nsc/http/pagination.py`) exposing the server `total` and `has_more`, shared
   by the CLI and the TUI.
+- `nsc login --store` now rejects unknown values. Previously any value other
+  than `env` silently fell back to plaintext, so a typo could write the token
+  to disk. `nsc login --rotate` with no `--store` keeps an existing
+  `!keyring` reference instead of replacing it with plaintext.
 
+[#1]: https://github.com/thomaschristory/netbox-super-cli/issues/1
 [#150]: https://github.com/thomaschristory/netbox-super-cli/issues/150
 [#151]: https://github.com/thomaschristory/netbox-super-cli/issues/151
 

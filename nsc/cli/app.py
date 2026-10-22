@@ -10,6 +10,7 @@ from typer.core import TyperGroup
 from typer.main import get_group, get_group_from_info
 
 from nsc._version import __version__
+from nsc.auth.keyring_store import KeyringStoreError
 from nsc.cli import (
     aliases_commands,
     cache_commands,
@@ -40,6 +41,7 @@ from nsc.completion.providers import cache_dir_profile_names
 from nsc.config import default_paths
 from nsc.config.loader import ConfigParseError, load_config
 from nsc.config.models import Config, OutputFormat
+from nsc.output.errors import ErrorEnvelope, ErrorType
 from nsc.schema.source import SchemaSourceError
 
 # Mutable dict used as a single-slot holder to avoid `global` statements.
@@ -104,6 +106,20 @@ def _extract_global_overrides(args: list[str]) -> CLIOverrides:
             continue
         i += 1
     return CLIOverrides(**kwargs)  # type: ignore[arg-type]
+
+
+def _emit_keyring_envelope(error: KeyringStoreError, args: list[str]) -> int:
+    requested = _extract_global_overrides(args).output
+    try:
+        output_format = OutputFormat(requested) if requested else OutputFormat.TABLE
+    except ValueError:
+        output_format = OutputFormat.TABLE
+    env = ErrorEnvelope(
+        error=str(error),
+        type=ErrorType.CONFIG,
+        details={"keyring_name": error.keyring_name},
+    )
+    return emit_envelope(env, output_format=output_format)
 
 
 def _first_non_option(args: list[str]) -> str | None:
@@ -235,7 +251,12 @@ class _BootstrappingGroup(TyperGroup):
 
             try:
                 runtime = build_runtime_context(state)
-            except (NoProfileError, UnknownProfileError, SchemaSourceError) as exc:
+            except (
+                NoProfileError,
+                UnknownProfileError,
+                SchemaSourceError,
+                KeyringStoreError,
+            ) as exc:
                 _invocation["error"] = exc
                 return super().make_context(info_name, args, parent, **extra)
 
@@ -266,6 +287,11 @@ class _BootstrappingGroup(TyperGroup):
         # (because bootstrap failed). SchemaSourceError exits 3 per spec; all
         # other bootstrap errors are usage errors (exit 2).
         error = _invocation["error"]
+        wants_help = any(arg in ctx.help_option_names for arg in args)
+        if isinstance(error, KeyringStoreError) and args and not wants_help:
+            # Every profile-needing command, static aliases included, must surface
+            # the keyring failure as an envelope rather than a bare usage error.
+            raise typer.Exit(_emit_keyring_envelope(error, args))
         if error is not None and args and args[0] not in self.commands:
             if isinstance(error, SchemaSourceError):
                 # Exit code 3 matches EXIT_CODES[ErrorType.SCHEMA] — keep in sync.

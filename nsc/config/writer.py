@@ -4,7 +4,7 @@ This module is the write counterpart to `nsc/config/loader.py`. It exposes:
 
 * `load_round_trip(path)` / `dump_round_trip(doc)` — parse and serialize using
   `YAML(typ="rt")`. Unlike the loader, the writer's YAML does NOT register an
-  `!env` constructor, so tagged scalars round-trip through unchanged.
+  `!env`/`!keyring` constructor, so tagged scalars round-trip through unchanged.
 * `set_path(doc, dotted, value)` / `unset_path(doc, dotted)` — dotted-path
   mutators that preserve comments and key order.
 * `atomic_write(path, text)` — tempfile + fsync + os.replace, 0600 mode.
@@ -103,6 +103,10 @@ def _construct_env_tag(_loader: BaseConstructor, node: ScalarNode) -> TaggedScal
     return TaggedScalar(value=str(node.value), tag="!env")
 
 
+def _construct_keyring_tag(_loader: BaseConstructor, node: ScalarNode) -> TaggedScalar:
+    return TaggedScalar(value=str(node.value), tag="!keyring")
+
+
 def _writer_yaml() -> YAML:
     """Round-trip YAML for the writer.
 
@@ -122,6 +126,7 @@ def _writer_yaml() -> YAML:
     yaml = YAML(typ="rt")
     yaml.preserve_quotes = True
     yaml.constructor.add_constructor("!env", _construct_env_tag)
+    yaml.constructor.add_constructor("!keyring", _construct_keyring_tag)
     return yaml
 
 

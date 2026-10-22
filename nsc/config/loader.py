@@ -19,7 +19,7 @@ from ruamel.yaml.constructor import BaseConstructor
 from ruamel.yaml.error import YAMLError
 from ruamel.yaml.nodes import ScalarNode
 
-from nsc.config.models import Config
+from nsc.config.models import Config, KeyringRef
 
 
 class ConfigParseError(Exception):
@@ -34,10 +34,18 @@ def _construct_env(_loader: BaseConstructor, node: ScalarNode) -> str | None:
     return os.environ.get(var, default)
 
 
+def _construct_keyring(_loader: BaseConstructor, node: ScalarNode) -> KeyringRef:
+    name = str(node.value).strip()
+    if not name:
+        raise ConfigParseError("!keyring requires a non-empty entry name")
+    return KeyringRef(name)
+
+
 def _round_trip_yaml() -> YAML:
     yaml = YAML(typ="rt")
     yaml.preserve_quotes = True
     yaml.constructor.add_constructor("!env", _construct_env)
+    yaml.constructor.add_constructor("!keyring", _construct_keyring)
     return yaml
 
 
@@ -52,6 +60,8 @@ def load_config(path: Path) -> Config:
         data: Any = _round_trip_yaml().load(io.StringIO(text))
     except YAMLError as exc:
         raise ConfigParseError(f"YAML parse error in {path}: {exc}") from exc
+    except ConfigParseError as exc:
+        raise ConfigParseError(f"{path}: {exc}") from exc
     if data is None:
         return Config()
     if not isinstance(data, dict):

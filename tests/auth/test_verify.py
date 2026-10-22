@@ -6,7 +6,7 @@ import pytest
 import respx
 
 from nsc.auth.verify import VerifyError, VerifyResult, verify
-from nsc.config.models import Profile
+from nsc.config.models import KeyringRef, Profile
 
 
 def _profile(token: str = "T" * 40) -> Profile:
@@ -230,6 +230,22 @@ def test_verify_v2_unknown_when_key_id_matches_multiple_rows(httpx2_mock: respx.
         },
     )
     assert verify(_profile("nbt_abc123." + "s" * 40)).username is None
+    assert route.called
+
+
+def test_verify_keyring_ref_identifies_user_from_resolved_token(
+    httpx2_mock: respx.Router, fake_keyring: dict[tuple[str, str], str]
+) -> None:
+    fake_keyring[("nsc", "prod")] = "nbt_abc123." + "s" * 40
+    _status_ok(httpx2_mock)
+    route = httpx2_mock.get(
+        "https://nb.example/api/users/tokens/", params={"key": "abc123"}
+    ).respond(
+        200,
+        json={"count": 1, "next": None, "results": [_token("me", key="abc123")]},
+    )
+    profile = Profile(name="test", url="https://nb.example/", token=KeyringRef("prod"))
+    assert verify(profile).username == "me"
     assert route.called
 
 

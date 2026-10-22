@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, ConfigDict
 
+from nsc.auth.keyring_store import resolve_token
 from nsc.config.models import Profile
 
 if TYPE_CHECKING:
@@ -71,11 +72,12 @@ def verify(profile: Profile, *, timeout: float = _DEFAULT_TIMEOUT) -> VerifyResu
     """
     import httpx2  # noqa: PLC0415  # deferred: keeps httpx2 off the CLI-startup path.
 
-    if not profile.token:
+    token = resolve_token(profile)
+    if not token:
         raise VerifyError(message="profile has no token; cannot verify")
     base = str(profile.url).rstrip("/")
     headers = {
-        "Authorization": f"Token {profile.token}",
+        "Authorization": f"Token {token}",
         "Accept": "application/json",
     }
     with httpx2.Client(
@@ -85,7 +87,7 @@ def verify(profile: Profile, *, timeout: float = _DEFAULT_TIMEOUT) -> VerifyResu
         timeout=timeout,
     ) as client:
         version = _probe_status(client)
-        username = _probe_identity(client, profile.token)
+        username = _probe_identity(client, token)
     return VerifyResult(username=username, netbox_version=version)
 
 

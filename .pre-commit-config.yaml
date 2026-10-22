@@ -32,6 +32,7 @@ repos:
           - structlog>=24.1
           - platformdirs>=4.2
           - textual>=0.50
+          - keyring>=25.0
           - types-PyYAML>=6.0
         args: [--strict]
         files: ^(nsc|scripts)/

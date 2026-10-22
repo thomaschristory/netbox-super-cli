@@ -9,6 +9,7 @@ from typing import Annotated
 
 import typer
 
+from nsc.auth.keyring_store import resolve_token
 from nsc.cache.store import (
     CacheStore,
     PrunePlan,
@@ -48,8 +49,9 @@ def _fetch_live_hash(profile: Profile, *, default_timeout: float) -> str:
 
     url = str(profile.url).rstrip("/") + "/api/schema/?format=json"
     headers = {"Accept": "application/json"}
-    if profile.token:
-        headers["Authorization"] = f"Token {profile.token}"
+    token = resolve_token(profile)
+    if token:
+        headers["Authorization"] = f"Token {token}"
     timeout = profile.timeout if profile.timeout is not None else default_timeout
     with httpx2.Client(verify=profile.verify_ssl, timeout=timeout, headers=headers) as c:
         resp = c.get(url)
