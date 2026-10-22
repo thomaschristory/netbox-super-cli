@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import threading
 from pathlib import Path
 
 import pytest
@@ -84,3 +85,28 @@ def test_audit_entry_records_branch_header(
         client.post("/api/dcim/sites/", json={"name": "x"})
     line = (tmp_path / "logs" / "audit.jsonl").read_text().splitlines()[-1]
     assert json.loads(line)["request"]["headers"]["X-Netbox-Branch"] == "abcd1234"
+
+
+def test_concurrent_requests_wait_for_branch_resolution(httpx2_mock: respx.Router) -> None:
+    sites = httpx2_mock.get(SITES).respond(200, json={"results": []})
+    started = threading.Event()
+    release = threading.Event()
+
+    def slow(client: NetBoxClient) -> str:
+        started.set()
+        release.wait(5)
+        return "abcd1234"
+
+    with NetBoxClient(_FakeProfile(), branch_resolver=slow) as client:
+        first = threading.Thread(target=client.get, args=("/api/dcim/sites/",))
+        first.start()
+        started.wait(5)
+        second = threading.Thread(target=client.get, args=("/api/dcim/sites/",))
+        second.start()
+        second.join(0.2)
+        assert sites.call_count == 0
+        release.set()
+        first.join(5)
+        second.join(5)
+    assert sites.call_count == 2
+    assert all(c.request.headers["X-NetBox-Branch"] == "abcd1234" for c in sites.calls)

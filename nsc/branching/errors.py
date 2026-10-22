@@ -30,6 +30,15 @@ class BranchNotFoundError(BranchError):
         )
 
 
+class BranchAmbiguousError(BranchError):
+    def __init__(self, ref: str) -> None:
+        super().__init__(
+            f"{ref!r} is the name of one branch and the schema_id of another; "
+            "pass the other branch's name instead",
+            branch=ref,
+        )
+
+
 class BranchNotReadyError(BranchError):
     def __init__(self, name: str, status: str) -> None:
         super().__init__(

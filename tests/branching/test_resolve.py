@@ -6,6 +6,7 @@ import pytest
 import respx
 
 from nsc.branching.errors import (
+    BranchAmbiguousError,
     BranchingNotInstalledError,
     BranchNotFoundError,
     BranchNotReadyError,
@@ -44,6 +45,7 @@ def _page(*results: dict[str, Any]) -> dict[str, Any]:
 
 def test_resolve_by_name(httpx2_mock: respx.Router) -> None:
     httpx2_mock.get(BRANCHES, params={"name": "my-change"}).respond(200, json=_page(_branch()))
+    httpx2_mock.get(BRANCHES, params={"schema_id": "my-change"}).respond(200, json=_page())
     with NetBoxClient(_FakeProfile()) as client:
         branch = get_branch(client, "my-change")
     assert branch.schema_id == "abcd1234"
@@ -85,3 +87,20 @@ def test_require_ready_rejects_merged() -> None:
 def test_require_ready_passes_ready() -> None:
     ready = Branch.model_validate(_branch())
     assert require_ready(ready) is ready
+
+
+def test_resolve_ignores_inexact_matches(httpx2_mock: respx.Router) -> None:
+    httpx2_mock.get(BRANCHES).respond(200, json=_page(_branch(name="other", schema_id="zzzz9999")))
+    with NetBoxClient(_FakeProfile()) as client, pytest.raises(BranchNotFoundError):
+        get_branch(client, "my-change")
+
+
+def test_resolve_name_and_schema_id_of_different_branches_is_ambiguous(
+    httpx2_mock: respx.Router,
+) -> None:
+    httpx2_mock.get(BRANCHES, params={"name": "abcd1234"}).respond(
+        200, json=_page(_branch(id=9, name="abcd1234", schema_id="qqqq0000"))
+    )
+    httpx2_mock.get(BRANCHES, params={"schema_id": "abcd1234"}).respond(200, json=_page(_branch()))
+    with NetBoxClient(_FakeProfile()) as client, pytest.raises(BranchAmbiguousError):
+        get_branch(client, "abcd1234")

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sys
+import threading
 import time
 from collections.abc import Callable
 from datetime import UTC, datetime
@@ -63,7 +64,10 @@ class NetBoxClient:
         self._redaction = redaction
         self._profile_name = profile_name
         self._branch_resolver = branch_resolver
-        self._branch_error: Exception | None = None
+        self._branch_pending = branch_resolver is not None
+        self._branch_error: BaseException | None = None
+        self._branch_lock = threading.Lock()
+        self._branch_resolving_thread: int | None = None
         self._client = httpx2.Client(
             base_url=self._url,
             headers={
@@ -254,22 +258,31 @@ class NetBoxClient:
             time.sleep(backoff_delay(policy, attempt=attempt))
 
     def _ensure_branch(self) -> None:
-        # Resolved lazily so commands that never hit NetBox pay nothing. A failed
-        # resolution is replayed on every later call: once a branch was asked
-        # for, no request may silently fall through to main.
-        if self._branch_error is not None:
-            raise self._branch_error
-        resolver = self._branch_resolver
-        if resolver is None:
+        # Resolved lazily so commands that never hit NetBox pay nothing. Bulk
+        # writes run on worker threads, so resolution is serialized: no request
+        # may leave before the header is set, and a failed resolution is replayed
+        # on every later call — once a branch was asked for, nothing falls
+        # through to main.
+        if not self._branch_pending:
             return
-        # Cleared before calling so the resolver's own lookups go out unbranched.
-        self._branch_resolver = None
-        try:
-            schema_id = resolver(self)
-        except Exception as exc:
-            self._branch_error = exc
-            raise
-        self._client.headers[BRANCH_HEADER] = schema_id
+        if self._branch_resolving_thread == threading.get_ident():
+            return  # the resolver's own lookups go out unbranched
+        with self._branch_lock:
+            if self._branch_error is not None:
+                raise self._branch_error
+            resolver = self._branch_resolver
+            if not self._branch_pending or resolver is None:
+                return
+            self._branch_resolving_thread = threading.get_ident()
+            try:
+                schema_id = resolver(self)
+            except BaseException as exc:
+                self._branch_error = exc
+                raise
+            finally:
+                self._branch_resolving_thread = None
+            self._client.headers[BRANCH_HEADER] = schema_id
+            self._branch_pending = False
 
     def _absolute(self, path: str, params: dict[str, Any] | None) -> str:
         request = self._client.build_request("GET", path, params=params)

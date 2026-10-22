@@ -17,6 +17,7 @@ from pydantic import BaseModel, ConfigDict, HttpUrl, SkipValidation
 
 from nsc.auth.keyring_store import KeyringStoreError, resolve_token
 from nsc.branching.errors import (
+    BranchAmbiguousError,
     BranchConflictError,
     BranchError,
     BranchJobFailedError,
@@ -393,6 +394,8 @@ def _branch_envelope(exc: BranchError) -> ErrorEnvelope:
     et = ErrorType.CONFIG
     if isinstance(exc, BranchNotFoundError):
         et = ErrorType.NOT_FOUND
+    elif isinstance(exc, BranchAmbiguousError):
+        et = ErrorType.INPUT_ERROR
     elif isinstance(exc, BranchConflictError):
         et = ErrorType.CONFLICT
         details["conflicts"] = exc.conflicts
