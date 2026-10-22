@@ -19,6 +19,17 @@ Verbs are derived from HTTP method + `operationId` exactly as for core endpoints
 Custom action endpoints (`POST /api/plugins/my-plugin/widgets/{id}/calibrate/`)
 become e.g. `nsc my_plugin widgets calibrate 7 --apply`.
 
+## Plugins with first-class support
+
+A few plugins change how *every* request behaves, not just add endpoints. For
+those, `nsc` has built-in commands:
+
+- **NetBox Branching** (`netboxlabs-netbox-branching`): `--branch` /
+  `NSC_BRANCH` / `nsc branch …`. See [NetBox Branching](branching.md). The
+  plugin's own endpoints still appear as dynamic commands under its tag when
+  the live schema includes them. Prefer `nsc branch`, which resolves names,
+  waits for jobs and is dry-run by default.
+
 ## Discovery
 
 ```sh

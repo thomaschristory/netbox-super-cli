@@ -20,6 +20,15 @@
   `final_attempt`; redaction is applied on every write, so a failed
   retry never unredacts.
 - Pagination helper that follows `next` URLs (used by `--all`).
+- Optional NetBox Branching context. Given a `branch_resolver`, the client
+  resolves the branch lazily on its first request: the resolver's own lookups
+  go out unbranched, and every later request carries
+  `X-NetBox-Branch: <schema_id>`. Resolution is serialized under a lock, so
+  concurrent `--workers` threads wait instead of racing ahead without the
+  header. A failed resolution is stored and raised again on every later call,
+  so once a branch is selected no request can reach main. The resolver
+  itself lives in `nsc/branching/` (`nsc/http` does not import it), and
+  `nsc branch …` commands build a client without one.
 - Audit log appender at `~/.nsc/logs/audit.jsonl` — written for writes
   always, and for any request when `--debug` is set.
 

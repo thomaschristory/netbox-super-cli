@@ -50,6 +50,15 @@ shows the branch in its header in the warning colour. `nsc branch current`
 prints the active branch and where it came from (`flag`, `env` or `profile`),
 or `main`.
 
+Every request made in a branch is recorded in the [audit log](audit-log.md)
+with its `X-Netbox-Branch` header (the branch's schema_id). When a command
+fails while a branch is active, its error envelope names the branch in
+`details.branch`, whatever the failure is.
+
+A branch that is literally named `main` can still be selected by its
+schema_id. `nsc branch use` stores the schema_id for such a branch, because the
+name would read back as "force main".
+
 ## When the branch can't be used
 
 If the active branch doesn't exist, or exists but isn't `ready` (it's

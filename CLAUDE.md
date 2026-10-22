@@ -13,6 +13,7 @@ This is the contributor guide for AI agents (and humans!) modifying this repo. T
 - `nsc/config/` — config loader + Pydantic models + ruamel.yaml round-trip writer.
 - `nsc/cache/` — disk cache for generated command-models.
 - `nsc/auth/` — login verification helpers (pre-flight probes, token rotate).
+- `nsc/branching/` — NetBox Branching: branch name→schema_id resolution, lifecycle API calls, job polling. Framework-free; `nsc/http` must not import it (the client takes a resolver callable).
 - `nsc/aliases/` — curated alias resolver (`ls`, `get`, `rm`, `search`). Framework-free.
 - `nsc/completion/` — dynamic shell-completion: framework-free providers + cheap on-disk cache probe + Typer `shell_complete` callbacks.
 - `nsc/skill/` — bundle-path helper for the portable `SKILL.md` shipped in the wheel.

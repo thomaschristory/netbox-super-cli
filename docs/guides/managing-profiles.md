@@ -107,6 +107,19 @@ NSC_URL=https://other NSC_TOKEN=$TOK nsc dcim devices list   # env vars also wor
 
 Override precedence (highest first): CLI flag > env var > config profile.
 
+The same precedence applies to the NetBox Branching branch: `--branch NAME` >
+`NSC_BRANCH` > the profile's `branch:` key. `nsc branch use NAME` writes that
+key, and `nsc branch use --main` removes it. `--branch main` forces main for
+one command. See [NetBox Branching](branching.md).
+
+```yaml
+profiles:
+  prod:
+    url: https://netbox.example.com
+    token: !keyring prod
+    branch: add-london      # sticky: every command runs in this branch
+```
+
 ## Shell completion
 
 With shell completion installed, `nsc --profile <TAB>` completes configured

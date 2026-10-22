@@ -174,6 +174,25 @@ The wire body sent to NetBox is **not** redacted — only the audit log. A faile
 
 For a stricter posture, set `audit_redaction: full` in `~/.nsc/config.yaml` (the default is `safe`, the field-level redaction described above). In `full` mode every audit line keeps only `{method, url, status_code, timestamp, profile}` — all request and response bodies are dropped, and the `url` is sanitized (query string and any `user:pass@` credentials stripped).
 
+## NetBox Branching
+
+If your NetBox runs the [Branching plugin](https://netboxlabs.com/docs/extensions/branching/),
+any command can stage its changes in a branch for review:
+
+```sh
+nsc branch create add-london --use            # create, wait until ready, make it sticky
+nsc dcim sites create -f london.yaml --apply  # lands in the branch; stderr shows "⎇ branch: add-london"
+nsc branch diff                               # review the staged changes
+nsc branch merge                              # dry-run, validated server-side
+nsc branch merge --apply                      # merge into main
+nsc branch use --main                         # back to main
+```
+
+`--branch NAME` and `NSC_BRANCH` select a branch for a single command or a
+whole shell, and agents should use these. A merged, missing or not-ready branch
+fails loudly and never falls back to main. See the
+[branching guide](docs/guides/branching.md).
+
 ## Curated aliases
 
 `nsc ls`, `nsc get`, `nsc rm`, and `nsc search` are short verbs over the dynamic

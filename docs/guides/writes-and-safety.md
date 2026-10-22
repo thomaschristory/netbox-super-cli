@@ -20,6 +20,23 @@ nsc dcim devices update 42 --field status=active --explain
 # Annotates the resolved request with operationId, HTTP method, the matched path.
 ```
 
+## Staging writes in a branch
+
+If your server runs NetBox Branching, a write can land in a branch instead
+of main. The `--apply` rule still applies inside a branch. A branch adds a
+second checkpoint: you review `nsc branch diff`, then run `nsc branch merge`
+(a dry run that validates on the server) and `nsc branch merge --apply`.
+
+```sh
+NSC_BRANCH=add-london nsc dcim sites create -f london.yaml --apply
+nsc branch diff add-london
+nsc branch merge add-london --apply
+```
+
+If the selected branch is merged, deleted or not ready, the command fails
+with exit 9 or 12 before sending anything. A write never falls back to main.
+See [NetBox Branching](branching.md).
+
 ## Strict deletes
 
 `--strict` makes a delete of an object that does not exist a hard failure:

@@ -37,6 +37,23 @@ tune N to what your instance tolerates. The `--on-error` semantics and the
 one-line-per-record audit log are unchanged. See
 [Writes and safety](writes-and-safety.md#parallel-bulk-writes-workers).
 
+## Staging changes for review (NetBox Branching)
+
+A CI job can write into a branch instead of main, so a person reviews the
+change before it lands. `NSC_BRANCH` works without a saved profile:
+
+```sh
+BRANCH="ci-${GITHUB_RUN_ID}"
+nsc branch create "$BRANCH" -o json            # waits until ready
+export NSC_BRANCH="$BRANCH"
+nsc dcim devices create -f devices.ndjson --apply -o json
+nsc branch diff "$BRANCH" -o json > branch-diff.json   # upload as an artifact for review
+```
+
+The branch commands follow the same exit codes as every other nsc command:
+`10` means merge or sync conflicts (`details.conflicts`), and `4` means the
+server-side job failed (`details.job_error`). See [NetBox Branching](branching.md).
+
 ## Exit-code-driven control flow
 
 ```sh

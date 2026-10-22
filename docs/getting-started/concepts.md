@@ -70,6 +70,22 @@ nsc dcim devices create --field name=foo --field site=1 --apply
 Add `--explain` to a dry-run to see the schema reasoning ("PATCH because of
 operationId `dcim_devices_partial_update`").
 
+## Branches (NetBox Branching)
+
+If your server runs the NetBox Branching plugin, any command can run inside a
+branch instead of main. Pick one with `--branch NAME`, `NSC_BRANCH=NAME`, or
+make it sticky on the profile with `nsc branch use NAME`. While a branch is
+active, every command prints `⎇ branch: NAME` on stderr. If the branch can't be
+used (merged, missing, not ready), the command fails without sending anything.
+It never quietly falls back to main. See [NetBox Branching](../guides/branching.md).
+
+```sh
+nsc branch create add-london --use
+nsc dcim sites create --field name=London --field slug=london --apply   # staged in the branch
+nsc branch diff
+nsc branch merge --apply
+```
+
 ## Audit log
 
 Every wire request and its response are appended to

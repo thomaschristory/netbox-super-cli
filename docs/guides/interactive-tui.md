@@ -194,6 +194,15 @@ by type with a spinner while it runs; selecting a result opens its detail view.
     interfaces, VLANs, VRFs, tenants, circuits, …) and merging the results.
     Niche types aren't searched here — use the resource picker for those.
 
+## Working in a branch
+
+When a NetBox Branching branch is active (`--branch`, `NSC_BRANCH`, or the
+profile's sticky branch), the header reads `nsc ⎇ <branch>` on the warning
+colour, and every read and edit happens inside that branch. The TUI checks
+the branch before it opens. If the branch is merged, missing or not ready,
+`nsc tui` exits with the same error as any other command instead of showing
+main's data. See [NetBox Branching](branching.md).
+
 ## Loading and errors
 
 Slow fetches show a loading wheel on the results area while the input stays
