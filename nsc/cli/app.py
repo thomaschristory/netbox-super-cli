@@ -13,6 +13,7 @@ from nsc._version import __version__
 from nsc.auth.keyring_store import KeyringStoreError
 from nsc.cli import (
     aliases_commands,
+    branch_commands,
     cache_commands,
     commands_dump,
     config_commands,
@@ -393,6 +394,7 @@ def _root(
         ctx.obj = (state, runtime)
 
 
+branch_commands.register(app)
 cache_commands.register(app)
 commands_dump.register(app)
 config_commands.register(app)

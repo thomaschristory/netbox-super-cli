@@ -10,6 +10,7 @@ from typing import Any, TextIO
 
 import typer
 
+from nsc.branching.errors import BranchError
 from nsc.cli.runtime import (
     RuntimeContext,
     apply_limit,
@@ -144,7 +145,7 @@ def handle_list(
             color=ctx.color,
             object_colors=ctx.object_colors,
         )
-    except (NetBoxAPIError, NetBoxClientError) as exc:
+    except (NetBoxAPIError, NetBoxClientError, BranchError) as exc:
         env = map_error(exc, operation_id=operation.operation_id)
         code = emit_envelope(env, output_format=ctx.output_format, color=ctx.color_stderr)
         raise typer.Exit(code) from exc
@@ -173,7 +174,7 @@ def handle_get(
             color=ctx.color,
             object_colors=ctx.object_colors,
         )
-    except (NetBoxAPIError, NetBoxClientError) as exc:
+    except (NetBoxAPIError, NetBoxClientError, BranchError) as exc:
         env = map_error(exc, operation_id=operation.operation_id)
         code = emit_envelope(env, output_format=ctx.output_format, color=ctx.color_stderr)
         raise typer.Exit(code) from exc
@@ -377,7 +378,7 @@ def _handle_write(
         env = client_envelope(str(exc), operation_id=operation.operation_id)
         code = emit_envelope(env, output_format=ctx.output_format, color=ctx.color_stderr)
         raise typer.Exit(code) from exc
-    except (NetBoxAPIError, NetBoxClientError) as exc:
+    except (NetBoxAPIError, NetBoxClientError, BranchError) as exc:
         if (
             isinstance(exc, NetBoxAPIError)
             and exc.status_code == _STATUS_NOT_FOUND_DELETE
