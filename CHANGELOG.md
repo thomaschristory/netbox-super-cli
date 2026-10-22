@@ -4,6 +4,10 @@ All notable changes to netbox-super-cli are tracked here. Format follows [Keep a
 
 ## Unreleased
 
+## v1.8.1 — 2026-10-22
+
+Patch release. Fixes two NetBox Branching issues found after v1.8.0.
+
 ### Fixed
 
 - **`--branch` after a subcommand no longer switches branches** ([#170]). It is
