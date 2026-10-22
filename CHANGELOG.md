@@ -16,6 +16,8 @@ All notable changes to netbox-super-cli are tracked here. Format follows [Keep a
   an unavailable backend yields a `config` error envelope (exit 12). `keyring`
   is a new core dependency, imported lazily so it adds no startup cost. See
   the new [OS keyring storage guide](docs/guides/keyring.md).
+  `--keyring-name` is stripped of surrounding whitespace, and a blank name is
+  rejected as a usage error before the token prompt.
 
 ### Fixed
 

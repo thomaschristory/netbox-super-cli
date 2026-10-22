@@ -16,6 +16,20 @@ from nsc.cli.app import app
 from nsc.output.errors import EXIT_CODES, ErrorType
 
 _CONFIG_EXIT = EXIT_CODES[ErrorType.CONFIG]
+_AUTH_EXIT = EXIT_CODES[ErrorType.AUTH]
+_USAGE_EXIT = 2
+
+_KEYRING_PROFILE = (
+    "default_profile: prod\n"
+    "profiles:\n"
+    "  prod:\n"
+    "    url: https://nb.example/\n"
+    "    token: !keyring my-token\n"
+)
+
+
+def _plain(output: str) -> str:
+    return re.sub(r"\x1b\[[0-9;]*m", "", output)
 
 
 @pytest.fixture
@@ -266,6 +280,7 @@ def test_login_new_rejects_unknown_store_before_prompting(home: Path) -> None:
     assert result.exit_code == 2
     plain = re.sub(r"\x1b\[[0-9;]*m", "", result.output)
     assert "--store must be one of" in plain
+    assert "Token" not in plain
     assert not (home / "config.yaml").exists()
 
 
@@ -289,3 +304,114 @@ def test_token_flag_overrides_keyring_without_touching_it(
         app, ["--token", "OVERRIDE", "dcim", "devices", "list", "--output", "json"]
     )
     assert result.exit_code == 0, result.output
+
+
+def _rejected_token(httpx2_mock: respx.Router) -> None:
+    httpx2_mock.get("https://nb.example/api/status/").respond(200, json={"netbox-version": "4.5.9"})
+    httpx2_mock.get("https://nb.example/api/users/tokens/").respond(403, json={})
+
+
+def test_login_new_keyring_with_rejected_token_leaves_keyring_untouched(
+    home: Path,
+    httpx2_mock: respx.Router,
+    fake_keyring: dict[tuple[str, str], str],
+) -> None:
+    _rejected_token(httpx2_mock)
+    result = CliRunner().invoke(app, _login_new(), input="BAD\nn\n")
+    assert result.exit_code == _AUTH_EXIT, result.output
+    assert fake_keyring == {}
+    assert not (home / "config.yaml").exists()
+
+
+def test_login_rotate_keyring_with_rejected_token_keeps_old_secret(
+    home: Path,
+    httpx2_mock: respx.Router,
+    fake_keyring: dict[tuple[str, str], str],
+) -> None:
+    fake_keyring[(SERVICE_NAME, "my-token")] = "OLD"
+    _seed(home, _KEYRING_PROFILE)
+    _rejected_token(httpx2_mock)
+    result = CliRunner().invoke(app, ["login", "--rotate", "--profile", "prod"], input="BAD\n")
+    assert result.exit_code == _AUTH_EXIT, result.output
+    assert fake_keyring == {(SERVICE_NAME, "my-token"): "OLD"}
+    assert _config_text(home) == _KEYRING_PROFILE
+
+
+@pytest.mark.parametrize(
+    ("args", "message"),
+    [
+        (["--store", "kr"], "--store must be one of"),
+        (["--store", "env"], "--store=env requires --env-var"),
+        (["--store", "keyring", "--keyring-name", "   "], "--keyring-name"),
+    ],
+)
+def test_login_rotate_rejects_bad_options_before_prompting(
+    home: Path,
+    fake_keyring: dict[tuple[str, str], str],
+    args: list[str],
+    message: str,
+) -> None:
+    fake_keyring[(SERVICE_NAME, "my-token")] = "OLD"
+    _seed(home, _KEYRING_PROFILE)
+    result = CliRunner().invoke(
+        app, ["login", "--rotate", "--profile", "prod", *args], input="NEW\n"
+    )
+    assert result.exit_code == _USAGE_EXIT, result.output
+    plain = _plain(result.output)
+    assert message in plain
+    assert "New token" not in plain
+    assert fake_keyring == {(SERVICE_NAME, "my-token"): "OLD"}
+    assert _config_text(home) == _KEYRING_PROFILE
+
+
+@pytest.mark.parametrize("name", ["", " ", "   "])
+def test_login_new_rejects_blank_keyring_name_before_prompting(
+    home: Path,
+    fake_keyring: dict[tuple[str, str], str],
+    name: str,
+) -> None:
+    result = CliRunner().invoke(app, _login_new("--keyring-name", name), input="T123\nn\n")
+    assert result.exit_code == _USAGE_EXIT, result.output
+    plain = _plain(result.output)
+    assert "--keyring-name" in plain
+    assert "Token" not in plain
+    assert fake_keyring == {}
+    assert not (home / "config.yaml").exists()
+
+
+@pytest.mark.parametrize("name", ["prod ", " prod", "  prod  "])
+def test_login_new_strips_padded_keyring_name_so_loader_finds_it(
+    home: Path,
+    httpx2_mock: respx.Router,
+    fake_keyring: dict[tuple[str, str], str],
+    name: str,
+) -> None:
+    users = _good_status(httpx2_mock)
+    runner = CliRunner()
+    result = runner.invoke(app, _login_new("--keyring-name", name), input="T123\nn\n")
+    assert result.exit_code == 0, result.output
+    assert fake_keyring == {(SERVICE_NAME, "prod"): "T123"}
+    assert "token: !keyring prod\n" in _config_text(home)
+
+    verified = runner.invoke(app, ["login"])
+    assert verified.exit_code == 0, verified.output
+    assert users.calls.last.request.headers["Authorization"] == "Token T123"
+
+
+def test_login_rotate_strips_padded_keyring_name(
+    home: Path,
+    httpx2_mock: respx.Router,
+    fake_keyring: dict[tuple[str, str], str],
+) -> None:
+    fake_keyring[(SERVICE_NAME, "my-token")] = "OLD"
+    _seed(home, _KEYRING_PROFILE)
+    _good_status(httpx2_mock)
+    result = CliRunner().invoke(
+        app,
+        ["login", "--rotate", "--profile", "prod", "--keyring-name", " fresh "],
+        input="NEW\n",
+    )
+    assert result.exit_code == 0, result.output
+    assert fake_keyring[(SERVICE_NAME, "fresh")] == "NEW"
+    assert (SERVICE_NAME, " fresh ") not in fake_keyring
+    assert "token: !keyring fresh\n" in _config_text(home)

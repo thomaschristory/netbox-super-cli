@@ -66,6 +66,17 @@ def _normalize_store(store: str | None, *, default: str) -> str:
     return value
 
 
+def _normalize_keyring_name(name: str | None) -> str | None:
+    # The loader strips `!keyring` values and rejects empty ones, so the writer
+    # must agree or the stored secret is unreachable / the config unloadable.
+    if name is None:
+        return None
+    value = name.strip()
+    if not value:
+        raise typer.BadParameter("--keyring-name must not be empty")
+    return value
+
+
 def _store_token(
     store: str,
     *,
@@ -246,6 +257,7 @@ def register(app: typer.Typer) -> None:
     ) -> None:
         if new and rotate:
             raise typer.BadParameter("--new and --rotate are mutually exclusive")
+        keyring_name = _normalize_keyring_name(keyring_name)
 
         if new:
             _do_login_new(
