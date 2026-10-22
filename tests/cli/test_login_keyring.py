@@ -415,3 +415,114 @@ def test_login_rotate_strips_padded_keyring_name(
     assert fake_keyring[(SERVICE_NAME, "fresh")] == "NEW"
     assert (SERVICE_NAME, " fresh ") not in fake_keyring
     assert "token: !keyring fresh\n" in _config_text(home)
+
+
+_LEGACY_HOLDS_PROD = (
+    "default_profile: legacy\n"
+    "profiles:\n"
+    "  legacy:\n"
+    "    url: https://old.example/\n"
+    "    token: !keyring prod\n"
+)
+
+
+def test_login_new_refuses_keyring_entry_held_by_renamed_profile(
+    home: Path,
+    httpx2_mock: respx.Router,
+    fake_keyring: dict[tuple[str, str], str],
+) -> None:
+    _good_status(httpx2_mock)
+    runner = CliRunner()
+    first = runner.invoke(app, _login_new(), input="TOKEN-A\nn\n")
+    assert first.exit_code == 0, first.output
+    renamed = runner.invoke(app, ["profiles", "rename", "prod", "legacy"])
+    assert renamed.exit_code == 0, renamed.output
+    before = _config_text(home)
+
+    second = runner.invoke(app, _login_new(), input="TOKEN-B\nn\n")
+    assert second.exit_code == _CONFIG_EXIT, second.output
+    plain = _plain(second.output)
+    assert "legacy" in plain
+    assert "--keyring-name" in plain
+    assert fake_keyring == {(SERVICE_NAME, "prod"): "TOKEN-A"}
+    assert _config_text(home) == before
+
+
+def test_login_new_refuses_explicit_keyring_name_held_by_other_profile(
+    home: Path,
+    httpx2_mock: respx.Router,
+    fake_keyring: dict[tuple[str, str], str],
+) -> None:
+    fake_keyring[(SERVICE_NAME, "prod")] = "TOKEN-A"
+    _seed(home, _LEGACY_HOLDS_PROD)
+    _good_status(httpx2_mock)
+    result = CliRunner().invoke(
+        app,
+        [
+            "login",
+            "--new",
+            "--profile",
+            "other",
+            "--url",
+            "https://nb.example/",
+            "--store",
+            "keyring",
+            "--keyring-name",
+            "prod",
+        ],
+        input="TOKEN-B\nn\n",
+    )
+    assert result.exit_code == _CONFIG_EXIT, result.output
+    assert "legacy" in _plain(result.output)
+    assert fake_keyring == {(SERVICE_NAME, "prod"): "TOKEN-A"}
+    assert _config_text(home) == _LEGACY_HOLDS_PROD
+
+
+def test_login_rotate_plaintext_refuses_keyring_entry_held_by_other_profile(
+    home: Path,
+    httpx2_mock: respx.Router,
+    fake_keyring: dict[tuple[str, str], str],
+) -> None:
+    fake_keyring[(SERVICE_NAME, "prod")] = "TOKEN-A"
+    body = _LEGACY_HOLDS_PROD + "  prod:\n    url: https://nb.example/\n    token: OLD\n"
+    _seed(home, body)
+    _good_status(httpx2_mock)
+    result = CliRunner().invoke(
+        app, ["login", "--rotate", "--profile", "prod", "--store", "keyring"], input="NEW\n"
+    )
+    assert result.exit_code == _CONFIG_EXIT, result.output
+    assert "legacy" in _plain(result.output)
+    assert fake_keyring == {(SERVICE_NAME, "prod"): "TOKEN-A"}
+    assert _config_text(home) == body
+
+
+def test_login_rotate_keyring_profile_with_missing_entry_recovers(
+    home: Path,
+    httpx2_mock: respx.Router,
+    fake_keyring: dict[tuple[str, str], str],
+) -> None:
+    _seed(home, _KEYRING_PROFILE)
+    _good_status(httpx2_mock)
+    result = CliRunner().invoke(
+        app, ["login", "--rotate", "--profile", "prod", "--store", "keyring"], input="NEW\n"
+    )
+    assert result.exit_code == 0, result.output
+    assert fake_keyring == {(SERVICE_NAME, "my-token"): "NEW"}
+    assert _config_text(home) == _KEYRING_PROFILE
+
+
+@pytest.mark.usefixtures("fake_keyring")
+@pytest.mark.parametrize("command", ["ls", "get", "rm", "search"])
+def test_static_command_help_works_with_missing_keyring_entry(home: Path, command: str) -> None:
+    _seed(home, _KEYRING_PROFILE)
+    result = CliRunner().invoke(app, [command, "--help"])
+    assert result.exit_code == 0, result.output
+    assert "Usage" in _plain(result.output)
+
+
+@pytest.mark.usefixtures("fake_keyring")
+def test_static_command_without_help_still_reports_missing_keyring_entry(home: Path) -> None:
+    _seed(home, _KEYRING_PROFILE)
+    result = CliRunner().invoke(app, ["ls", "dcim.devices"])
+    assert result.exit_code == _CONFIG_EXIT, result.output
+    assert "my-token" in result.output

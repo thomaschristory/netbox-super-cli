@@ -83,6 +83,7 @@ def _store_token(
     token: str,
     env_var: str | None,
     keyring_name: str,
+    profile_name: str,
 ) -> object:
     """Persist `token` per `store` and return the config value referencing it."""
     if store == _STORE_ENV:
@@ -90,6 +91,14 @@ def _store_token(
             raise typer.BadParameter("--store=env requires --env-var <NAME>")
         return _env_tagged(env_var)
     if store == _STORE_KEYRING:
+        holder = _other_keyring_holder(keyring_name, profile_name)
+        if holder is not None:
+            code = _emit_config_envelope(
+                f"OS keyring entry {keyring_name!r} is already used by profile {holder!r}; "
+                f"overwriting it would change that profile's token. "
+                f"Pass `--keyring-name <unique-name>` to store this token separately."
+            )
+            raise typer.Exit(code=code)
         try:
             set_secret(keyring_name, token)
         except KeyringStoreError as exc:
@@ -97,6 +106,19 @@ def _store_token(
             raise typer.Exit(code=code) from exc
         return _keyring_tagged(keyring_name)
     return token
+
+
+def _other_keyring_holder(keyring_name: str, profile_name: str) -> str | None:
+    try:
+        config = load_config(_config_path())
+    except ConfigParseError:
+        return None
+    for name, profile in config.profiles.items():
+        if name == profile_name:
+            continue
+        if isinstance(profile.token, KeyringRef) and profile.token.name == keyring_name:
+            return name
+    return None
 
 
 def _emit_auth_envelope(
@@ -355,6 +377,7 @@ def _do_login_new(
         token=token_for_verify,
         env_var=env_var,
         keyring_name=keyring_name or profile_name,
+        profile_name=profile_name,
     )
     set_default = (existing_config is None) or (existing_config.default_profile is None)
     _write_profile_entry(
@@ -409,6 +432,7 @@ def _do_login_rotate(
         token=new_token,
         env_var=env_var,
         keyring_name=keyring_name or (existing_ref.name if existing_ref else profile_name),
+        profile_name=profile_name,
     )
     _replace_token(profile_name, token_value)
     _print_success(result.username, result.netbox_version)

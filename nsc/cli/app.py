@@ -287,7 +287,8 @@ class _BootstrappingGroup(TyperGroup):
         # (because bootstrap failed). SchemaSourceError exits 3 per spec; all
         # other bootstrap errors are usage errors (exit 2).
         error = _invocation["error"]
-        if isinstance(error, KeyringStoreError) and args:
+        wants_help = any(arg in ctx.help_option_names for arg in args)
+        if isinstance(error, KeyringStoreError) and args and not wants_help:
             # Every profile-needing command, static aliases included, must surface
             # the keyring failure as an envelope rather than a bare usage error.
             raise typer.Exit(_emit_keyring_envelope(error, args))

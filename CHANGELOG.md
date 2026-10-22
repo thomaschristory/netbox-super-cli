@@ -11,9 +11,15 @@ All notable changes to netbox-super-cli are tracked here. Format follows [Keep a
   Windows Credential Manager) under service `nsc`, username `NAME`.
   `nsc login --new|--rotate --store keyring [--keyring-name NAME]` verifies the
   token, writes it to the keyring, and stores only the `!keyring` reference in
-  `~/.nsc/config.yaml`, so the plaintext token never touches disk. References
-  are resolved lazily, only when a command needs the token. A missing entry or
-  an unavailable backend yields a `config` error envelope (exit 12). `keyring`
+  `~/.nsc/config.yaml`, so the plaintext token never touches disk. Any
+  invocation that builds the dynamic command tree reads the keyring, including
+  bare `nsc` and `nsc --help`; shell completion and the meta commands
+  (`config`, `profiles`, `cache`, `init`, `commands`, `skill`) do not. A missing
+  entry or an unavailable backend yields a `config` error envelope (exit 12),
+  except that `--help` on a static command still prints usage. `nsc login`
+  refuses to overwrite a keyring entry that another profile still references
+  (for example after `nsc profiles rename`) and asks for a distinct
+  `--keyring-name`. `keyring`
   is a new core dependency, imported lazily so it adds no startup cost. See
   the new [OS keyring storage guide](docs/guides/keyring.md).
   `--keyring-name` is stripped of surrounding whitespace, and a blank name is

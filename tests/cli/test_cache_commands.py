@@ -6,8 +6,10 @@ import json
 from pathlib import Path
 
 import pytest
+import respx
 from typer.testing import CliRunner
 
+from nsc.auth.keyring_store import SERVICE_NAME
 from nsc.cli.app import app
 
 
@@ -127,3 +129,32 @@ def test_cache_prune_skips_type_b_when_offline(
     result = runner.invoke(app, ["cache", "prune"])
 
     assert result.exit_code == 0, result.output
+
+
+def test_cache_prune_resolves_keyring_token_for_live_hash(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    httpx2_mock: respx.Router,
+    fake_keyring: dict[tuple[str, str], str],
+) -> None:
+    home = tmp_path / "nsc-home"
+    _set_home(monkeypatch, home)
+    fake_keyring[(SERVICE_NAME, "prod-token")] = "SECRET-K1"
+    stale = _seed_cache(home, "prod", "a" * 64)
+    (home / "config.yaml").write_text(
+        "default_profile: prod\n"
+        "profiles:\n"
+        "  prod:\n"
+        "    url: https://nb.example/\n"
+        "    token: !keyring prod-token\n"
+    )
+    schema = httpx2_mock.get("https://nb.example/api/schema/?format=json").respond(
+        200, content=b'{"openapi": "3.0.3"}'
+    )
+
+    result = CliRunner().invoke(app, ["cache", "prune", "--output", "json"])
+
+    assert result.exit_code == 0, result.output
+    assert schema.calls.last.request.headers["Authorization"] == "Token SECRET-K1"
+    payload = json.loads(result.output)
+    assert payload["plan"]["stale_hash_files"] == [str(stale)]

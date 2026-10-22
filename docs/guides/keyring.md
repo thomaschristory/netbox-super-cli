@@ -52,10 +52,18 @@ the config yourself (`nsc config edit`).
 
 ## When the keyring is read
 
-`!keyring` references are resolved **lazily**. The keyring is read only when a
-command actually needs the token, such as an API request, `nsc login`, or
-the live-hash check in `nsc cache prune`. Shell completion, `nsc config`, and `nsc profiles`
-never touch the keyring, so an unavailable keyring does not break them.
+`!keyring` references are kept unresolved when the config is loaded, but almost
+every invocation reads the keyring: to build the dynamic command tree, `nsc`
+needs the token to fetch the schema. That includes bare `nsc`, `nsc --help`,
+API requests, the static aliases (`ls`, `get`, `rm`, `search`), `nsc login`, and
+the live-hash check in `nsc cache prune`. On macOS, the first of these may show
+a Keychain access prompt.
+
+Only shell completion and the meta commands `nsc config`, `nsc profiles`,
+`nsc cache` (except the `prune` live-hash check), `nsc init`, `nsc commands`,
+and `nsc skill` skip the keyring, so an unavailable keyring does not break them.
+`--help` on a static command such as `nsc ls --help` still prints usage when the
+keyring entry is missing.
 
 The usual override order still applies: `--token` and `NSC_TOKEN` take priority,
 and when either is set the keyring is never read.
