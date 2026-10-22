@@ -59,6 +59,14 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
     above us would get skipped too whenever someone runs ``just test`` without
     the env var.
     """
+    if os.environ.get("NSC_E2E_BRANCHING") != "1":
+        skip_branching = pytest.mark.skip(
+            reason="set NSC_E2E_BRANCHING=1 and start the branching stack "
+            "(tests/e2e/docker-compose.branching.yml) to run"
+        )
+        for item in items:
+            if Path(str(item.path)).name == "test_branching.py":
+                item.add_marker(skip_branching)
     if os.environ.get("NSC_E2E") == "1":
         return
     skip = pytest.mark.skip(reason="set NSC_E2E=1 (and start tests/e2e/docker-compose.yml) to run")

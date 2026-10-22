@@ -11,6 +11,9 @@ because the schema — not hand-written code — defines the surface.
 - **Safe by default.** Writes preview as dry-runs unless you pass `--apply`. An
   `audit_redaction: full` mode strips every request/response body from the audit
   log, leaving only `{method, url, status_code, timestamp, profile}`.
+- **Reviewable staging with NetBox Branching.** `--branch` / `NSC_BRANCH` /
+  `nsc branch use` route every request into a branch; `nsc branch diff` is the
+  review, `nsc branch merge --apply` the merge — see [NetBox Branching](guides/branching.md).
 - **Fast bulk writes.** `--workers N` runs up to N concurrent requests on a
   bulk write (default `1`, max `32`), with per-record error handling intact.
 - **Agent-friendly.** Deterministic command shape, machine-readable JSON output, stable error envelope with documented exit codes.

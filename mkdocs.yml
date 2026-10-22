@@ -59,6 +59,7 @@ nav:
       - Interactive TUI: guides/interactive-tui.md
       - Managing profiles: guides/managing-profiles.md
       - OS keyring storage: guides/keyring.md
+      - NetBox Branching: guides/branching.md
       - Working with plugins: guides/working-with-plugins.md
       - Output formats: guides/output-formats.md
       - Writes and safety: guides/writes-and-safety.md

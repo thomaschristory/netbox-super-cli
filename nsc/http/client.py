@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import sys
+import threading
 import time
+from collections.abc import Callable
 from datetime import UTC, datetime
 from types import TracebackType
 from typing import TYPE_CHECKING, Any, Protocol, cast
@@ -31,6 +33,7 @@ if TYPE_CHECKING:
     import httpx2
 
 _BODY_SNIPPET_BYTES = 2048
+BRANCH_HEADER = "X-NetBox-Branch"
 _HTTP_5XX_MIN = 500
 _HTTP_4XX_MIN = 400
 
@@ -50,6 +53,7 @@ class NetBoxClient:
         debug: bool = False,
         redaction: AuditRedaction = AuditRedaction.SAFE,
         profile_name: str | None = None,
+        branch_resolver: Callable[[NetBoxClient], str] | None = None,
     ) -> None:
         import httpx2  # noqa: PLC0415  # deferred: keeps httpx2 off the CLI-startup path.
 
@@ -59,6 +63,11 @@ class NetBoxClient:
         self._debug = debug
         self._redaction = redaction
         self._profile_name = profile_name
+        self._branch_resolver = branch_resolver
+        self._branch_pending = branch_resolver is not None
+        self._branch_error: BaseException | None = None
+        self._branch_lock = threading.Lock()
+        self._branch_resolving_thread: int | None = None
         self._client = httpx2.Client(
             base_url=self._url,
             headers={
@@ -187,6 +196,7 @@ class NetBoxClient:
     ) -> httpx2.Response:
         import httpx2  # noqa: PLC0415  # deferred: keeps httpx2 off the CLI-startup path.
 
+        self.ensure_branch()
         policy = policy_for_method(method)
         attempt = 0
         is_write = method not in {HttpMethod.GET, HttpMethod.HEAD, HttpMethod.OPTIONS}
@@ -247,20 +257,48 @@ class NetBoxClient:
                 self._raise_for_status(response)
             time.sleep(backoff_delay(policy, attempt=attempt))
 
+    def ensure_branch(self) -> None:
+        # Resolved lazily so commands that never hit NetBox pay nothing. Bulk
+        # writes run on worker threads, so resolution is serialized: no request
+        # may leave before the header is set, and a failed resolution is replayed
+        # on every later call — once a branch was asked for, nothing falls
+        # through to main.
+        if not self._branch_pending:
+            return
+        if self._branch_resolving_thread == threading.get_ident():
+            return  # the resolver's own lookups go out unbranched
+        with self._branch_lock:
+            if self._branch_error is not None:
+                raise self._branch_error
+            resolver = self._branch_resolver
+            if not self._branch_pending or resolver is None:
+                return
+            self._branch_resolving_thread = threading.get_ident()
+            try:
+                schema_id = resolver(self)
+            except BaseException as exc:
+                self._branch_error = exc
+                raise
+            finally:
+                self._branch_resolving_thread = None
+            self._client.headers[BRANCH_HEADER] = schema_id
+            self._branch_pending = False
+
     def _absolute(self, path: str, params: dict[str, Any] | None) -> str:
         request = self._client.build_request("GET", path, params=params)
         return str(request.url)
 
     def _raise_for_status(self, response: httpx2.Response) -> None:
         try:
-            body = response.text[:_BODY_SNIPPET_BYTES]
+            full = response.text
         except Exception:  # pragma: no cover
-            body = ""
+            full = ""
         raise NetBoxAPIError(
             status_code=response.status_code,
             url=str(response.request.url),
-            body_snippet=body,
+            body_snippet=full[:_BODY_SNIPPET_BYTES],
             headers=dict(response.headers),
+            body=full,
         )
 
     def _record_attempt(

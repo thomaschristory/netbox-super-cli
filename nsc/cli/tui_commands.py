@@ -11,7 +11,9 @@ from typing import Annotated
 
 import typer
 
-from nsc.cli.runtime import RuntimeContext
+from nsc.branching.errors import BranchError
+from nsc.cli.runtime import RuntimeContext, emit_envelope, map_error
+from nsc.http.errors import NetBoxAPIError, NetBoxClientError
 
 
 def _runtime_from_ctx(ctx: typer.Context) -> RuntimeContext:
@@ -50,6 +52,20 @@ def _build_saved_filter_store(runtime: RuntimeContext) -> object:
     return NativeSavedFilterStore(runtime.client, fallback)
 
 
+def _require_usable_branch(runtime: RuntimeContext) -> None:
+    # Resolve up front: TUI screens only expect HTTP errors, and an unusable
+    # branch must stop the session before any screen loads data.
+    if runtime.branch is None:
+        return
+    try:
+        runtime.client.ensure_branch()
+    except (BranchError, NetBoxAPIError, NetBoxClientError) as exc:
+        env = map_error(exc)
+        raise typer.Exit(
+            emit_envelope(env, output_format=runtime.output_format, color=runtime.color_stderr)
+        ) from exc
+
+
 def register(app: typer.Typer) -> None:
     def tui(
         ctx: typer.Context,
@@ -60,6 +76,7 @@ def register(app: typer.Typer) -> None:
     ) -> None:
         """Launch the interactive TUI (navigate, filter, drill into records)."""
         runtime = _runtime_from_ctx(ctx)
+        _require_usable_branch(runtime)
         from nsc.tui import run_tui  # noqa: PLC0415  # deferred: keeps Textual lazy.
 
         column_prefs = {tag: dict(resources) for tag, resources in runtime.config.columns.items()}
@@ -71,6 +88,7 @@ def register(app: typer.Typer) -> None:
             column_prefs=column_prefs,
             object_colors=runtime.object_colors,
             saved_filter_store=_build_saved_filter_store(runtime),
+            branch=runtime.branch.name if runtime.branch else None,
         )
 
     # `tui` is canonical; `interactive` and `i` are hidden aliases for the same

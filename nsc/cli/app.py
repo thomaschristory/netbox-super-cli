@@ -13,6 +13,7 @@ from nsc._version import __version__
 from nsc.auth.keyring_store import KeyringStoreError
 from nsc.cli import (
     aliases_commands,
+    branch_commands,
     cache_commands,
     commands_dump,
     config_commands,
@@ -70,6 +71,7 @@ def _extract_global_overrides(args: list[str]) -> CLIOverrides:
         "--schema": "schema_override",
         "--output": "output",
         "-o": "output",
+        "--branch": "branch",
     }
     i = 0
     while i < len(args):
@@ -351,6 +353,13 @@ def _root(
             help="Render NetBox-native object colors (role/tag/…) in table output.",
         ),
     ] = None,
+    branch: Annotated[
+        str | None,
+        typer.Option(
+            "--branch",
+            help="Run in this NetBox Branching branch (name or schema_id); 'main' forces main.",
+        ),
+    ] = None,
     debug: Annotated[bool, typer.Option("--debug")] = False,
 ) -> None:
     """Root callback — global options live here."""
@@ -363,6 +372,7 @@ def _root(
         refresh_schema=refresh_schema,
         output=output,
         object_colors=object_colors,
+        branch=branch,
     )
     try:
         config = load_config(default_paths().config_file)
@@ -384,6 +394,7 @@ def _root(
         ctx.obj = (state, runtime)
 
 
+branch_commands.register(app)
 cache_commands.register(app)
 commands_dump.register(app)
 config_commands.register(app)

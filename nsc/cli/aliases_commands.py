@@ -21,6 +21,7 @@ from nsc.aliases import (
     resolve,
     suggest_plural,
 )
+from nsc.branching.errors import BranchError
 from nsc.cli.handlers import handle_delete, handle_get, handle_list
 from nsc.cli.runtime import RuntimeContext, emit_envelope
 from nsc.completion.callbacks import (
@@ -67,7 +68,7 @@ def _dereference_by_name(
     """
     try:
         rows = list(runtime.client.paginate(list_op.path, {"name": name}))
-    except (NetBoxAPIError, NetBoxClientError) as exc:
+    except (NetBoxAPIError, NetBoxClientError, BranchError) as exc:
         return client_envelope(
             f"failed to dereference name {name!r}: {exc}",
             operation_id=list_op.operation_id,

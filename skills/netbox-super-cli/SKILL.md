@@ -252,6 +252,34 @@ indefinitely until manually refreshed), `weekly` (7-day TTL).
   (so `nsc ls device` == `nsc ls devices`) — but outside that list, use the
   plural. An unknown singular suggests its plural when one exists.
 
+## Staging changes in a branch (NetBox Branching)
+
+When the server runs the NetBox Branching plugin, stage risky or bulk writes
+in a branch so a human can review them before they reach main:
+
+```
+nsc branch create <name> -o json          # waits until the branch is ready
+export NSC_BRANCH=<name>                   # every later command runs in it
+nsc dcim devices create -f devices.ndjson --apply -o json
+nsc branch diff <name> -o json            # return this for review
+```
+
+- Prefer `NSC_BRANCH` over `nsc branch use`: it needs no saved profile and
+  doesn't change the user's config. `--branch <name>` does the same for a
+  single command, and `--branch main` forces main.
+- While a branch is active, stderr carries `⎇ branch: <name>`. stdout JSON is
+  unchanged.
+- An unusable branch (merged, archived, missing) fails with exit 12/9 and
+  sends nothing; it never falls back to main. Don't "fix" this by unsetting
+  `NSC_BRANCH` unless the user wants main.
+- `nsc branch sync|merge|revert|archive|delete` are dry-runs unless you pass
+  `--apply` (sync/merge/revert dry-runs still validate server-side). Exit 10
+  means conflicts: show `details.conflicts` to the user before re-running with
+  `--acknowledge-conflicts`.
+- Merging uses the same command for agents and humans. Whether you should
+  run `nsc branch merge --apply` is up to your session's instructions, not
+  nsc. If they say nothing, hand back the diff and let the user merge.
+
 ## Profile management
 
 - `nsc init` — first-time setup; writes `~/.nsc/config.yaml`.

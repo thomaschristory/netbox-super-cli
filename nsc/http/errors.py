@@ -12,12 +12,16 @@ class NetBoxAPIError(Exception):
         url: str,
         body_snippet: str,
         headers: dict[str, str],
+        body: str | None = None,
     ) -> None:
         super().__init__(f"NetBox API {status_code} on {url}")
         self.status_code = status_code
         self.url = url
         self.body_snippet = body_snippet
         self.headers = headers
+        # Untruncated body for callers that must parse it (e.g. branch conflict
+        # lists, which easily exceed the snippet cap).
+        self.body = body if body is not None else body_snippet
 
     def render_for_cli(self) -> str:
         return f"NetBox API {self.status_code} on {self.url}: {self.body_snippet}"

@@ -16,6 +16,7 @@ nsc/
 ├── config/          # Pydantic config models + ruamel.yaml writer
 ├── cache/           # On-disk cache for generated CommandModels
 ├── auth/            # Login verification helpers (verify probe, token rotate)
+├── branching/       # NetBox Branching: branch lookup, lifecycle calls, job polling
 ├── aliases/         # Curated alias resolver (ls/get/rm/search)
 ├── completion/      # Dynamic shell-completion: providers + cache probe + Typer callbacks
 ├── skill/           # Bundle-path helper for the portable SKILL.md

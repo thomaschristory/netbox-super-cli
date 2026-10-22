@@ -16,6 +16,15 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, HttpUrl, SkipValidation
 
 from nsc.auth.keyring_store import KeyringStoreError, resolve_token
+from nsc.branching.errors import (
+    BranchAmbiguousError,
+    BranchConflictError,
+    BranchError,
+    BranchJobFailedError,
+    BranchJobTimeoutError,
+    BranchNotFoundError,
+    BranchNotReadyError,
+)
 from nsc.cache.store import ADHOC_PROFILE
 from nsc.config.models import ColorMode, Config, ObjectColorMode, OutputFormat, Profile
 from nsc.config.settings import default_paths
@@ -55,6 +64,16 @@ class CLIOverrides(_Frozen):
     refresh_schema: bool = False
     output: str | None = None
     object_colors: bool | None = None
+    branch: str | None = None
+
+
+# Reserved selector: forces main even when the profile has a sticky branch.
+MAIN_BRANCH = "main"
+
+
+class BranchSelection(_Frozen):
+    name: str
+    source: Literal["flag", "env", "profile"]
 
 
 class ResolvedProfile(_Frozen):
@@ -147,6 +166,24 @@ def resolve_profile(
     )
 
 
+def resolve_branch_selection(
+    config: Config,
+    overrides: CLIOverrides,
+    env: Mapping[str, str],
+) -> BranchSelection | None:
+    name = overrides.profile or env.get("NSC_PROFILE") or config.default_profile
+    base = config.profiles.get(name) if name else None
+    candidates: list[tuple[str | None, Literal["flag", "env", "profile"]]] = [
+        (overrides.branch, "flag"),
+        (env.get("NSC_BRANCH"), "env"),
+        (base.branch if base else None, "profile"),
+    ]
+    for value, source in candidates:
+        if value:
+            return None if value == MAIN_BRANCH else BranchSelection(name=value, source=source)
+    return None
+
+
 def _select_base_profile(
     config: Config, overrides: CLIOverrides, env: Mapping[str, str]
 ) -> tuple[Profile | None, str]:
@@ -218,6 +255,7 @@ class RuntimeContext(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True, extra="forbid")
 
     resolved_profile: ResolvedProfile
+    branch: BranchSelection | None = None
     config: Config
     command_model: SkipValidation[CommandModel]
     client: SkipValidation[NetBoxClient]
@@ -307,8 +345,25 @@ def map_error(
     *,
     operation_id: str | None = None,
     attempt_n: int | None = None,
+    branch: str | None = None,
 ) -> ErrorEnvelope:
-    """Translate a known nsc exception into an ErrorEnvelope. Unknown → internal."""
+    """Translate a known nsc exception into an ErrorEnvelope. Unknown → internal.
+
+    `branch` (the active branch, if any) is recorded in `details` so a failure
+    says which branch it happened in.
+    """
+    env = _map_error(exc, operation_id=operation_id, attempt_n=attempt_n)
+    if branch is None or "branch" in env.details:
+        return env
+    return env.model_copy(update={"details": {**env.details, "branch": branch}})
+
+
+def _map_error(
+    exc: BaseException,
+    *,
+    operation_id: str | None,
+    attempt_n: int | None,
+) -> ErrorEnvelope:
     if isinstance(exc, NetBoxAPIError):
         et = _api_error_type(exc.status_code)
         details: dict[str, Any] = {}
@@ -338,6 +393,8 @@ def map_error(
             operation_id=operation_id,
             details={"cause": "connect", "retry_safe": True},
         )
+    if isinstance(exc, BranchError):
+        return _branch_envelope(exc)
     if isinstance(exc, (NoProfileError, UnknownProfileError, KeyringStoreError)):
         return ErrorEnvelope(error=str(exc), type=ErrorType.CONFIG)
     return ErrorEnvelope(
@@ -345,6 +402,30 @@ def map_error(
         type=ErrorType.INTERNAL,
         details={"traceback_id": str(uuid.uuid4())},
     )
+
+
+def _branch_envelope(exc: BranchError) -> ErrorEnvelope:
+    details: dict[str, Any] = {}
+    if exc.branch is not None:
+        details["branch"] = exc.branch
+    et = ErrorType.CONFIG
+    if isinstance(exc, BranchNotFoundError):
+        et = ErrorType.NOT_FOUND
+    elif isinstance(exc, BranchAmbiguousError):
+        et = ErrorType.INPUT_ERROR
+    elif isinstance(exc, BranchConflictError):
+        et = ErrorType.CONFLICT
+        details["conflicts"] = exc.conflicts
+    elif isinstance(exc, BranchJobFailedError):
+        et = ErrorType.VALIDATION
+        details["job_id"] = exc.job_id
+        details["job_error"] = exc.job_error
+    elif isinstance(exc, BranchJobTimeoutError):
+        et = ErrorType.TRANSPORT
+        details["job_id"] = exc.job_id
+    elif isinstance(exc, BranchNotReadyError):
+        details["status"] = exc.status
+    return ErrorEnvelope(error=str(exc), type=et, details=details)
 
 
 def emit_envelope(env: ErrorEnvelope, *, output_format: OutputFormat, color: bool = False) -> int:

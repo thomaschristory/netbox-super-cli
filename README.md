@@ -29,6 +29,7 @@ One binary, any NetBox version, every plugin endpoint — the schema, not hand-w
 - **Plugins just work.** If your install has plugins, their endpoints appear as commands automatically.
 - **Multi-instance.** Named profiles per NetBox instance, plus env-var overrides.
 - **Safe by default.** POST/PATCH/PUT/DELETE preview as dry-runs unless you pass `--apply`.
+- **NetBox Branching.** Stage changes in a branch (`--branch`, `NSC_BRANCH`, `nsc branch use`), review with `nsc branch diff`, merge with `nsc branch merge --apply`. See [the guide](docs/guides/branching.md).
 - **Agent-friendly.** Deterministic command shape, machine-readable JSON output, stable error envelope with documented exit codes.
 - **Interactive TUI.** `nsc tui` opens a keyboard-driven terminal UI — see below.
 
@@ -172,6 +173,25 @@ Stdin is sniffed from the first 512 bytes (first non-whitespace byte plus a one-
 The wire body sent to NetBox is **not** redacted — only the audit log. A failed write still records the redacted body; redaction is irreversible. Treat `audit.jsonl` like a verbose application log: gate it behind your home-directory permissions and rotate / archive accordingly.
 
 For a stricter posture, set `audit_redaction: full` in `~/.nsc/config.yaml` (the default is `safe`, the field-level redaction described above). In `full` mode every audit line keeps only `{method, url, status_code, timestamp, profile}` — all request and response bodies are dropped, and the `url` is sanitized (query string and any `user:pass@` credentials stripped).
+
+## NetBox Branching
+
+If your NetBox runs the [Branching plugin](https://netboxlabs.com/docs/extensions/branching/),
+any command can stage its changes in a branch for review:
+
+```sh
+nsc branch create add-london --use            # create, wait until ready, make it sticky
+nsc dcim sites create -f london.yaml --apply  # lands in the branch; stderr shows "⎇ branch: add-london"
+nsc branch diff                               # review the staged changes
+nsc branch merge                              # dry-run, validated server-side
+nsc branch merge --apply                      # merge into main
+nsc branch use --main                         # back to main
+```
+
+`--branch NAME` and `NSC_BRANCH` select a branch for a single command or a
+whole shell, and agents should use these. A merged, missing or not-ready branch
+fails loudly and never falls back to main. See the
+[branching guide](docs/guides/branching.md).
 
 ## Curated aliases
 

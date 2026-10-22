@@ -10,6 +10,7 @@ from typing import Any, TextIO
 
 import typer
 
+from nsc.branching.errors import BranchError
 from nsc.cli.runtime import (
     RuntimeContext,
     apply_limit,
@@ -144,8 +145,8 @@ def handle_list(
             color=ctx.color,
             object_colors=ctx.object_colors,
         )
-    except (NetBoxAPIError, NetBoxClientError) as exc:
-        env = map_error(exc, operation_id=operation.operation_id)
+    except (NetBoxAPIError, NetBoxClientError, BranchError) as exc:
+        env = map_error(exc, operation_id=operation.operation_id, branch=_branch_name(ctx))
         code = emit_envelope(env, output_format=ctx.output_format, color=ctx.color_stderr)
         raise typer.Exit(code) from exc
 
@@ -173,8 +174,8 @@ def handle_get(
             color=ctx.color,
             object_colors=ctx.object_colors,
         )
-    except (NetBoxAPIError, NetBoxClientError) as exc:
-        env = map_error(exc, operation_id=operation.operation_id)
+    except (NetBoxAPIError, NetBoxClientError, BranchError) as exc:
+        env = map_error(exc, operation_id=operation.operation_id, branch=_branch_name(ctx))
         code = emit_envelope(env, output_format=ctx.output_format, color=ctx.color_stderr)
         raise typer.Exit(code) from exc
 
@@ -377,7 +378,7 @@ def _handle_write(
         env = client_envelope(str(exc), operation_id=operation.operation_id)
         code = emit_envelope(env, output_format=ctx.output_format, color=ctx.color_stderr)
         raise typer.Exit(code) from exc
-    except (NetBoxAPIError, NetBoxClientError) as exc:
+    except (NetBoxAPIError, NetBoxClientError, BranchError) as exc:
         if (
             isinstance(exc, NetBoxAPIError)
             and exc.status_code == _STATUS_NOT_FOUND_DELETE
@@ -386,7 +387,7 @@ def _handle_write(
         ):
             _render_delete_already_absent(ctx, stream=out)
             return
-        env = map_error(exc, operation_id=operation.operation_id)
+        env = map_error(exc, operation_id=operation.operation_id, branch=_branch_name(ctx))
         code = emit_envelope(env, output_format=ctx.output_format, color=ctx.color_stderr)
         raise typer.Exit(code) from exc
 
@@ -483,8 +484,8 @@ def _execute_loop(
         return
 
     def _to_envelope(exc: Exception) -> ErrorEnvelope:
-        if isinstance(exc, NetBoxAPIError | NetBoxClientError):
-            return map_error(exc, operation_id=operation.operation_id)
+        if isinstance(exc, NetBoxAPIError | NetBoxClientError | BranchError):
+            return map_error(exc, operation_id=operation.operation_id, branch=_branch_name(ctx))
         return ErrorEnvelope(
             error=str(exc),
             type=ErrorType.INTERNAL,
@@ -719,3 +720,7 @@ def _split_params(
         else:
             query[k] = v
     return query, path
+
+
+def _branch_name(ctx: RuntimeContext) -> str | None:
+    return ctx.branch.name if ctx.branch else None
