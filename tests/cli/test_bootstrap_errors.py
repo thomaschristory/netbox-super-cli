@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
@@ -21,7 +22,10 @@ def _empty_home(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
 
 
 def _combined(result: object) -> str:
-    return (result.stdout or "") + (result.stderr or "")  # type: ignore[attr-defined]
+    text = (result.stdout or "") + (result.stderr or "")  # type: ignore[attr-defined]
+    # CI forces color and Rich wraps the error panel; compare on plain, unwrapped text.
+    plain = re.sub(r"\x1b\[[0-9;]*m", "", text)
+    return " ".join(plain.replace("│", " ").split())
 
 
 def _assert_usage_error(result: object, *needles: str) -> None:
