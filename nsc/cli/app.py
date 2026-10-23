@@ -27,6 +27,7 @@ from nsc.cli.globals import GlobalState, build_runtime_context
 from nsc.cli.registration import register_dynamic_commands
 from nsc.cli.runtime import (
     CLIOverrides,
+    InvalidURLError,
     NoProfileError,
     RuntimeContext,
     UnknownProfileError,
@@ -269,6 +270,7 @@ class _BootstrappingGroup(TyperGroup):
                 SchemaSourceError,
                 KeyringStoreError,
                 InvalidOutputFormatError,
+                InvalidURLError,
             ) as exc:
                 _invocation["error"] = exc
                 return super().make_context(info_name, args, parent, **extra)
@@ -296,20 +298,18 @@ class _BootstrappingGroup(TyperGroup):
                 self.commands[sub.name] = sub
 
     def resolve_command(self, ctx: Any, args: list[str]) -> tuple[str | None, Any, list[str]]:
-        # Surface a bootstrap error when the requested command was not registered
-        # (because bootstrap failed). SchemaSourceError exits 3 per spec; all
-        # other bootstrap errors are usage errors (exit 2).
+        # Surface a bootstrap error unless only a static command's --help was
+        # requested. SchemaSourceError exits 3 per spec; all other bootstrap
+        # errors are usage errors (exit 2).
         error = _invocation["error"]
         wants_help = any(arg in ctx.help_option_names for arg in args)
         if isinstance(error, KeyringStoreError) and args and not wants_help:
             # Every profile-needing command, static aliases included, must surface
             # the keyring failure as an envelope rather than a bare usage error.
             raise typer.Exit(_emit_keyring_envelope(error, args))
-        if isinstance(error, InvalidOutputFormatError) and args:
-            # Static commands (aliases, `branch`) read the format from the
-            # bootstrapped runtime, so this must fail even when args[0] is registered.
-            ctx.fail(str(error))
-        if error is not None and args and args[0] not in self.commands:
+        # Static commands (aliases, `branch`, `tui`) need the bootstrapped runtime
+        # too, so only their --help may proceed past a bootstrap failure.
+        if error is not None and args and (args[0] not in self.commands or not wants_help):
             if isinstance(error, SchemaSourceError):
                 # Exit code 3 matches EXIT_CODES[ErrorType.SCHEMA] — keep in sync.
                 typer.echo(f"Error: {error}", err=True)

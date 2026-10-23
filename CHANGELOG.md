@@ -4,6 +4,16 @@ All notable changes to netbox-super-cli are tracked here. Format follows [Keep a
 
 ## Unreleased
 
+### Fixed
+
+- **An invalid `--url`/`NSC_URL` (or schema URL) is a usage error** ([#186]).
+  It used to crash with an internal error and a traceback. It now exits 2 and
+  names the value and where it came from.
+- **`ls`/`get`/`rm`/`search`, `nsc branch …` and `nsc tui` report bootstrap
+  errors.** With no profile, an unknown `--profile` or a bad URL they used to
+  exit 2 silently. They now print the same message as other commands. Their
+  `--help` still works without a profile.
+
 ## v1.8.3 — 2026-10-23
 
 Patch release. A profile's sticky branch now stays with that profile's server.
@@ -135,6 +145,7 @@ notices, and a fix for `nsc login` reporting the wrong user.
 [#1]: https://github.com/thomaschristory/netbox-super-cli/issues/1
 [#166]: https://github.com/thomaschristory/netbox-super-cli/issues/166
 [#170]: https://github.com/thomaschristory/netbox-super-cli/issues/170
+[#186]: https://github.com/thomaschristory/netbox-super-cli/issues/186
 [#171]: https://github.com/thomaschristory/netbox-super-cli/issues/171
 [#179]: https://github.com/thomaschristory/netbox-super-cli/issues/179
 [#173]: https://github.com/thomaschristory/netbox-super-cli/issues/173
