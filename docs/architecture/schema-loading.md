@@ -7,8 +7,10 @@
 Highest priority first, given the active `defaults.schema_refresh` policy
 and an optional `--refresh-schema` override:
 
-1. `--schema <path-or-url>` — one-shot override. Always wins; never
-   consults the TTL fast-path or the network.
+1. `--schema <path-or-url>` (or `NSC_SCHEMA`; the flag wins) — one-shot
+   override. Always wins; never consults the TTL fast-path, the cache
+   fallback or the bundled snapshot. A missing file, unreachable URL or
+   invalid document exits 3 with `cannot load schema from <source>: …`.
 2. **TTL fast-path.** If the policy is `daily`, `weekly`, or `manual` and
    the newest sidecar-validated cache entry for the active profile is
    fresher than the policy's TTL, `nsc` returns it directly with no HTTP

@@ -10,6 +10,10 @@ All notable changes to netbox-super-cli are tracked here. Format follows [Keep a
   It used to crash with an internal error and a traceback. It now prints
   `Error: cannot load schema from <source>: <reason>`, like other schema
   failures.
+- **`NSC_SCHEMA` behaves like `--schema`** ([#192]). A local path used to be
+  silently ignored, and an unreachable URL quietly fell back to the cached or
+  bundled schema. It now loads the path or URL, and a failure exits 3 like
+  `--schema`. The flag wins when both are set.
 
 ## v1.8.4 — 2026-10-23
 
@@ -158,6 +162,7 @@ notices, and a fix for `nsc login` reporting the wrong user.
 [#170]: https://github.com/thomaschristory/netbox-super-cli/issues/170
 [#186]: https://github.com/thomaschristory/netbox-super-cli/issues/186
 [#189]: https://github.com/thomaschristory/netbox-super-cli/issues/189
+[#192]: https://github.com/thomaschristory/netbox-super-cli/issues/192
 [#171]: https://github.com/thomaschristory/netbox-super-cli/issues/171
 [#179]: https://github.com/thomaschristory/netbox-super-cli/issues/179
 [#173]: https://github.com/thomaschristory/netbox-super-cli/issues/173

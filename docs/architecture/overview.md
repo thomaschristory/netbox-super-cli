@@ -31,7 +31,7 @@ If you need to add a dependency to `model/`, you're solving the wrong problem.
 ## Data flow at runtime
 
 1. `nsc` startup → resolve profile (CLI flags > env > config > adhoc).
-2. Resolve schema source (`--schema` override > fresh cache within the
+2. Resolve schema source (`--schema`/`NSC_SCHEMA` override > fresh cache within the
    TTL policy > live fetch > stale cache > bundled fallback).
 3. Hash + parse → build the command-model (or load cached).
 4. Hand model to Typer; register commands dynamically.
