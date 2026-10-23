@@ -71,3 +71,10 @@ def test_static_command_help_still_works_without_profile() -> None:
     result = CliRunner().invoke(app, ["ls", "--help"])
     assert result.exit_code == 0, _combined(result)
     assert "Usage" in result.stdout
+
+
+def test_bare_static_group_shows_its_help_without_profile() -> None:
+    result = CliRunner().invoke(app, ["branch"])
+    text = _combined(result)
+    assert "no NetBox URL" not in text
+    assert "Usage" in text
