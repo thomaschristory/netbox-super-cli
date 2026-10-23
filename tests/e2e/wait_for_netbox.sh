@@ -2,8 +2,9 @@
 # Bring NetBox to an "e2e-ready" state. Two phases:
 #
 # 1. Wait until Django is serving the unauthenticated login page at $NSC_URL/login/
-#    (proxy for "migrations and gunicorn are up"). 5-minute deadline; cold-start
-#    of NetBox 4.5/4.6 takes ~90–180 s on CI.
+#    (proxy for "migrations and gunicorn are up"). Deadline is
+#    $NSC_E2E_READY_TIMEOUT seconds (default 600): cold starts on CI take
+#    160–300 s, and the 4.7 + Branching stack hit the old 300 s limit.
 # 2. Create a deterministic v1 admin API token via `docker exec`, replacing any
 #    previously-bootstrapped token. Required because NetBox 4.5+ generates a
 #    random v2 token at bootstrap and never reveals the secret half — the
@@ -21,7 +22,8 @@ URL="${NSC_URL:-http://127.0.0.1:8080}"
 # chars; any override must remain in that character class.
 TOKEN="${NSC_TOKEN:-0123456789abcdef0123456789abcdef01234567}"
 COMPOSE_FILE="${NSC_E2E_COMPOSE:-tests/e2e/docker-compose.yml}"
-DEADLINE=$(( $(date +%s) + 300 ))
+READY_TIMEOUT="${NSC_E2E_READY_TIMEOUT:-600}"
+DEADLINE=$(( $(date +%s) + READY_TIMEOUT ))
 
 # Phase 1: poll the unauthenticated login page until we get a 2xx.
 while true; do
@@ -30,7 +32,7 @@ while true; do
         break
     fi
     if [ "$(date +%s)" -ge "$DEADLINE" ]; then
-        echo "netbox did not become ready within 5 minutes" >&2
+        echo "netbox did not become ready within ${READY_TIMEOUT}s" >&2
         exit 1
     fi
     echo "waiting for ${URL}/login/ ..."
