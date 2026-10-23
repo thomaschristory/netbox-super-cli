@@ -4,6 +4,10 @@ All notable changes to netbox-super-cli are tracked here. Format follows [Keep a
 
 ## Unreleased
 
+## v1.8.4 — 2026-10-23
+
+Patch release. Bad URLs and missing profiles are reported clearly for every command.
+
 ### Fixed
 
 - **An invalid `--url`/`NSC_URL` (or schema URL) is a usage error** ([#186]).
