@@ -4,6 +4,13 @@ All notable changes to netbox-super-cli are tracked here. Format follows [Keep a
 
 ## Unreleased
 
+### Fixed
+
+- **`--schema` with a missing file or unreachable URL exits 3** ([#189]).
+  It used to crash with an internal error and a traceback. It now prints
+  `Error: cannot load schema from <source>: <reason>`, like other schema
+  failures.
+
 ## v1.8.4 — 2026-10-23
 
 Patch release. Bad URLs and missing profiles are reported clearly for every command.
@@ -150,6 +157,7 @@ notices, and a fix for `nsc login` reporting the wrong user.
 [#166]: https://github.com/thomaschristory/netbox-super-cli/issues/166
 [#170]: https://github.com/thomaschristory/netbox-super-cli/issues/170
 [#186]: https://github.com/thomaschristory/netbox-super-cli/issues/186
+[#189]: https://github.com/thomaschristory/netbox-super-cli/issues/189
 [#171]: https://github.com/thomaschristory/netbox-super-cli/issues/171
 [#179]: https://github.com/thomaschristory/netbox-super-cli/issues/179
 [#173]: https://github.com/thomaschristory/netbox-super-cli/issues/173
