@@ -181,6 +181,11 @@ def resolve_profile(
     )
 
 
+def resolve_schema_override(overrides: CLIOverrides, env: Mapping[str, str]) -> str | None:
+    """`--schema` wins over `NSC_SCHEMA`; either may be a local path or a URL."""
+    return _first_set(overrides.schema_override, env.get("NSC_SCHEMA"))
+
+
 def resolve_branch_selection(
     config: Config,
     overrides: CLIOverrides,
@@ -265,7 +270,7 @@ def _url_only(value: str | None) -> str | None:
 
     `--schema`/`NSC_SCHEMA` may be a local path, in which case it should not
     populate the profile's `schema_url` (which is HttpUrl-validated). The
-    schema_override flow consumes the raw value directly from `CLIOverrides`.
+    schema_override flow consumes the raw value via `resolve_schema_override`.
     """
     if not value:
         return None

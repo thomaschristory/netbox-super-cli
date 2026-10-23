@@ -16,6 +16,7 @@ from nsc.cli.runtime import (
     resolve_color,
     resolve_object_colors,
     resolve_profile,
+    resolve_schema_override,
 )
 from nsc.config import default_paths
 from nsc.config.models import Config, ObjectColorMode
@@ -44,7 +45,7 @@ def build_runtime_context(state: GlobalState) -> RuntimeContext:
     model = resolve_command_model(
         paths=paths,
         profile=profile,
-        schema_override=state.overrides.schema_override,
+        schema_override=resolve_schema_override(state.overrides, os.environ),
         schema_refresh=state.config.defaults.schema_refresh,
         force_refresh=state.overrides.refresh_schema,
     )
