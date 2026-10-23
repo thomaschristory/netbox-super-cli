@@ -10,6 +10,8 @@ import respx
 from typer.testing import CliRunner
 
 from nsc.cli.app import app
+from nsc.config.models import OutputFormat
+from nsc.output.render import select_format
 
 _VALID = ("table", "json", "jsonl", "yaml", "csv")
 
@@ -88,3 +90,8 @@ def test_dynamic_command_help_lists_output_choices(httpx2_mock: respx.Router) ->
     result = CliRunner().invoke(app, ["dcim", "sites", "list", "--help"])
     assert result.exit_code == 0, result.stdout
     assert "jsonl" in result.stdout
+
+
+def test_empty_nsc_output_env_is_treated_as_unset() -> None:
+    fmt = select_format(cli_value=None, env_value="", is_tty=True, default=OutputFormat.YAML)
+    assert fmt is OutputFormat.YAML

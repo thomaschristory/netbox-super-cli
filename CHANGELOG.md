@@ -10,6 +10,9 @@ All notable changes to netbox-super-cli are tracked here. Format follows [Keep a
   used to crash with an internal error and a traceback. It now exits 2 with a
   message naming the valid formats (table, json, jsonl, yaml, csv), and fails
   before the schema is fetched. Every `-o` option's `--help` now lists the choices.
+  A bad root `-o` in front of a meta command (`nsc -o bogus profiles list`) is
+  now rejected too, where it used to be ignored. An empty `NSC_OUTPUT` counts
+  as unset.
 
 ## v1.8.1 — 2026-10-22
 

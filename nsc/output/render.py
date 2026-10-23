@@ -60,7 +60,7 @@ def select_format(
 ) -> OutputFormat:
     if cli_value is not None:
         return _parse_format(cli_value, source="--output")
-    if env_value is not None:
+    if env_value:
         return _parse_format(env_value, source="NSC_OUTPUT")
     if not is_tty:
         return OutputFormat.JSON
