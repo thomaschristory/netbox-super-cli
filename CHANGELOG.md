@@ -4,6 +4,16 @@ All notable changes to netbox-super-cli are tracked here. Format follows [Keep a
 
 ## Unreleased
 
+### Fixed
+
+- **A profile's sticky branch no longer follows `--url` to another server**
+  ([#171]). When `--url`/`NSC_URL` targets a different server from the
+  profile's, the profile `branch:` is ignored instead of failing with
+  `not_found` on the other server, and a one-line stderr notice says so.
+  `--branch` and `NSC_BRANCH` still apply. `nsc branch use` / `branch create
+  --use` now refuse (exit 12) to write or clear the profile's branch while a
+  URL override points at another server.
+
 ## v1.8.2 — 2026-10-23
 
 Patch release. An invalid output format is now a usage error instead of a crash.
@@ -121,6 +131,7 @@ notices, and a fix for `nsc login` reporting the wrong user.
 [#1]: https://github.com/thomaschristory/netbox-super-cli/issues/1
 [#166]: https://github.com/thomaschristory/netbox-super-cli/issues/166
 [#170]: https://github.com/thomaschristory/netbox-super-cli/issues/170
+[#171]: https://github.com/thomaschristory/netbox-super-cli/issues/171
 [#179]: https://github.com/thomaschristory/netbox-super-cli/issues/179
 [#173]: https://github.com/thomaschristory/netbox-super-cli/issues/173
 [#150]: https://github.com/thomaschristory/netbox-super-cli/issues/150

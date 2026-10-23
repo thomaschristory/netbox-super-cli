@@ -110,7 +110,8 @@ Override precedence (highest first): CLI flag > env var > config profile.
 The same precedence applies to the NetBox Branching branch: `--branch NAME` >
 `NSC_BRANCH` > the profile's `branch:` key. `nsc branch use NAME` writes that
 key, and `nsc branch use --main` removes it. `--branch main` forces main for
-one command. See [NetBox Branching](branching.md).
+one command. The profile's `branch:` is ignored when `--url`/`NSC_URL` points
+at a different server. See [NetBox Branching](branching.md).
 
 ```yaml
 profiles:

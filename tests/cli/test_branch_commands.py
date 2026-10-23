@@ -26,10 +26,10 @@ def _home(monkeypatch: pytest.MonkeyPatch, fixture_profile_yaml: Path) -> Path:
     return fixture_profile_yaml
 
 
-def _mock_schema(router: respx.Router) -> None:
+def _mock_schema(router: respx.Router, base: str = NB) -> None:
     bundled = next(Path("nsc/schemas/bundled").glob("*.json*"))
     body = gzip.decompress(bundled.read_bytes())
-    router.get(f"{NB}/api/schema/?format=json").respond(
+    router.get(f"{base}/api/schema/?format=json").respond(
         200, content=body, headers={"content-type": "application/json"}
     )
 
@@ -289,3 +289,41 @@ def test_saved_filter_branch_failure_honours_json_output(
     assert envelope["type"] == "config"
     assert envelope["details"]["branch"] == "my-change"
     assert not sites.called
+
+
+OTHER = "https://other.example"
+
+
+@pytest.mark.httpx2(assert_all_called=False)
+@pytest.mark.parametrize("args", [["use", "--main"], ["use", "my-change"]])
+def test_use_refuses_when_url_targets_another_server(
+    httpx2_mock: respx.Router, _home: Path, args: list[str]
+) -> None:
+    _mock_schema(httpx2_mock, OTHER)
+    _set_profile_branch(_home, "keep-me")
+    before = (_home / "config.yaml").read_text()
+    result = _invoke("--url", OTHER, "branch", *args, "--output", "json")
+    assert result.exit_code == 12, result.output
+    assert OTHER in json.loads(result.stdout)["error"]
+    assert (_home / "config.yaml").read_text() == before
+
+
+@pytest.mark.httpx2(assert_all_called=False)
+def test_create_use_refuses_before_creating_on_another_server(
+    httpx2_mock: respx.Router, _home: Path
+) -> None:
+    _mock_schema(httpx2_mock, OTHER)
+    create = httpx2_mock.post(f"{OTHER}/api/plugins/branching/branches/").respond(201, json={})
+    result = _invoke("--url", OTHER, "branch", "create", "x", "--use", "--output", "json")
+    assert result.exit_code == 12, result.output
+    assert not create.called
+
+
+@pytest.mark.httpx2(assert_all_called=False)
+def test_ignored_profile_branch_prints_notice(httpx2_mock: respx.Router, _home: Path) -> None:
+    _mock_schema(httpx2_mock, OTHER)
+    _set_profile_branch(_home, "keep-me")
+    result = _invoke("--url", OTHER, "branch", "current", "--output", "json")
+    assert result.exit_code == 0, result.output
+    assert "keep-me" in result.stderr
+    assert "ignored" in result.stderr

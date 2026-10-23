@@ -13,7 +13,7 @@ import uuid
 from collections.abc import Iterable, Iterator, Mapping
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, HttpUrl, SkipValidation
+from pydantic import BaseModel, ConfigDict, HttpUrl, SkipValidation, ValidationError
 
 from nsc.auth.keyring_store import KeyringStoreError, resolve_token
 from nsc.branching.errors import (
@@ -171,17 +171,32 @@ def resolve_branch_selection(
     overrides: CLIOverrides,
     env: Mapping[str, str],
 ) -> BranchSelection | None:
-    name = overrides.profile or env.get("NSC_PROFILE") or config.default_profile
-    base = config.profiles.get(name) if name else None
+    base, _ = _select_base_profile(config, overrides, env)
+    profile_branch = base.branch if base else None
+    if ignored_profile_branch(config, overrides, env) is not None:
+        profile_branch = None
     candidates: list[tuple[str | None, Literal["flag", "env", "profile"]]] = [
         (overrides.branch, "flag"),
         (env.get("NSC_BRANCH"), "env"),
-        (base.branch if base else None, "profile"),
+        (profile_branch, "profile"),
     ]
     for value, source in candidates:
         if value:
             return None if value == MAIN_BRANCH else BranchSelection(name=value, source=source)
     return None
+
+
+def ignored_profile_branch(
+    config: Config, overrides: CLIOverrides, env: Mapping[str, str]
+) -> str | None:
+    """The profile's sticky branch, when --url/NSC_URL points at another server."""
+    base, _ = _select_base_profile(config, overrides, env)
+    if base is None or not base.branch:
+        return None
+    url_override = _first_set(overrides.url, env.get("NSC_URL"))
+    if url_override is None or same_server(url_override, base.url):
+        return None
+    return base.branch
 
 
 def _select_base_profile(
@@ -193,6 +208,14 @@ def _select_base_profile(
     if name not in config.profiles:
         raise UnknownProfileError(f"profile {name!r} is not defined in ~/.nsc/config.yaml")
     return config.profiles[name], name
+
+
+def same_server(raw: str, url: HttpUrl) -> bool:
+    try:
+        parsed = HttpUrl(raw)
+    except ValidationError:
+        return False
+    return str(parsed).rstrip("/") == str(url).rstrip("/")
 
 
 def _first_set(*values: str | None) -> str | None:

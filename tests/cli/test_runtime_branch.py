@@ -15,7 +15,13 @@ from nsc.branching.errors import (
 from nsc.cli import globals as globals_mod
 from nsc.cli.app import _extract_global_overrides, _first_non_option
 from nsc.cli.globals import GlobalState, build_runtime_context
-from nsc.cli.runtime import BranchSelection, CLIOverrides, map_error, resolve_branch_selection
+from nsc.cli.runtime import (
+    BranchSelection,
+    CLIOverrides,
+    ignored_profile_branch,
+    map_error,
+    resolve_branch_selection,
+)
 from nsc.config.loader import load_config
 from nsc.config.models import Config, Profile
 from nsc.model.command_model import CommandModel
@@ -155,3 +161,56 @@ def test_branch_before_subcommand_is_global_and_other_flags_still_scan() -> None
 def test_first_non_option_skips_branch_value() -> None:
     assert _first_non_option(["--branch", "x", "profiles", "list"]) == "profiles"
     assert _first_non_option(["--branch=x", "profiles", "list"]) == "profiles"
+
+
+@pytest.mark.parametrize(
+    ("overrides", "env"),
+    [
+        (CLIOverrides(url="https://other.example"), {}),
+        (CLIOverrides(), {"NSC_URL": "https://other.example/"}),
+    ],
+)
+def test_profile_branch_ignored_when_url_targets_another_server(
+    overrides: CLIOverrides, env: dict[str, str]
+) -> None:
+    assert resolve_branch_selection(_cfg(), overrides, env=env) is None
+
+
+@pytest.mark.parametrize("url", ["https://nb.example", "https://nb.example/", "https://NB.example"])
+def test_profile_branch_kept_when_url_override_matches_profile(url: str) -> None:
+    sel = resolve_branch_selection(_cfg(), CLIOverrides(url=url), env={})
+    assert sel == BranchSelection(name="prof-branch", source="profile")
+
+
+def test_explicit_branch_still_applies_with_url_override() -> None:
+    other = CLIOverrides(url="https://other.example")
+    assert resolve_branch_selection(_cfg(), other, env={"NSC_BRANCH": "e"}) == BranchSelection(
+        name="e", source="env"
+    )
+    with_flag = CLIOverrides(url="https://other.example", branch="f")
+    assert resolve_branch_selection(_cfg(), with_flag, env={}) == BranchSelection(
+        name="f", source="flag"
+    )
+
+
+def _prefixed_cfg() -> Config:
+    return Config(
+        default_profile="p",
+        profiles={"p": Profile(name="p", url="https://nb.example/netbox", token="t", branch="pb")},
+    )
+
+
+def test_profile_branch_with_path_prefix_matches_only_same_prefix() -> None:
+    same = CLIOverrides(url="https://nb.example/netbox/")
+    assert resolve_branch_selection(_prefixed_cfg(), same, env={}) == BranchSelection(
+        name="pb", source="profile"
+    )
+    root = CLIOverrides(url="https://nb.example")
+    assert resolve_branch_selection(_prefixed_cfg(), root, env={}) is None
+
+
+def test_ignored_profile_branch_is_reported() -> None:
+    other = CLIOverrides(url="https://other.example")
+    assert ignored_profile_branch(_cfg(), other, env={}) == "prof-branch"
+    assert ignored_profile_branch(_cfg(), CLIOverrides(), env={}) is None
+    assert ignored_profile_branch(_cfg(branch=None), other, env={}) is None
