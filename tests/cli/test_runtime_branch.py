@@ -155,3 +155,33 @@ def test_branch_before_subcommand_is_global_and_other_flags_still_scan() -> None
 def test_first_non_option_skips_branch_value() -> None:
     assert _first_non_option(["--branch", "x", "profiles", "list"]) == "profiles"
     assert _first_non_option(["--branch=x", "profiles", "list"]) == "profiles"
+
+
+@pytest.mark.parametrize(
+    ("overrides", "env"),
+    [
+        (CLIOverrides(url="https://other.example"), {}),
+        (CLIOverrides(), {"NSC_URL": "https://other.example/"}),
+    ],
+)
+def test_profile_branch_ignored_when_url_targets_another_server(
+    overrides: CLIOverrides, env: dict[str, str]
+) -> None:
+    assert resolve_branch_selection(_cfg(), overrides, env=env) is None
+
+
+@pytest.mark.parametrize("url", ["https://nb.example", "https://nb.example/", "https://NB.example"])
+def test_profile_branch_kept_when_url_override_matches_profile(url: str) -> None:
+    sel = resolve_branch_selection(_cfg(), CLIOverrides(url=url), env={})
+    assert sel == BranchSelection(name="prof-branch", source="profile")
+
+
+def test_explicit_branch_still_applies_with_url_override() -> None:
+    other = CLIOverrides(url="https://other.example")
+    assert resolve_branch_selection(_cfg(), other, env={"NSC_BRANCH": "e"}) == BranchSelection(
+        name="e", source="env"
+    )
+    with_flag = CLIOverrides(url="https://other.example", branch="f")
+    assert resolve_branch_selection(_cfg(), with_flag, env={}) == BranchSelection(
+        name="f", source="flag"
+    )

@@ -13,7 +13,7 @@ import uuid
 from collections.abc import Iterable, Iterator, Mapping
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, HttpUrl, SkipValidation
+from pydantic import BaseModel, ConfigDict, HttpUrl, SkipValidation, ValidationError
 
 from nsc.auth.keyring_store import KeyringStoreError, resolve_token
 from nsc.branching.errors import (
@@ -171,8 +171,11 @@ def resolve_branch_selection(
     overrides: CLIOverrides,
     env: Mapping[str, str],
 ) -> BranchSelection | None:
-    name = overrides.profile or env.get("NSC_PROFILE") or config.default_profile
-    base = config.profiles.get(name) if name else None
+    base, _ = _select_base_profile(config, overrides, env)
+    url_override = _first_set(overrides.url, env.get("NSC_URL"))
+    if base is not None and url_override is not None and not _same_url(url_override, base.url):
+        # The sticky branch belongs to the profile's server, not to whatever --url targets.
+        base = None
     candidates: list[tuple[str | None, Literal["flag", "env", "profile"]]] = [
         (overrides.branch, "flag"),
         (env.get("NSC_BRANCH"), "env"),
@@ -193,6 +196,14 @@ def _select_base_profile(
     if name not in config.profiles:
         raise UnknownProfileError(f"profile {name!r} is not defined in ~/.nsc/config.yaml")
     return config.profiles[name], name
+
+
+def _same_url(raw: str, url: HttpUrl) -> bool:
+    try:
+        parsed = HttpUrl(raw)
+    except ValidationError:
+        return False
+    return str(parsed).rstrip("/") == str(url).rstrip("/")
 
 
 def _first_set(*values: str | None) -> str | None:
