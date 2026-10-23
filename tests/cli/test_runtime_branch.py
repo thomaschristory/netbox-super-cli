@@ -15,7 +15,13 @@ from nsc.branching.errors import (
 from nsc.cli import globals as globals_mod
 from nsc.cli.app import _extract_global_overrides, _first_non_option
 from nsc.cli.globals import GlobalState, build_runtime_context
-from nsc.cli.runtime import BranchSelection, CLIOverrides, map_error, resolve_branch_selection
+from nsc.cli.runtime import (
+    BranchSelection,
+    CLIOverrides,
+    ignored_profile_branch,
+    map_error,
+    resolve_branch_selection,
+)
 from nsc.config.loader import load_config
 from nsc.config.models import Config, Profile
 from nsc.model.command_model import CommandModel
@@ -185,3 +191,26 @@ def test_explicit_branch_still_applies_with_url_override() -> None:
     assert resolve_branch_selection(_cfg(), with_flag, env={}) == BranchSelection(
         name="f", source="flag"
     )
+
+
+def _prefixed_cfg() -> Config:
+    return Config(
+        default_profile="p",
+        profiles={"p": Profile(name="p", url="https://nb.example/netbox", token="t", branch="pb")},
+    )
+
+
+def test_profile_branch_with_path_prefix_matches_only_same_prefix() -> None:
+    same = CLIOverrides(url="https://nb.example/netbox/")
+    assert resolve_branch_selection(_prefixed_cfg(), same, env={}) == BranchSelection(
+        name="pb", source="profile"
+    )
+    root = CLIOverrides(url="https://nb.example")
+    assert resolve_branch_selection(_prefixed_cfg(), root, env={}) is None
+
+
+def test_ignored_profile_branch_is_reported() -> None:
+    other = CLIOverrides(url="https://other.example")
+    assert ignored_profile_branch(_cfg(), other, env={}) == "prof-branch"
+    assert ignored_profile_branch(_cfg(), CLIOverrides(), env={}) is None
+    assert ignored_profile_branch(_cfg(branch=None), other, env={}) is None

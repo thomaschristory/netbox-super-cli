@@ -11,6 +11,7 @@ from nsc.branching.resolve import get_branch, require_ready
 from nsc.cli.runtime import (
     CLIOverrides,
     RuntimeContext,
+    ignored_profile_branch,
     resolve_branch_selection,
     resolve_color,
     resolve_object_colors,
@@ -48,6 +49,12 @@ def build_runtime_context(state: GlobalState) -> RuntimeContext:
         force_refresh=state.overrides.refresh_schema,
     )
     branch = resolve_branch_selection(state.config, state.overrides, env=os.environ)
+    ignored = ignored_profile_branch(state.config, state.overrides, env=os.environ)
+    if ignored is not None and branch is None:
+        print(
+            f"⎇ profile branch {ignored} ignored: --url/NSC_URL targets another server",
+            file=sys.stderr,
+        )
     client = NetBoxClient(
         profile,  # type: ignore[arg-type]
         debug=state.debug,

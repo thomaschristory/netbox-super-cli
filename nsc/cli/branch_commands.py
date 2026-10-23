@@ -30,7 +30,7 @@ from nsc.branching.jobs import wait_for_job
 from nsc.branching.models import Branch, choice_value
 from nsc.branching.resolve import get_branch, require_ready
 from nsc.cache.store import ADHOC_PROFILE
-from nsc.cli.runtime import MAIN_BRANCH, RuntimeContext, emit_envelope, map_error
+from nsc.cli.runtime import MAIN_BRANCH, RuntimeContext, emit_envelope, map_error, same_server
 from nsc.config.models import OutputFormat
 from nsc.http.client import NetBoxClient
 from nsc.http.errors import NetBoxAPIError, NetBoxClientError
@@ -165,17 +165,30 @@ def _write_profile_branch(runtime: RuntimeContext, value: str | None) -> None:
 
 
 def _require_saved_profile(runtime: RuntimeContext, name: str | None) -> None:
-    if runtime.resolved_profile.name != ADHOC_PROFILE:
-        return
+    profile = runtime.resolved_profile
     hint = name or "<name>"
-    _fail(
-        runtime,
-        ErrorEnvelope(
-            error="no saved profile to store the branch on; "
-            f"set NSC_BRANCH={hint} or pass --branch {hint}",
-            type=ErrorType.CONFIG,
-        ),
-    )
+    if profile.name == ADHOC_PROFILE:
+        _fail(
+            runtime,
+            ErrorEnvelope(
+                error="no saved profile to store the branch on; "
+                f"set NSC_BRANCH={hint} or pass --branch {hint}",
+                type=ErrorType.CONFIG,
+            ),
+        )
+    saved = runtime.config.profiles.get(profile.name)
+    if saved is not None and not same_server(str(profile.url), saved.url):
+        # A sticky branch is per profile server; storing one picked on another
+        # server would apply it to the wrong NetBox.
+        _fail(
+            runtime,
+            ErrorEnvelope(
+                error=f"--url/NSC_URL targets {profile.url}, not profile {profile.name}'s "
+                f"server {saved.url}; drop the URL override, or use --branch {hint} / "
+                f"NSC_BRANCH={hint} for this server",
+                type=ErrorType.CONFIG,
+            ),
+        )
 
 
 def _use(runtime: RuntimeContext, branch: Branch) -> None:

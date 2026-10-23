@@ -172,19 +172,31 @@ def resolve_branch_selection(
     env: Mapping[str, str],
 ) -> BranchSelection | None:
     base, _ = _select_base_profile(config, overrides, env)
-    url_override = _first_set(overrides.url, env.get("NSC_URL"))
-    if base is not None and url_override is not None and not _same_url(url_override, base.url):
-        # The sticky branch belongs to the profile's server, not to whatever --url targets.
-        base = None
+    profile_branch = base.branch if base else None
+    if ignored_profile_branch(config, overrides, env) is not None:
+        profile_branch = None
     candidates: list[tuple[str | None, Literal["flag", "env", "profile"]]] = [
         (overrides.branch, "flag"),
         (env.get("NSC_BRANCH"), "env"),
-        (base.branch if base else None, "profile"),
+        (profile_branch, "profile"),
     ]
     for value, source in candidates:
         if value:
             return None if value == MAIN_BRANCH else BranchSelection(name=value, source=source)
     return None
+
+
+def ignored_profile_branch(
+    config: Config, overrides: CLIOverrides, env: Mapping[str, str]
+) -> str | None:
+    """The profile's sticky branch, when --url/NSC_URL points at another server."""
+    base, _ = _select_base_profile(config, overrides, env)
+    if base is None or not base.branch:
+        return None
+    url_override = _first_set(overrides.url, env.get("NSC_URL"))
+    if url_override is None or same_server(url_override, base.url):
+        return None
+    return base.branch
 
 
 def _select_base_profile(
@@ -198,7 +210,7 @@ def _select_base_profile(
     return config.profiles[name], name
 
 
-def _same_url(raw: str, url: HttpUrl) -> bool:
+def same_server(raw: str, url: HttpUrl) -> bool:
     try:
         parsed = HttpUrl(raw)
     except ValidationError:

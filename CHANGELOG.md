@@ -9,7 +9,10 @@ All notable changes to netbox-super-cli are tracked here. Format follows [Keep a
 - **A profile's sticky branch no longer follows `--url` to another server**
   ([#171]). When `--url`/`NSC_URL` targets a different server from the
   profile's, the profile `branch:` is ignored instead of failing with
-  `not_found` on the other server. `--branch` and `NSC_BRANCH` still apply.
+  `not_found` on the other server, and a one-line stderr notice says so.
+  `--branch` and `NSC_BRANCH` still apply. `nsc branch use` / `branch create
+  --use` now refuse (exit 12) to write or clear the profile's branch while a
+  URL override points at another server.
 
 ## v1.8.2 — 2026-10-23
 
