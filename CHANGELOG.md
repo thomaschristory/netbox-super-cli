@@ -4,6 +4,16 @@ All notable changes to netbox-super-cli are tracked here. Format follows [Keep a
 
 ## Unreleased
 
+### Fixed
+
+- **An invalid `-o/--output` or `NSC_OUTPUT` is a usage error** ([#179]). It
+  used to crash with an internal error and a traceback. It now exits 2 with a
+  message naming the valid formats (table, json, jsonl, yaml, csv), and fails
+  before the schema is fetched. Every `-o` option's `--help` now lists the choices.
+  A bad root `-o` in front of a meta command (`nsc -o bogus profiles list`) is
+  now rejected too, where it used to be ignored. An empty `NSC_OUTPUT` counts
+  as unset.
+
 ## v1.8.1 — 2026-10-22
 
 Patch release. Fixes two NetBox Branching issues found after v1.8.0.
@@ -107,6 +117,7 @@ notices, and a fix for `nsc login` reporting the wrong user.
 [#1]: https://github.com/thomaschristory/netbox-super-cli/issues/1
 [#166]: https://github.com/thomaschristory/netbox-super-cli/issues/166
 [#170]: https://github.com/thomaschristory/netbox-super-cli/issues/170
+[#179]: https://github.com/thomaschristory/netbox-super-cli/issues/179
 [#173]: https://github.com/thomaschristory/netbox-super-cli/issues/173
 [#150]: https://github.com/thomaschristory/netbox-super-cli/issues/150
 [#151]: https://github.com/thomaschristory/netbox-super-cli/issues/151

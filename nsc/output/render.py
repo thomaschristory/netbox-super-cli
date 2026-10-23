@@ -9,6 +9,16 @@ from nsc.config.models import OutputFormat
 from nsc.output import csv_, json_, jsonl, table, yaml_
 
 
+class InvalidOutputFormatError(ValueError):
+    def __init__(self, value: str, *, source: str) -> None:
+        valid = ", ".join(f.value for f in OutputFormat)
+        super().__init__(
+            f"invalid output format {value!r} (from {source}); expected one of: {valid}"
+        )
+        self.value = value
+        self.source = source
+
+
 def render(
     data: list[dict[str, Any]] | dict[str, Any],
     *,
@@ -49,9 +59,16 @@ def select_format(
     default: OutputFormat,
 ) -> OutputFormat:
     if cli_value is not None:
-        return OutputFormat(cli_value)
-    if env_value is not None:
-        return OutputFormat(env_value)
+        return _parse_format(cli_value, source="--output")
+    if env_value:
+        return _parse_format(env_value, source="NSC_OUTPUT")
     if not is_tty:
         return OutputFormat.JSON
     return default
+
+
+def _parse_format(value: str, *, source: str) -> OutputFormat:
+    try:
+        return OutputFormat(value)
+    except ValueError:
+        raise InvalidOutputFormatError(value, source=source) from None

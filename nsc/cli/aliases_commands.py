@@ -104,7 +104,7 @@ def register(app: typer.Typer) -> None:  # noqa: PLR0915
                 shell_complete=shell_complete_resource_name_ls,
             ),
         ],
-        output: Annotated[str | None, typer.Option("--output", "-o")] = None,
+        output: Annotated[OutputFormat | None, typer.Option("--output", "-o")] = None,
         compact: Annotated[bool, typer.Option("--compact")] = False,
         columns: Annotated[str | None, typer.Option("--columns")] = None,
         limit: Annotated[int | None, typer.Option("--limit", min=0)] = None,
@@ -161,7 +161,7 @@ def register(app: typer.Typer) -> None:  # noqa: PLR0915
         apply: Annotated[bool, typer.Option("--apply", "-a")] = False,
         explain: Annotated[bool, typer.Option("--explain")] = False,
         strict: Annotated[bool, typer.Option("--strict")] = False,
-        output: Annotated[str | None, typer.Option("--output", "-o")] = None,
+        output: Annotated[OutputFormat | None, typer.Option("--output", "-o")] = None,
     ) -> None:
         runtime = _runtime_from_ctx(ctx)
         update: dict[str, object] = {
@@ -221,7 +221,7 @@ def register(app: typer.Typer) -> None:  # noqa: PLR0915
             ),
         ],
         id_or_name: Annotated[str, typer.Argument(help="Numeric id or unique name.")],
-        output: Annotated[str | None, typer.Option("--output", "-o")] = None,
+        output: Annotated[OutputFormat | None, typer.Option("--output", "-o")] = None,
         compact: Annotated[bool, typer.Option("--compact")] = False,
         columns: Annotated[str | None, typer.Option("--columns")] = None,
     ) -> None:
@@ -275,7 +275,7 @@ def register(app: typer.Typer) -> None:  # noqa: PLR0915
     def search_cmd(
         ctx: typer.Context,
         query: Annotated[str, typer.Argument(help="Search query string.")],
-        output: Annotated[str | None, typer.Option("--output", "-o")] = None,
+        output: Annotated[OutputFormat | None, typer.Option("--output", "-o")] = None,
         compact: Annotated[bool, typer.Option("--compact")] = False,
         limit: Annotated[int | None, typer.Option("--limit", min=0)] = None,
         all_: Annotated[bool, typer.Option("--all")] = False,

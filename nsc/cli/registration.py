@@ -327,7 +327,7 @@ def _build_global_flag_params() -> tuple[inspect.Parameter, ...]:
         inspect.Parameter(
             name="output",
             kind=inspect.Parameter.KEYWORD_ONLY,
-            annotation=str | None,
+            annotation=OutputFormat | None,
             default=typer.Option(None, "--output", "-o"),
         ),
         inspect.Parameter(
@@ -383,7 +383,7 @@ def _build_write_flag_params() -> tuple[inspect.Parameter, ...]:
         inspect.Parameter(
             name="output",
             kind=inspect.Parameter.KEYWORD_ONLY,
-            annotation=str | None,
+            annotation=OutputFormat | None,
             default=typer.Option(None, "--output", "-o"),
         ),
         inspect.Parameter(

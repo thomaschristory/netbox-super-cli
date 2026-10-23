@@ -31,6 +31,13 @@ class GlobalState:
 
 
 def build_runtime_context(state: GlobalState) -> RuntimeContext:
+    # Validate the format before the schema fetch so a typo fails fast and offline.
+    output = select_format(
+        cli_value=state.overrides.output,
+        env_value=os.environ.get("NSC_OUTPUT"),
+        is_tty=sys.stdout.isatty(),
+        default=state.config.defaults.output,
+    )
     profile = resolve_profile(state.config, state.overrides, env=os.environ)
     paths = default_paths()
     model = resolve_command_model(
@@ -39,12 +46,6 @@ def build_runtime_context(state: GlobalState) -> RuntimeContext:
         schema_override=state.overrides.schema_override,
         schema_refresh=state.config.defaults.schema_refresh,
         force_refresh=state.overrides.refresh_schema,
-    )
-    output = select_format(
-        cli_value=state.overrides.output,
-        env_value=os.environ.get("NSC_OUTPUT"),
-        is_tty=sys.stdout.isatty(),
-        default=state.config.defaults.output,
     )
     branch = resolve_branch_selection(state.config, state.overrides, env=os.environ)
     client = NetBoxClient(
