@@ -32,8 +32,9 @@ docker compose -f tests/e2e/docker-compose.yml down -v
 
 ## Iterating without restarting NetBox
 
-Cold-start of the NetBox container takes ~90–180 s (database migrations).
-For tight iteration, leave the stack running and re-invoke pytest directly:
+Cold-start of the NetBox container takes ~90–180 s locally and 160–300 s on
+CI (database migrations). `wait_for_netbox.sh` gives up after
+`NSC_E2E_READY_TIMEOUT` seconds (default 600). For tight iteration, leave the stack running and re-invoke pytest directly:
 
 ```sh
 docker compose -f tests/e2e/docker-compose.yml up -d

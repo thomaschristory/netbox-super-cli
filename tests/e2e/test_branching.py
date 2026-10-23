@@ -17,6 +17,11 @@ from tests.e2e.conftest import CompletedNsc
 
 RunNsc = Callable[..., CompletedNsc]
 
+# Must match tests/e2e/branching/Dockerfile and the e2e-branching job. On these
+# versions the plugin reports the conflicting edit, so a clean merge is a regression.
+PINNED_NETBOX = "4.7.3"
+PINNED_BRANCHING = "1.2.2"
+
 
 def _name(prefix: str) -> str:
     return f"{prefix}-{uuid.uuid4().hex[:8]}"
@@ -118,7 +123,11 @@ def test_conflict_on_merge(run_nsc: RunNsc, netbox_client: httpx2.Client, branch
 
     r = run_nsc("branch", "merge", branch, "--output", "json", timeout=300)
     if r.returncode == 0:
-        pytest.skip("plugin did not report a conflict for this edit; nothing to assert")
+        status = netbox_client.get("/api/status/").json()
+        versions = (status["netbox-version"], status["plugins"].get("netbox_branching"))
+        if versions == (PINNED_NETBOX, PINNED_BRANCHING):
+            pytest.fail(f"merge reported no conflict on pinned versions {versions}: {r.stdout}")
+        pytest.skip(f"no conflict reported on unpinned versions {versions}; nothing to assert")
     assert r.returncode == 10, (r.stdout, r.stderr)
     assert json.loads(r.stdout)["details"]["conflicts"]
 

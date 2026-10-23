@@ -11,6 +11,8 @@ on:
       - 'nsc/auth/**'
       - 'nsc/cli/login_commands.py'
       - 'nsc/cli/profiles_commands.py'
+      - 'nsc/cli/globals.py'
+      - 'nsc/cli/runtime.py'
       - 'nsc/cli/handlers.py'
       - 'nsc/cli/registration.py'
       - 'nsc/cli/writes/**'
