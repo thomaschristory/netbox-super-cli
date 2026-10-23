@@ -4,6 +4,10 @@ All notable changes to netbox-super-cli are tracked here. Format follows [Keep a
 
 ## Unreleased
 
+## v1.8.3 — 2026-10-23
+
+Patch release. A profile's sticky branch now stays with that profile's server.
+
 ### Fixed
 
 - **A profile's sticky branch no longer follows `--url` to another server**
