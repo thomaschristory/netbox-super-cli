@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -222,3 +223,29 @@ def test_offline_no_cache_no_bundled_raises(
     monkeypatch.setattr(source_mod, "_load_bundled_command_model", lambda: None)
     with pytest.raises(SchemaSourceError):
         resolve_command_model(paths=paths, profile=profile, schema_override=None)
+
+
+def test_schema_override_missing_file_raises_source_error(tmp_path: Path) -> None:
+    missing = tmp_path / "missing.json"
+    expected = re.escape(f"cannot load schema from {missing}: not found")
+    with pytest.raises(SchemaSourceError, match=expected):
+        resolve_command_model(
+            paths=_paths(tmp_path), profile=_profile(), schema_override=str(missing)
+        )
+
+
+def test_schema_override_invalid_json_raises_source_error(tmp_path: Path) -> None:
+    bad = tmp_path / "bad.json"
+    bad.write_text("not json", encoding="utf-8")
+    with pytest.raises(SchemaSourceError, match="not valid JSON"):
+        resolve_command_model(paths=_paths(tmp_path), profile=_profile(), schema_override=str(bad))
+
+
+def test_schema_override_unreachable_url_raises_source_error(
+    tmp_path: Path, httpx2_mock: respx.Router
+) -> None:
+    url = "https://schemas.example/s.json"
+    httpx2_mock.get(url).mock(side_effect=httpx2.ConnectError("offline"))
+    expected = re.escape(f"cannot load schema from {url}: request failed")
+    with pytest.raises(SchemaSourceError, match=expected):
+        resolve_command_model(paths=_paths(tmp_path), profile=_profile(), schema_override=url)

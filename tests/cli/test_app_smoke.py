@@ -136,3 +136,33 @@ def test_flag_equals_value_form_is_recognized_in_bootstrap(
     # commands meta-command bypasses the bootstrap profile resolution; the
     # error here will be from the schema being missing, not from the URL parsing.
     assert "no NetBox URL" not in (result.stdout or "")
+
+
+def test_schema_override_missing_file_exits_three(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("NSC_HOME", str(tmp_path))
+    monkeypatch.setenv("NSC_URL", "https://nb.example/")
+    monkeypatch.setenv("NSC_TOKEN", "tok")
+    for var in ("NSC_PROFILE", "NSC_SCHEMA"):
+        monkeypatch.delenv(var, raising=False)
+    missing = str(tmp_path / "missing.json")
+    result = CliRunner().invoke(app, ["--schema", missing, "dcim", "sites", "list"])
+    assert result.exit_code == 3
+    assert f"Error: cannot load schema from {missing}: not found" in result.stderr
+    assert "internal error" not in result.output
+
+
+def test_schema_override_unreachable_url_exits_three_for_alias(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, httpx2_mock: respx.Router
+) -> None:
+    monkeypatch.setenv("NSC_HOME", str(tmp_path))
+    monkeypatch.setenv("NSC_URL", "https://nb.example/")
+    monkeypatch.setenv("NSC_TOKEN", "tok")
+    for var in ("NSC_PROFILE", "NSC_SCHEMA"):
+        monkeypatch.delenv(var, raising=False)
+    url = "https://schemas.example/s.json"
+    httpx2_mock.get(url).mock(side_effect=httpx2.ConnectError("offline"))
+    result = CliRunner().invoke(app, ["--schema", url, "ls", "x"])
+    assert result.exit_code == 3
+    assert f"Error: cannot load schema from {url}: request failed" in result.stderr

@@ -29,7 +29,7 @@ from nsc.config.models import SchemaRefresh
 from nsc.config.settings import Paths
 from nsc.model.command_model import CommandModel
 from nsc.schema.hashing import canonical_sha256
-from nsc.schema.loader import LoadedSchema, load_schema
+from nsc.schema.loader import LoadedSchema, SchemaLoadError, load_schema
 from nsc.schema.models import OpenAPIDocument
 from nsc.schemas import bundled as _bundled_pkg
 
@@ -69,9 +69,12 @@ def resolve_command_model(
     import httpx2  # noqa: PLC0415  # deferred: keeps httpx2 off the CLI-startup path.
 
     if schema_override is not None:
-        loaded = load_schema(
-            schema_override, verify_ssl=profile.verify_ssl, timeout=profile.timeout
-        )
+        try:
+            loaded = load_schema(
+                schema_override, verify_ssl=profile.verify_ssl, timeout=profile.timeout
+            )
+        except SchemaLoadError as exc:
+            raise SchemaSourceError(f"cannot load schema from {exc}") from exc
         return _build_and_cache(loaded, paths, profile)
 
     if not force_refresh:
