@@ -93,6 +93,17 @@ class UnknownProfileError(Exception):
     """A profile was requested by name but is not in the config."""
 
 
+class InvalidURLError(ValueError):
+    """A --url/NSC_URL (or schema URL) override is not a valid http(s) URL."""
+
+    def __init__(self, value: str, *, source: str, what: str = "NetBox URL") -> None:
+        super().__init__(
+            f"invalid {what} {value!r} (from {source}); expected http(s)://host[/path]"
+        )
+        self.value = value
+        self.source = source
+
+
 def _resolve_ssl_and_timeout(
     config: Config,
     overrides: CLIOverrides,
@@ -136,13 +147,17 @@ def resolve_profile(
 ) -> ResolvedProfile:
     base, base_name = _select_base_profile(config, overrides, env)
 
-    url = _first_set(overrides.url, env.get("NSC_URL"), str(base.url) if base else None)
+    url_choice = _first_set_with_source(
+        (overrides.url, "--url"),
+        (env.get("NSC_URL"), "NSC_URL"),
+        (str(base.url) if base else None, f"profile {base_name}"),
+    )
     # Flag/env overrides win before the keyring is consulted, so `--token`
     # works even when the profile's `!keyring` entry or backend is missing.
     token = _first_set(overrides.token, env.get("NSC_TOKEN"))
     if token is None and base is not None:
         token = _first_set(resolve_token(base))
-    if url is None or token is None:
+    if url_choice is None or token is None:
         raise NoProfileError(
             "no NetBox URL/token configured (set NSC_URL+NSC_TOKEN, "
             "pass --url and --token, or configure a profile in ~/.nsc/config.yaml)"
@@ -150,19 +165,19 @@ def resolve_profile(
 
     verify_ssl, timeout = _resolve_ssl_and_timeout(config, overrides, env, base)
 
-    schema_url_raw = _first_set(
-        _url_only(overrides.schema_override),
-        _url_only(env.get("NSC_SCHEMA")),
-        str(base.schema_url) if base and base.schema_url else None,
+    schema_choice = _first_set_with_source(
+        (_url_only(overrides.schema_override), "--schema"),
+        (_url_only(env.get("NSC_SCHEMA")), "NSC_SCHEMA"),
+        (str(base.schema_url) if base and base.schema_url else None, f"profile {base_name}"),
     )
 
     return ResolvedProfile(
         name=base_name,
-        url=HttpUrl(url),
+        url=_parse_url(*url_choice),
         token=token,
         verify_ssl=verify_ssl,
         timeout=timeout,
-        schema_url=HttpUrl(schema_url_raw) if schema_url_raw else None,
+        schema_url=_parse_url(*schema_choice, what="schema URL") if schema_choice else None,
     )
 
 
@@ -216,6 +231,20 @@ def same_server(raw: str, url: HttpUrl) -> bool:
     except ValidationError:
         return False
     return str(parsed).rstrip("/") == str(url).rstrip("/")
+
+
+def _first_set_with_source(*candidates: tuple[str | None, str]) -> tuple[str, str] | None:
+    for value, source in candidates:
+        if value is not None and value != "":
+            return value, source
+    return None
+
+
+def _parse_url(value: str, source: str, *, what: str = "NetBox URL") -> HttpUrl:
+    try:
+        return HttpUrl(value)
+    except ValidationError:
+        raise InvalidURLError(value, source=source, what=what) from None
 
 
 def _first_set(*values: str | None) -> str | None:
