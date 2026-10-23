@@ -39,7 +39,7 @@ from nsc.output.render import render
 
 _DEFAULT_TIMEOUT = 600.0
 
-_Output = Annotated[str | None, typer.Option("--output", "-o")]
+_Output = Annotated[OutputFormat | None, typer.Option("--output", "-o")]
 _Timeout = Annotated[
     float, typer.Option("--timeout", help="Seconds to wait for the server-side job.")
 ]

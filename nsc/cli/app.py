@@ -43,6 +43,7 @@ from nsc.config import default_paths
 from nsc.config.loader import ConfigParseError, load_config
 from nsc.config.models import Config, OutputFormat
 from nsc.output.errors import ErrorEnvelope, ErrorType
+from nsc.output.render import InvalidOutputFormatError
 from nsc.schema.source import SchemaSourceError
 
 # Mutable dict used as a single-slot holder to avoid `global` statements.
@@ -267,6 +268,7 @@ class _BootstrappingGroup(TyperGroup):
                 UnknownProfileError,
                 SchemaSourceError,
                 KeyringStoreError,
+                InvalidOutputFormatError,
             ) as exc:
                 _invocation["error"] = exc
                 return super().make_context(info_name, args, parent, **extra)
@@ -303,6 +305,10 @@ class _BootstrappingGroup(TyperGroup):
             # Every profile-needing command, static aliases included, must surface
             # the keyring failure as an envelope rather than a bare usage error.
             raise typer.Exit(_emit_keyring_envelope(error, args))
+        if isinstance(error, InvalidOutputFormatError) and args:
+            # Static commands (aliases, `branch`) read the format from the
+            # bootstrapped runtime, so this must fail even when args[0] is registered.
+            ctx.fail(str(error))
         if error is not None and args and args[0] not in self.commands:
             if isinstance(error, SchemaSourceError):
                 # Exit code 3 matches EXIT_CODES[ErrorType.SCHEMA] — keep in sync.
@@ -354,7 +360,7 @@ def _root(
             help="Force a fresh /api/schema/ fetch, bypassing the cache TTL.",
         ),
     ] = False,
-    output: Annotated[str | None, typer.Option("--output", "-o")] = None,
+    output: Annotated[OutputFormat | None, typer.Option("--output", "-o")] = None,
     object_colors: Annotated[
         bool | None,
         typer.Option(
