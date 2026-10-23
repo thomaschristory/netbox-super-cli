@@ -4,6 +4,10 @@ All notable changes to netbox-super-cli are tracked here. Format follows [Keep a
 
 ## Unreleased
 
+## v1.8.5 — 2026-10-23
+
+Patch release. `--schema` and `NSC_SCHEMA` report load failures clearly and behave the same way.
+
 ### Fixed
 
 - **`--schema` with a missing file or unreachable URL exits 3** ([#189]).
