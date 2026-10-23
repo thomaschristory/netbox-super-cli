@@ -4,6 +4,10 @@ All notable changes to netbox-super-cli are tracked here. Format follows [Keep a
 
 ## Unreleased
 
+## v1.8.2 — 2026-10-23
+
+Patch release. An invalid output format is now a usage error instead of a crash.
+
 ### Fixed
 
 - **An invalid `-o/--output` or `NSC_OUTPUT` is a usage error** ([#179]). It
