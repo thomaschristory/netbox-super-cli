@@ -9,7 +9,9 @@ and an optional `--refresh-schema` override:
 
 1. `--schema <path-or-url>` (or `NSC_SCHEMA`; the flag wins) — one-shot
    override. Always wins; never consults the TTL fast-path, the cache
-   fallback or the bundled snapshot. A missing file, unreachable URL or
+   fallback or the bundled snapshot. It never writes or refreshes the
+   profile's cache, so a later run without it can't pick it up; a cache
+   entry with the same hash (identical schema) is reused read-only. A missing file, unreachable URL or
    invalid document exits 3 with `cannot load schema from <source>: …`.
 2. **TTL fast-path.** If the policy is `daily`, `weekly`, or `manual` and
    the newest sidecar-validated cache entry for the active profile is

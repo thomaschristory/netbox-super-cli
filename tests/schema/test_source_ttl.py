@@ -12,6 +12,7 @@ import time
 from pathlib import Path
 from typing import Any
 
+import httpx2
 import pytest
 import respx
 
@@ -444,3 +445,73 @@ def test_aged_cache_with_unchanged_hash_refreshes_sidecar(
     assert route.call_count == 2, (
         "the second resolve refreshed the sidecar, so the third must use the fast path"
     )
+
+
+def _override_schema_doc() -> dict[str, Any]:
+    doc = _minimal_schema_doc()
+    doc["info"] = {"title": "override", "version": "9.9.9"}
+    return doc
+
+
+def _write_override(tmp_path: Path) -> str:
+    path = tmp_path / "override.json"
+    path.write_text(json.dumps(_override_schema_doc()), encoding="utf-8")
+    return str(path)
+
+
+def test_schema_override_does_not_satisfy_later_ttl_fast_path(
+    tmp_path: Path, httpx2_mock: respx.Router
+) -> None:
+    """#196: an override must not become the profile's fresh cache entry, or the
+    next run without it serves the override schema for the whole TTL window."""
+    route = httpx2_mock.get("https://nb.example/api/schema/?format=json").respond(
+        200, json=_minimal_schema_doc()
+    )
+    paths = _paths(tmp_path)
+    override = resolve_command_model(
+        paths=paths,
+        profile=_profile(),
+        schema_override=_write_override(tmp_path),
+        schema_refresh=SchemaRefresh.DAILY,
+    )
+    live = resolve_command_model(
+        paths=paths, profile=_profile(), schema_override=None, schema_refresh=SchemaRefresh.DAILY
+    )
+    assert route.call_count == 1
+    assert live.schema_hash != override.schema_hash
+
+
+def test_schema_override_is_not_served_by_offline_fallback(
+    tmp_path: Path, httpx2_mock: respx.Router
+) -> None:
+    httpx2_mock.get("https://nb.example/api/schema/?format=json").mock(
+        side_effect=httpx2.ConnectError("offline")
+    )
+    paths = _paths(tmp_path)
+    override = resolve_command_model(
+        paths=paths, profile=_profile(), schema_override=_write_override(tmp_path)
+    )
+    fallback = resolve_command_model(paths=paths, profile=_profile(), schema_override=None)
+    assert fallback.schema_hash != override.schema_hash
+
+
+@pytest.mark.httpx2(assert_all_called=False)
+def test_schema_override_reuses_matching_cache_entry_without_refreshing_it(
+    tmp_path: Path, httpx2_mock: respx.Router
+) -> None:
+    httpx2_mock.get("https://nb.example/api/schema/?format=json").respond(
+        200, json=_minimal_schema_doc()
+    )
+    paths = _paths(tmp_path)
+    live = resolve_command_model(paths=paths, profile=_profile(), schema_override=None)
+    profile_dir = paths.cache_dir / "prod"
+    stale = time.time() - 10 * 86_400
+    _age_sidecars(profile_dir, stale)
+    same = tmp_path / "same.json"
+    same.write_text(json.dumps(_minimal_schema_doc()), encoding="utf-8")
+
+    model = resolve_command_model(paths=paths, profile=_profile(), schema_override=str(same))
+
+    assert model.schema_hash == live.schema_hash
+    meta = json.loads((profile_dir / f"{live.schema_hash}.meta.json").read_text())
+    assert meta["fetched_at"] == stale

@@ -4,6 +4,14 @@ All notable changes to netbox-super-cli are tracked here. Format follows [Keep a
 
 ## Unreleased
 
+### Fixed
+
+- **A `--schema`/`NSC_SCHEMA` override no longer leaks into later runs** ([#196]).
+  The override was saved as the profile's freshly fetched schema. So for the
+  next 24 hours (default `schema_refresh: daily`), and whenever NetBox was
+  unreachable, runs *without* the override silently used it. Overrides are now
+  never written to the profile's cache.
+
 ## v1.8.5 — 2026-10-23
 
 Patch release. `--schema` and `NSC_SCHEMA` report load failures clearly and behave the same way.
@@ -167,6 +175,7 @@ notices, and a fix for `nsc login` reporting the wrong user.
 [#186]: https://github.com/thomaschristory/netbox-super-cli/issues/186
 [#189]: https://github.com/thomaschristory/netbox-super-cli/issues/189
 [#192]: https://github.com/thomaschristory/netbox-super-cli/issues/192
+[#196]: https://github.com/thomaschristory/netbox-super-cli/issues/196
 [#171]: https://github.com/thomaschristory/netbox-super-cli/issues/171
 [#179]: https://github.com/thomaschristory/netbox-super-cli/issues/179
 [#173]: https://github.com/thomaschristory/netbox-super-cli/issues/173
