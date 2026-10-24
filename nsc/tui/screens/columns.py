@@ -10,6 +10,7 @@ from textual.containers import Vertical
 from textual.screen import ModalScreen
 from textual.widgets import Label, ListItem, ListView
 
+from nsc.output.sanitize import safe_text
 from nsc.tui.columns import ColumnSelection
 
 _HINT = "space toggle · shift+↑/↓ reorder · ↑/↓ move · Enter apply · Esc cancel"
@@ -49,7 +50,7 @@ class ColumnChooserScreen(ModalScreen[list[str]]):
         listing.clear()
         for name in self.selection.items:
             mark = "x" if self.selection.is_visible(name) else " "
-            listing.append(ListItem(Label(f"[{mark}] {self._labels.get(name, name)}")))
+            listing.append(ListItem(Label(safe_text(f"[{mark}] {self._labels.get(name, name)}"))))
         if self.selection.items:
             listing.index = max(0, min(index, len(self.selection.items) - 1))
 

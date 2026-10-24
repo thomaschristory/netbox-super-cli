@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 from typing import Any, ClassVar
 
+from rich.text import Text
 from textual.app import ComposeResult
 from textual.binding import Binding, BindingType
 from textual.containers import Horizontal, Vertical, VerticalScroll
@@ -21,6 +22,7 @@ from textual.screen import ModalScreen
 from textual.widgets import Button, Input, Label, ListItem, ListView, Select
 
 from nsc.model.command_model import CommandModel, Operation, Parameter
+from nsc.output.sanitize import safe_text
 from nsc.tui.filters import FilterState, common_filters, parse_raw, searchable_filters
 from nsc.tui.fk import resolve_fk_target
 
@@ -129,10 +131,10 @@ class FilterScreen(ModalScreen[dict[str, str]]):
             else:
                 yield Input(value=current, id=f"f-{param.name}")
 
-    def _fk_button_text(self, name: str) -> str:
+    def _fk_button_text(self, name: str) -> Text:
         key = self._apply_key(name)
         display = self._fk_display.get(key) or self.state.as_params().get(key, "")
-        return f"{self._label(name)}: {display or _ANY}"
+        return safe_text(f"{self._label(name)}: {display or _ANY}")
 
     @staticmethod
     def _field_name(ident: str | None) -> str | None:

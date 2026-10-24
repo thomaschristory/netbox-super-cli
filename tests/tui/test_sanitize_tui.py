@@ -7,14 +7,17 @@ from typing import Any
 import pytest
 from rich.text import Text
 from textual.app import App, ComposeResult
-from textual.widgets import DataTable, Label, ListView, Static
+from textual.widgets import DataTable, Label, ListView, Static, Tree
 
 from nsc.http.errors import NetBoxAPIError
 from nsc.output.colors import ColoredValue
 from nsc.tui.errors import api_error_message
 from nsc.tui.screens.detail import DetailScreen
+from nsc.tui.screens.global_search import GlobalSearchScreen
 from nsc.tui.view import render_cell
+from tests.tui.test_column_chooser import _ChooserApp
 from tests.tui.test_detail_screen import _model, _SpyClient
+from tests.tui.test_global_search import _SearchApp
 from tests.tui.test_record_picker import _FakeClient, _PickerApp
 
 EVIL = "[bold red]x[/] \x1b]0;pwned\x07"
@@ -78,3 +81,33 @@ async def test_record_picker_labels_are_sanitized_text() -> None:
         await pilot.pause()
         label = app.screen.query_one(ListView).query_one(Label)
         assert _plain(label.render()) == SHOWN
+
+
+@pytest.mark.asyncio
+async def test_global_search_leaves_are_sanitized() -> None:
+    class _EvilClient:
+        def paginate(self, path, params=None, *, limit=None):  # type: ignore[no-untyped-def]
+            if "devices" in path:
+                yield {"id": 7, "name": EVIL}
+
+    app = _SearchApp()
+    app.client = _EvilClient()  # type: ignore[assignment]
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        screen = app.screen
+        assert isinstance(screen, GlobalSearchScreen)
+        screen._client = app.client
+        await screen._run_search("x")
+        await pilot.pause()
+        tree = screen.query_one("#search-tree", Tree)
+        leaf = tree.root.children[0].children[0]
+        assert _plain(leaf.label) == SHOWN
+
+
+@pytest.mark.asyncio
+async def test_column_chooser_labels_render_literally() -> None:
+    app = _ChooserApp(available=["id", "cf"], visible=["id"], labels={"cf": EVIL})
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        rendered = [_plain(lbl.render()) for lbl in app.screen.query_one(ListView).query(Label)]
+        assert rendered == ["[x] id", f"[ ] {SHOWN}"]

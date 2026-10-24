@@ -23,8 +23,8 @@ All notable changes to netbox-super-cli are tracked here. Format follows [Keep a
   - table output, including column headers, which weren't escaped at all;
   - the `--explain` panel;
   - error panels;
-  - the TUI: list and detail cells, record picker, error notifications and
-    diff views.
+  - the TUI: list and detail cells, global search results, record picker, FK
+    buttons, column chooser, error notifications and diff views.
 
   In the TUI, values were also parsed as markup, so a value like `[red]x[/]`
   was styled and lost its brackets. They now render literally.

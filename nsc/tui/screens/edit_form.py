@@ -18,6 +18,7 @@ from textual.widgets.selection_list import Selection
 
 from nsc.http.errors import NetBoxAPIError, NetBoxClientError
 from nsc.model.command_model import CommandModel, Operation
+from nsc.output.sanitize import safe_text
 from nsc.savedfilters.custom_fields import CustomFieldDef
 from nsc.savedfilters.tags import TagDef
 from nsc.tui._bindings import textual_bindings
@@ -193,7 +194,7 @@ class EditForm(Screen[None]):
             if isinstance(nested, dict)
             else ("" if value is None else str(value))
         )
-        yield Button(f"{name}: {current}", id=f"fk-{name}", classes="edit-fk")
+        yield Button(safe_text(f"{name}: {current}"), id=f"fk-{name}", classes="edit-fk")
 
     @staticmethod
     def _field_name(ident: str | None) -> str | None:
@@ -287,7 +288,7 @@ class EditForm(Screen[None]):
             if result is not None:
                 self.staged[name] = result[0]
                 self._fk_labels[name] = result[1]
-                self.query_one(f"#fk-{name}", Button).label = f"{name}: {result[1]}"
+                self.query_one(f"#fk-{name}", Button).label = safe_text(f"{name}: {result[1]}")
 
         self.app.push_screen(RecordPicker(self._client, target.list_op, target.current_id), _stage)
 
