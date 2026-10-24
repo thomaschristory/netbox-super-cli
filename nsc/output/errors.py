@@ -6,12 +6,17 @@ This module is the agent contract. Field names, values of `ErrorType`, and the
 
 from __future__ import annotations
 
+import json
 from enum import Enum, StrEnum
 from typing import Any, Literal, TextIO
 
 from pydantic import BaseModel, ConfigDict, Field
+from rich import box
+from rich.console import Group, RenderableType
 from rich.markup import escape
 from rich.panel import Panel
+from rich.table import Table
+from rich.text import Text
 
 from nsc.config.models import OutputFormat
 from nsc.model.command_model import HttpMethod
@@ -99,7 +104,9 @@ def select_render_target(*, output_format: OutputFormat, stdout_is_tty: bool) ->
 
 
 def render_to_rich_stderr(env: ErrorEnvelope, *, stream: TextIO, color: bool = False) -> None:
-    console = make_console(stream, color=color, soft_wrap=True)
+    # No soft_wrap: inside a Panel it crops long lines instead of wrapping them,
+    # which cut off e.g. the "re-run with --acknowledge-conflicts" hint.
+    console = make_console(stream, color=color)
     # env.error/endpoint/operation_id/audit_log_path/details carry server- and
     # user-sourced text; escape it so stray [..] is not parsed as Rich markup.
     body_lines = [
@@ -117,9 +124,48 @@ def render_to_rich_stderr(env: ErrorEnvelope, *, stream: TextIO, color: bool = F
         body_lines.append(f"attempt:  {env.attempt_n}")
     if env.audit_log_path:
         body_lines.append(f"audit:    {escape(env.audit_log_path)}")
-    if env.details:
-        body_lines.append(f"details:  {escape(str(env.details))}")
-    console.print(Panel("\n".join(body_lines), title="nsc error", border_style="red"))
+    details = dict(env.details)
+    conflicts = _conflict_table(details.get("conflicts"))
+    if conflicts is not None:
+        del details["conflicts"]
+    if details:
+        body_lines.append(f"details:  {escape(str(details))}")
+    body: RenderableType = "\n".join(body_lines)
+    if conflicts is not None:
+        body = Group(body, conflicts)
+    console.print(Panel(body, title="nsc error", border_style="red"))
+
+
+_CONFLICT_SIDES = ("original", "branch", "main")
+
+
+def _conflict_table(raw: Any) -> Table | None:
+    """Issue #169: one row per conflicting field of a Branching merge/sync 409.
+
+    Returns None (keeping the raw `details:` line) unless every entry is a dict,
+    so an unexpected plugin payload is still shown rather than dropped.
+    """
+    if not isinstance(raw, list) or not raw or not all(isinstance(c, dict) for c in raw):
+        return None
+    table = Table("object", "field", *_CONFLICT_SIDES, box=box.ROUNDED)
+    for conflict in raw:
+        obj = f"{conflict.get('object_type') or ''} {conflict.get('object_repr') or ''}".strip()
+        data = conflict.get("conflicting_data")
+        sides = data if isinstance(data, dict) else {}
+        fields = conflict.get("conflicts")
+        names = [str(f) for f in fields] if isinstance(fields, list) and fields else [""]
+        for i, name in enumerate(names):
+            values = [_conflict_value(sides.get(side), name) for side in _CONFLICT_SIDES]
+            # Text cells: object names and values are server data, never markup.
+            table.add_row(*(Text(c) for c in (obj if i == 0 else "", name, *values)))
+    return table
+
+
+def _conflict_value(side: Any, field: str) -> str:
+    if not isinstance(side, dict) or field not in side:
+        return ""
+    value = side[field]
+    return value if isinstance(value, str) else json.dumps(value, default=str)
 
 
 class ClientError(Exception):

@@ -4,8 +4,18 @@ All notable changes to netbox-super-cli are tracked here. Format follows [Keep a
 
 ## Unreleased
 
+### Added
+
+- **Branch merge/sync conflicts render as a table on a terminal** ([#169]). A
+  `conflict` error (exit 10) used to print `details.conflicts` as a raw,
+  truncated Python dict. It now shows one row per conflicting field with the
+  object and its original, branch and main values. JSON output is unchanged.
+
 ### Fixed
 
+- **Long error messages wrap inside the terminal error panel** instead of being
+  cut off. For example, the conflict error's closing
+  `re-run with --acknowledge-conflicts` hint used to disappear.
 - **Plugin endpoints get one command group per resource** ([#202]). NetBox tags
   every plugin endpoint `plugins`, so all of a plugin's endpoints were merged
   into one `nsc plugins <plugin>` resource whose verbs overwrote each other. For
@@ -200,6 +210,7 @@ notices, and a fix for `nsc login` reporting the wrong user.
 [#1]: https://github.com/thomaschristory/netbox-super-cli/issues/1
 [#166]: https://github.com/thomaschristory/netbox-super-cli/issues/166
 [#170]: https://github.com/thomaschristory/netbox-super-cli/issues/170
+[#169]: https://github.com/thomaschristory/netbox-super-cli/issues/169
 [#182]: https://github.com/thomaschristory/netbox-super-cli/issues/182
 [#186]: https://github.com/thomaschristory/netbox-super-cli/issues/186
 [#189]: https://github.com/thomaschristory/netbox-super-cli/issues/189
