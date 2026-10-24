@@ -9,8 +9,7 @@ from __future__ import annotations
 
 from typing import ClassVar
 
-from rich.markup import escape
-
+from nsc.output.sanitize import safe_markup
 from nsc.tui.forms import DiffRow
 from nsc.tui.widgets._modal import ConfirmModalBase
 
@@ -27,9 +26,9 @@ class DiffModal(ConfirmModalBase):
         if not self._rows:
             lines.append("[dim]No changes.[/dim]")
         for row in self._rows:
-            field = escape(row.field)
-            old = escape(row.old_display)
-            new = escape(row.new_display)
+            field = safe_markup(row.field)
+            old = safe_markup(row.old_display)
+            new = safe_markup(row.new_display)
             lines.append(f"  {field}: {old} -> {new}")
         lines.append("")
         lines.append("[dim]Enter/y confirm · Esc/n cancel[/dim]")

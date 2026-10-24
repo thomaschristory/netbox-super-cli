@@ -21,6 +21,7 @@ from textual.widgets import Input, Label, Tree
 
 from nsc.http.errors import NetBoxAPIError, NetBoxClientError
 from nsc.model.command_model import CommandModel
+from nsc.output.sanitize import safe_text
 from nsc.tui.catalog import ResourceRef
 from nsc.tui.search import global_search_targets, search_target
 from nsc.tui.widgets.nav_tree import NavTree
@@ -140,7 +141,7 @@ class GlobalSearchScreen(ModalScreen[None]):
         tree = self.query_one("#search-tree", Tree)
         group = tree.root.add(f"{ref.resource_name} ({len(rows)})", expand=True)
         for record in rows:
-            group.add_leaf(_record_label(record), data=_Hit(ref, record))
+            group.add_leaf(safe_text(_record_label(record)), data=_Hit(ref, record))
         tree.cursor_line = max(tree.cursor_line, 0)
 
     def on_tree_node_selected(self, event: Tree.NodeSelected[Any]) -> None:

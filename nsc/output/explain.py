@@ -11,7 +11,6 @@ from __future__ import annotations
 from typing import Any, Literal, TextIO
 
 from pydantic import BaseModel, ConfigDict, Field
-from rich.markup import escape
 from rich.panel import Panel
 
 from nsc.cli.writes.apply import ResolvedRequest
@@ -20,6 +19,7 @@ from nsc.cli.writes.input import RawWriteInput
 from nsc.cli.writes.preflight import PreflightResult
 from nsc.model.command_model import Operation
 from nsc.output._console import make_console
+from nsc.output.sanitize import safe_markup
 
 DECISION_CAP = 200
 
@@ -155,25 +155,25 @@ def render_to_json(trace: ExplainTrace) -> str:
 def render_to_rich_stdout(trace: ExplainTrace, *, stream: TextIO, color: bool = False) -> None:
     console = make_console(stream, color=color, soft_wrap=True)
     # Reasoning strings and decision values carry user/schema/server text that
-    # may contain [..]; escape it so it is not parsed as Rich markup.
+    # may contain [..] or control characters; `safe_markup` neutralizes both.
     body = [
-        f"[bold cyan]operation:[/] {escape(trace.operation_id)}",
+        f"[bold cyan]operation:[/] {safe_markup(trace.operation_id)}",
     ]
     if trace.operation_summary:
-        body.append(f"summary:   {escape(trace.operation_summary)}")
-    body.append(f"method:    {escape(trace.method_reasoning)}")
-    body.append(f"url:       {escape(trace.url_reasoning)}")
+        body.append(f"summary:   {safe_markup(trace.operation_summary)}")
+    body.append(f"method:    {safe_markup(trace.method_reasoning)}")
+    body.append(f"url:       {safe_markup(trace.url_reasoning)}")
     if trace.bulk_reasoning:
-        body.append(f"bulk:      {escape(trace.bulk_reasoning)}")
+        body.append(f"bulk:      {safe_markup(trace.bulk_reasoning)}")
     for r in trace.requests:
-        body.append(f"  → {r.method.value} {escape(r.url)}")
+        body.append(f"  → {r.method.value} {safe_markup(r.url)}")
         if r.body is not None:
-            body.append(f"    body: {escape(str(r.body))}")
+            body.append(f"    body: {safe_markup(str(r.body))}")
     if trace.preflight is not None and not trace.preflight.ok:
         body.append("preflight: [red]FAIL[/]")
         for issue in trace.preflight.issues:
             loc = f"records[{issue.record_index}].{issue.field_path}"
-            body.append(escape(f"  [{issue.kind}] {loc}: {issue.message}"))
+            body.append(safe_markup(f"  [{issue.kind}] {loc}: {issue.message}"))
     elif trace.preflight is not None:
         body.append("preflight: [green]OK[/]")
     if trace.decisions:
@@ -181,7 +181,7 @@ def render_to_rich_stdout(trace: ExplainTrace, *, stream: TextIO, color: bool = 
         for d in trace.decisions:
             extra = f" — {d.note}" if d.note else ""
             body.append(
-                escape(
+                safe_markup(
                     f"  {d.field_path}  [{d.source}]  {d.raw_value!r} → {d.resolved_value!r}{extra}"
                 )
             )

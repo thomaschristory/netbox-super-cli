@@ -39,16 +39,23 @@ def test_choose_columns_prefers_configured_then_default_then_sample() -> None:
     assert choose_columns(_op(None), None, None) == ["id"]
 
 
+def _plain(rows: list[list[str | Text]]) -> list[list[str]]:
+    return [[c.plain if isinstance(c, Text) else c for c in row] for row in rows]
+
+
 def test_build_rows_flattens_to_selected_columns_as_strings() -> None:
     records = [{"id": 1, "site": {"display": "HQ"}}, {"id": 2, "site": None}]
     rows = build_rows(records, ["id", "site.display"])
-    assert rows == [["1", "HQ"], ["2", ""]]
+    assert _plain(rows) == [["1", "HQ"], ["2", ""]]
 
 
-def test_build_rows_without_object_colors_returns_plain_str() -> None:
+def test_build_rows_without_object_colors_returns_unstyled_text() -> None:
     records = [{"role": {"display": "Router", "color": "4caf50"}}]
     rows = build_rows(records, ["role"])
-    assert rows == [["Router"]]
+    assert _plain(rows) == [["Router"]]
+    cell = rows[0][0]
+    assert isinstance(cell, Text)
+    assert not cell.style
 
 
 def test_build_rows_object_colors_produces_styled_text() -> None:
@@ -97,7 +104,7 @@ def test_build_rows_object_colors_mixed_tag_list_joins_cleanly() -> None:
     assert "#ff0000" in styles
 
 
-def test_build_rows_object_colors_object_without_color_is_plain_str() -> None:
+def test_build_rows_object_colors_object_without_color_is_unstyled() -> None:
     records = [{"role": {"display": "Router"}}]
     rows = build_rows(records, ["role"], object_colors=True)
-    assert rows == [["Router"]]
+    assert _plain(rows) == [["Router"]]

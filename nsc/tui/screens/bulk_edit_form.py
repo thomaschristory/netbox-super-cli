@@ -30,6 +30,7 @@ from textual.widgets import (
 from textual.widgets.selection_list import Selection
 
 from nsc.model.command_model import CommandModel, Operation
+from nsc.output.sanitize import safe_text
 from nsc.savedfilters.custom_fields import CustomFieldDef
 from nsc.savedfilters.tags import TagDef
 from nsc.tui._bindings import textual_bindings
@@ -199,7 +200,7 @@ class BulkEditForm(Screen[None]):
                 yield Label(target.hint, classes="bulk-fk-hint")
             return
         yield Button(
-            f"{name}: {self._fk_seed_label(name)}",
+            safe_text(f"{name}: {self._fk_seed_label(name)}"),
             id=f"fk-{encode_field_id(name)}",
             classes="bulk-fk",
         )
@@ -352,9 +353,9 @@ class BulkEditForm(Screen[None]):
             if result is not None:
                 self._values[name] = result[0]
                 self._fk_labels[name] = result[1]
-                self.query_one(
-                    f"#fk-{encode_field_id(name)}", Button
-                ).label = f"{name}: {result[1]}"
+                self.query_one(f"#fk-{encode_field_id(name)}", Button).label = safe_text(
+                    f"{name}: {result[1]}"
+                )
 
         self.app.push_screen(RecordPicker(self._client, target.list_op, target.current_id), _stage)
 

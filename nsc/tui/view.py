@@ -9,6 +9,7 @@ from rich.text import Text
 from nsc.model.command_model import Operation
 from nsc.output.colors import ColoredValue
 from nsc.output.flatten import flatten
+from nsc.output.sanitize import safe_text
 
 _FALLBACK = ["id"]
 
@@ -60,9 +61,7 @@ def build_rows(
 
 
 def _colored_text(value: ColoredValue) -> Text:
-    if value.color is None:
-        return Text(value.text)
-    return Text(value.text, style=f"#{value.color}")
+    return safe_text(value.text, style=f"#{value.color}" if value.color else "")
 
 
 def render_cell(value: Any) -> str | Text:
@@ -83,4 +82,5 @@ def render_cell(value: Any) -> str | Text:
                 out.append(", ")
             out.append_text(_colored_text(item))
         return out
-    return str(value)
+    # A plain `str` cell is parsed as markup by DataTable (#206).
+    return safe_text(str(value))

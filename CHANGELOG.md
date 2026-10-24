@@ -16,10 +16,18 @@ All notable changes to netbox-super-cli are tracked here. Format follows [Keep a
 - **Long error messages wrap inside the terminal error panel** instead of being
   cut off. For example, the conflict error's closing
   `re-run with --acknowledge-conflicts` hint used to disappear.
-- **Server text in terminal error panels can't send terminal control
-  sequences.** The error message, endpoint, operation id and conflict values
-  were printed raw, so an ESC sequence in an object name could retitle or clear
-  the terminal. Control and bidi characters now show as visible `\x..` escapes.
+- **Server data can't send terminal control sequences or Rich/Textual markup**
+  ([#206]). Rich's markup escaping doesn't strip ESC, so an object name containing
+  an escape sequence could retitle or clear your terminal or spoof text. Control
+  and bidi characters now show as visible `\x..`/`\u....` escapes in:
+  - table output, including column headers, which weren't escaped at all;
+  - the `--explain` panel;
+  - error panels;
+  - the TUI: list and detail cells, global search results, record picker, FK
+    buttons, column chooser, error notifications and diff views.
+
+  In the TUI, values were also parsed as markup, so a value like `[red]x[/]`
+  was styled and lost its brackets. They now render literally.
 - **Plugin endpoints get one command group per resource** ([#202]). NetBox tags
   every plugin endpoint `plugins`, so all of a plugin's endpoints were merged
   into one `nsc plugins <plugin>` resource whose verbs overwrote each other. For
@@ -221,6 +229,7 @@ notices, and a fix for `nsc login` reporting the wrong user.
 [#192]: https://github.com/thomaschristory/netbox-super-cli/issues/192
 [#196]: https://github.com/thomaschristory/netbox-super-cli/issues/196
 [#202]: https://github.com/thomaschristory/netbox-super-cli/issues/202
+[#206]: https://github.com/thomaschristory/netbox-super-cli/issues/206
 [#171]: https://github.com/thomaschristory/netbox-super-cli/issues/171
 [#179]: https://github.com/thomaschristory/netbox-super-cli/issues/179
 [#173]: https://github.com/thomaschristory/netbox-super-cli/issues/173
