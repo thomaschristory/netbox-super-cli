@@ -4,6 +4,10 @@ All notable changes to netbox-super-cli are tracked here. Format follows [Keep a
 
 ## Unreleased
 
+## v1.8.7 — 2026-10-24
+
+Patch release. A literal `-o` used as another option's value is no longer read as the output flag.
+
 ### Fixed
 
 - **A literal `-o`/`--output` as another option's value is no longer read as
