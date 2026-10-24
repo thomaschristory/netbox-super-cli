@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+import time
 from pathlib import Path
 from typing import Any
 
@@ -249,3 +250,39 @@ def test_schema_override_unreachable_url_raises_source_error(
     expected = re.escape(f"cannot load schema from {url}: request failed")
     with pytest.raises(SchemaSourceError, match=expected):
         resolve_command_model(paths=_paths(tmp_path), profile=_profile(), schema_override=url)
+
+
+def test_schema_override_is_not_persisted_into_the_profile_cache(tmp_path: Path) -> None:
+    schema_path = tmp_path / "s.json"
+    schema_path.write_text(json.dumps(_minimal_schema_doc()), encoding="utf-8")
+    paths = _paths(tmp_path)
+    model = resolve_command_model(
+        paths=paths, profile=_profile(), schema_override=str(schema_path)
+    )
+    assert isinstance(model, CommandModel)
+    # An override is not this profile's schema: persisting it let later runs
+    # serve it as a "fresh" TTL entry and as the offline fallback (#196).
+    store = CacheStore(root=paths.cache_dir)
+    assert store.load("prod", model.schema_hash) is None
+    profile_dir = paths.cache_dir / "prod"
+    assert not profile_dir.exists() or not list(profile_dir.glob("*.json"))
+
+
+def test_schema_override_matching_cache_does_not_bump_fetched_at(
+    tmp_path: Path, httpx2_mock: respx.Router
+) -> None:
+    httpx2_mock.get("https://nb.example/api/schema/?format=json").respond(
+        200, json=_minimal_schema_doc()
+    )
+    paths = _paths(tmp_path)
+    fetched = resolve_command_model(paths=paths, profile=_profile(), schema_override=None)
+    stamped = CacheStore(root=paths.cache_dir).load_fetched_at("prod", fetched.schema_hash)
+    assert stamped is not None
+
+    schema_path = tmp_path / "override.json"
+    schema_path.write_text(json.dumps(_minimal_schema_doc()), encoding="utf-8")
+    time.sleep(0.05)  # a bumped sidecar would carry a later timestamp
+    resolve_command_model(paths=paths, profile=_profile(), schema_override=str(schema_path))
+
+    after = CacheStore(root=paths.cache_dir).load_fetched_at("prod", fetched.schema_hash)
+    assert after == stamped

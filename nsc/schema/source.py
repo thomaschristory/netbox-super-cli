@@ -1,7 +1,8 @@
 """Schema-source resolution chain.
 
 Order, given a `schema_refresh` policy and an optional `force_refresh`:
-  1. --schema flag (path or URL) — always wins, never consults TTL.
+  1. --schema flag (path or URL) — always wins, never consults TTL, and is
+     never persisted into the profile's cache (#196).
   2. TTL fast-path: if `schema_refresh` allows it and a cache entry for
      this profile is fresher than the policy's TTL, return it directly
      without any HTTP roundtrip. Skipped when `force_refresh=True`.
@@ -75,7 +76,11 @@ def resolve_command_model(
             )
         except SchemaLoadError as exc:
             raise SchemaSourceError(f"cannot load schema from {exc}") from exc
-        return _build_and_cache(loaded, paths, profile)
+        # An override is not this profile's schema: persisting it into the
+        # profile's cache let it leak into later runs as a "fresh" TTL entry
+        # and as the offline fallback (#196). It is rebuilt from its source
+        # on every run, so there is nothing to cache.
+        return build_command_model(loaded)
 
     if not force_refresh:
         ttl = _ttl_for_policy(schema_refresh)

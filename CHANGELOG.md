@@ -4,6 +4,16 @@ All notable changes to netbox-super-cli are tracked here. Format follows [Keep a
 
 ## Unreleased
 
+### Fixed
+
+- **`--schema`/`NSC_SCHEMA` overrides are no longer persisted into the
+  profile's schema cache** ([#196]). An override used to be saved as the
+  profile's fresh schema: later runs *without* the override served it from
+  the TTL fast-path as if NetBox had produced it, and an unreachable NetBox
+  fell back to it via `_find_any_cached`. Overrides are now rebuilt from
+  their source on every run and never touch the cache — including not
+  bumping a matching entry's `fetched_at`.
+
 ## v1.8.5 — 2026-10-23
 
 Patch release. `--schema` and `NSC_SCHEMA` report load failures clearly and behave the same way.
