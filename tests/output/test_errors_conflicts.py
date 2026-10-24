@@ -112,3 +112,31 @@ def test_long_error_message_wraps_instead_of_being_cropped() -> None:
     )
     flat = " ".join(c for line in _render(env).splitlines() for c in line.strip("│ ").split())
     assert "re-run with --acknowledge-conflicts" in flat
+
+
+def test_server_text_cannot_inject_terminal_escapes() -> None:
+    evil = "x\x1b]0;pwned\x07\x1b[2J\u202e"
+    env = ErrorEnvelope(
+        error=f"err {evil}",
+        type=ErrorType.CONFLICT,
+        endpoint=f"https://nb/{evil}",
+        operation_id=evil,
+        details={
+            "conflicts": [
+                _conflict(
+                    object_repr=evil,
+                    conflicts=["f"],
+                    conflicting_data={
+                        "original": {"f": evil},
+                        "branch": {"f": "a"},
+                        "main": {"f": "b"},
+                    },
+                )
+            ]
+        },
+    )
+    out = _render(env)
+    assert "\x1b" not in out
+    assert "\x07" not in out
+    assert "\u202e" not in out
+    assert "\\x1b]0;pwned" in out

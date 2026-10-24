@@ -16,6 +16,10 @@ All notable changes to netbox-super-cli are tracked here. Format follows [Keep a
 - **Long error messages wrap inside the terminal error panel** instead of being
   cut off. For example, the conflict error's closing
   `re-run with --acknowledge-conflicts` hint used to disappear.
+- **Server text in terminal error panels can't send terminal control
+  sequences.** The error message, endpoint, operation id and conflict values
+  were printed raw, so an ESC sequence in an object name could retitle or clear
+  the terminal. Control and bidi characters now show as visible `\x..` escapes.
 - **Plugin endpoints get one command group per resource** ([#202]). NetBox tags
   every plugin endpoint `plugins`, so all of a plugin's endpoints were merged
   into one `nsc plugins <plugin>` resource whose verbs overwrote each other. For
