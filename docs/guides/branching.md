@@ -125,9 +125,20 @@ policy blocks the merge.
 
 If main and the branch changed the same fields of an object, `sync` and
 `merge` fail with exit **10** (`conflict`), and `details.conflicts` lists each
-object together with its original, branch and main values. After reviewing
-them, re-run with `--acknowledge-conflicts` to proceed; the branch's values
-win.
+object together with its original, branch and main values. On a terminal they
+render as a table, one row per conflicting field:
+
+```text
+╭────────────────────┬─────────────┬──────────┬─────────────┬───────────╮
+│ object             │ field       │ original │ branch      │ main      │
+├────────────────────┼─────────────┼──────────┼─────────────┼───────────┤
+│ extras.tag edge    │ description │          │ from-branch │ from-main │
+╰────────────────────┴─────────────┴──────────┴─────────────┴───────────╯
+```
+
+With `-o json` (or when piped), the envelope carries the raw list unchanged.
+After reviewing them, re-run with `--acknowledge-conflicts` to proceed; the
+branch's values win.
 
 ## For agents
 
