@@ -52,6 +52,7 @@ _HTTP_METHODS: tuple[tuple[str, HttpMethod], ...] = (
 )
 # api / <tag> / <resource> = at least 3 non-empty path parts
 _MIN_PATH_PARTS = 3
+_GENERIC_PLUGIN_TAG = "plugins"
 
 
 def build_command_model(loaded: LoadedSchema) -> CommandModel:
@@ -118,7 +119,7 @@ def _assimilate(
     if tag_name is None:
         return  # untagged operations are skipped intentionally
 
-    resource_name, _ = _resource_from_path(path, tag_name)
+    tag_name, resource_name, _ = _route(path, tag_name)
     if resource_name is None:
         return  # paths that don't match the /api/<tag>/<resource>/... shape
 
@@ -134,6 +135,25 @@ def _assimilate(
 
     op = _to_model_operation(path, http_method, schema_op, item, doc)
     _attach(resource, _classify(http_method, path), op)
+
+
+def _route(path: str, spec_tag: str) -> tuple[str, str | None, bool]:
+    """Return (tag, resource_name, is_collection_path) for an operation's path.
+
+    Issue #202: NetBox tags every plugin endpoint with the generic `plugins`;
+    grouping on it merged all of a plugin's endpoints into one resource whose
+    CRUD slots overwrote each other. For `/api/plugins/<plugin>/<resource>/...`
+    the resource comes from the path, and the generic tag becomes `<plugin>`.
+    """
+    parts = [p for p in path.split("/") if p]
+    if len(parts) < _MIN_PATH_PARTS or parts[:2] != ["api", _GENERIC_PLUGIN_TAG]:
+        resource, is_collection = _resource_from_path(path, spec_tag)
+        return spec_tag, resource, is_collection
+    tag = parts[2] if spec_tag == _GENERIC_PLUGIN_TAG else spec_tag
+    # `/api/plugins/<plugin>/` is the plugin's root view, not a resource.
+    if len(parts) == _MIN_PATH_PARTS or _PARAM_SEGMENT.match(parts[3]):
+        return tag, None, False
+    return tag, parts[3], len(parts) == _MIN_PATH_PARTS + 1
 
 
 def _resource_from_path(path: str, tag: str) -> tuple[str | None, bool]:
@@ -153,12 +173,8 @@ def _resource_from_path(path: str, tag: str) -> tuple[str | None, bool]:
     # Expect: api / <tag-or-tag-with-dashes> / <resource> / [...]
     if len(parts) < _MIN_PATH_PARTS:
         return None, False
-    # Some plugin endpoints have nested tags (e.g., ['plugins', '<plugin>']).
-    # The tag string from the spec is authoritative; just find <resource>.
-    # Strategy: skip leading non-parameter segments until we've consumed the
-    # tag's words and reached a resource segment.
-    # Easier heuristic that works for NetBox: the resource is the first
-    # segment after the segment that begins the tag's path-form.
+    # Plugin paths are handled by `_route`. Otherwise the resource is
+    # the first segment after the segment that begins the tag's path-form.
     tag_form = tag.replace(" ", "-").lower()
     try:
         anchor = parts.index(tag_form)
@@ -438,8 +454,7 @@ def _build_fk_resources(doc: OpenAPIDocument) -> dict[str, FkResourceRef]:
         get_op = doc.paths[path].get
         if get_op is None or not get_op.tags:
             continue
-        tag_name = get_op.tags[0]
-        resource_name, is_collection = _resource_from_path(path, tag_name)
+        tag_name, resource_name, is_collection = _route(path, get_op.tags[0])
         if resource_name is None or not is_collection:
             continue
         serializer = _list_serializer_name(get_op, doc)

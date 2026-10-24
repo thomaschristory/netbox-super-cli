@@ -6,14 +6,28 @@ automatically — no per-plugin code in `nsc`**.
 
 ## How plugin endpoints surface
 
-If a plugin registers `tags: [my_plugin]` and a path `/api/plugins/my-plugin/widgets/`,
-you get:
+Each `/api/plugins/<plugin>/<resource>/` path becomes its own resource. NetBox
+tags every plugin endpoint with the generic `plugins` tag; `nsc` then groups
+them under the plugin's URL segment instead. For example, NetBox Branching's
+`/api/plugins/branching/branches/` and `/api/plugins/branching/changes/` give:
+
+```sh
+nsc branching branches list
+nsc branching branches merge-create 3 --apply
+nsc branching changes list --branch <schema_id>
+```
+
+A plugin that sets its own tag keeps it. With `tags: [my_plugin]` and a path
+`/api/plugins/my-plugin/widgets/`, you get:
 
 ```sh
 nsc my_plugin widgets list
 nsc my_plugin widgets get 7
 nsc my_plugin widgets create --field name=foo --apply
 ```
+
+A built-in command with the same name (for example `branch`) takes precedence
+over a plugin group.
 
 Verbs are derived from HTTP method + `operationId` exactly as for core endpoints.
 Custom action endpoints (`POST /api/plugins/my-plugin/widgets/{id}/calibrate/`)

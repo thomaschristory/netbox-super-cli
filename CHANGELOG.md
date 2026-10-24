@@ -4,6 +4,18 @@ All notable changes to netbox-super-cli are tracked here. Format follows [Keep a
 
 ## Unreleased
 
+### Fixed
+
+- **Plugin endpoints get one command group per resource** ([#202]). NetBox tags
+  every plugin endpoint `plugins`, so all of a plugin's endpoints were merged
+  into one `nsc plugins <plugin>` resource whose verbs overwrote each other. For
+  example, `nsc plugins branching list` listed *changes* while `create` created
+  *branches*, and some endpoints were unreachable. Plugin commands now follow the
+  path. **Command paths change:**
+  `nsc plugins branching list` → `nsc branching changes list`, and
+  `nsc branching branches list|get|create|merge-create|…`, `nsc branching branch-events list`, etc.
+  Cached command models are rebuilt automatically.
+
 ## v1.8.7 — 2026-10-24
 
 Patch release. A literal `-o` used as another option's value is no longer read as the output flag.
@@ -193,6 +205,7 @@ notices, and a fix for `nsc login` reporting the wrong user.
 [#189]: https://github.com/thomaschristory/netbox-super-cli/issues/189
 [#192]: https://github.com/thomaschristory/netbox-super-cli/issues/192
 [#196]: https://github.com/thomaschristory/netbox-super-cli/issues/196
+[#202]: https://github.com/thomaschristory/netbox-super-cli/issues/202
 [#171]: https://github.com/thomaschristory/netbox-super-cli/issues/171
 [#179]: https://github.com/thomaschristory/netbox-super-cli/issues/179
 [#173]: https://github.com/thomaschristory/netbox-super-cli/issues/173

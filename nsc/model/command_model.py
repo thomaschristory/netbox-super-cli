@@ -46,7 +46,7 @@ class PrimitiveType(StrEnum):
 # Bumped whenever the builder changes the shape of a CommandModel in a way that
 # makes older cached models incomplete (not just a schema-body change). The cache
 # rebuilds entries stamped with an older version. See nsc/cache/store.py.
-MODEL_FORMAT_VERSION = 1
+MODEL_FORMAT_VERSION = 2
 
 
 class _Frozen(BaseModel):

@@ -144,3 +144,32 @@ def test_conflict_on_merge(run_nsc: RunNsc, netbox_client: httpx2.Client, branch
     assert r.returncode == 0, r.stderr
     detail = netbox_client.get(f"/api/extras/tags/{tag_id}/").json()
     assert detail["description"] == "from-branch"
+
+
+@pytest.mark.usefixtures("clean_tags")
+def test_plugin_endpoints_and_subcommand_branch_filter(run_nsc: RunNsc, branch: str) -> None:
+    """#202: each plugin endpoint is its own resource. #170/#180: a subcommand's
+    `--branch` query filter does not switch the invocation into a branch."""
+    tag = _name("tag")
+    r = run_nsc(
+        "extras",
+        "tags",
+        "create",
+        "--field",
+        f"name={tag}",
+        "--field",
+        f"slug={tag}",
+        "--apply",
+        env={"NSC_BRANCH": branch},
+    )
+    assert r.returncode == 0, r.stderr
+
+    r = run_nsc("branching", "branches", "list", "--output", "json")
+    assert r.returncode == 0, r.stderr
+    branches = {b["name"]: b["schema_id"] for b in r.stdout_json()}  # type: ignore[union-attr]
+    assert branch in branches
+
+    r = run_nsc("branching", "changes", "list", "--branch", branches[branch], "--output", "json")
+    assert r.returncode == 0, r.stderr
+    assert "⎇" not in r.stderr
+    assert [c["object_repr"] for c in r.stdout_json()] == [tag]  # type: ignore[union-attr]
