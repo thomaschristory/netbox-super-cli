@@ -1,7 +1,8 @@
 """Schema-source resolution chain.
 
 Order, given a `schema_refresh` policy and an optional `force_refresh`:
-  1. --schema flag (path or URL) — always wins, never consults TTL.
+  1. --schema flag / NSC_SCHEMA (path or URL) — always wins, never consults
+     TTL, and never writes the profile's cache (#196).
   2. TTL fast-path: if `schema_refresh` allows it and a cache entry for
      this profile is fresher than the policy's TTL, return it directly
      without any HTTP roundtrip. Skipped when `force_refresh=True`.
@@ -75,7 +76,7 @@ def resolve_command_model(
             )
         except SchemaLoadError as exc:
             raise SchemaSourceError(f"cannot load schema from {exc}") from exc
-        return _build_and_cache(loaded, paths, profile)
+        return _build_override(loaded, paths, profile)
 
     if not force_refresh:
         ttl = _ttl_for_policy(schema_refresh)
@@ -127,6 +128,20 @@ def _fetch_schema(url: str, profile: ResolvedProfile) -> LoadedSchema:
         body = response.content
     document = OpenAPIDocument.model_validate_json(body)
     return LoadedSchema(source=url, body=body, hash=canonical_sha256(body), document=document)
+
+
+def _build_override(loaded: LoadedSchema, paths: Paths, profile: ResolvedProfile) -> CommandModel:
+    """Issue #196: an override never writes or refreshes the profile's cache.
+    Persisting it (with a fresh `fetched_at`) let later runs without the
+    override serve it via the TTL fast-path or the offline fallback. A
+    same-hash entry is the identical schema, so reading it is safe."""
+    # ValueError: CacheStore rejects a profile name outside `_PROFILE_RE`;
+    # the override still works, just without the cache shortcut.
+    with contextlib.suppress(ValueError):
+        cached = CacheStore(root=paths.cache_dir).load(profile.name, loaded.hash)
+        if cached is not None:
+            return cached
+    return build_command_model(loaded)
 
 
 def _build_and_cache(loaded: LoadedSchema, paths: Paths, profile: ResolvedProfile) -> CommandModel:
