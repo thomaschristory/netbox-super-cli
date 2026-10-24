@@ -5,12 +5,12 @@ from __future__ import annotations
 import sys
 from typing import Any, TextIO
 
-from rich.markup import escape
 from rich.table import Table
 
 from nsc.output._console import make_console
 from nsc.output.colors import ColoredValue
 from nsc.output.flatten import flatten
+from nsc.output.sanitize import safe_markup
 
 _STATUS_COLORS: dict[str, str] = {
     "active": "green",
@@ -49,7 +49,7 @@ def render(
 
     table = Table(show_header=True, header_style="bold")
     for col in fieldnames:
-        table.add_column(header_labels.get(col, col) if header_labels else col)
+        table.add_column(safe_markup(header_labels.get(col, col) if header_labels else col))
     for r in flat_records:
         table.add_row(*[_format_cell(r.get(col, ""), color=color) for col in fieldnames])
 
@@ -65,7 +65,7 @@ def _gather_fieldnames(records: list[dict[str, Any]]) -> list[str]:
 
 
 def _colored_markup(value: ColoredValue) -> str:
-    inner = escape(value.text)
+    inner = safe_markup(value.text)
     if value.color is None:
         return inner
     return f"[#{value.color}]{inner}[/]"
@@ -75,9 +75,9 @@ def _format_colored(value: ColoredValue | list[ColoredValue], *, color: bool) ->
     # Object colors only ever reach here when color is on (gated in render), but
     # escape unconditionally so a bare ColoredValue can't inject markup.
     if isinstance(value, ColoredValue):
-        return _colored_markup(value) if color else escape(value.text)
+        return _colored_markup(value) if color else safe_markup(value.text)
     if not color:
-        return escape(", ".join(v.text for v in value))
+        return safe_markup(", ".join(v.text for v in value))
     return ", ".join(_colored_markup(v) for v in value)
 
 
@@ -99,14 +99,14 @@ def _format_cell(value: Any, *, color: bool = False) -> str:
         text = str(value)
 
     # Rich parses markup in table cells regardless of the no-color setting, so
-    # arbitrary cell values must be escaped on every return path.
+    # arbitrary cell values must go through `safe_markup` on every return path.
     if not color:
-        return escape(text)
+        return safe_markup(text)
 
     if not text:
         return "[dim]-[/]"
 
     style = _STATUS_COLORS.get(text.lower())
     if style:
-        return f"[{style}]{escape(text)}[/]"
-    return escape(text)
+        return f"[{style}]{safe_markup(text)}[/]"
+    return safe_markup(text)

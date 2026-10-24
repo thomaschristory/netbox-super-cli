@@ -10,13 +10,13 @@ from __future__ import annotations
 
 from typing import ClassVar
 
-from rich.markup import escape
 from textual.app import ComposeResult
 from textual.binding import BindingType
 from textual.containers import VerticalScroll
 from textual.screen import ModalScreen
 from textual.widgets import Static
 
+from nsc.output.sanitize import safe_markup
 from nsc.tui.bulk import BulkResult
 
 
@@ -43,7 +43,9 @@ class BulkSummaryModal(ModalScreen[None]):
             lines.append("")
             lines.append("[b]Failures[/b]")
             for failure in result.failures:
-                lines.append(f"  #{escape(str(failure.record_id))}: {escape(failure.error)}")
+                lines.append(
+                    f"  #{safe_markup(str(failure.record_id))}: {safe_markup(failure.error)}"
+                )
         lines.append("")
         lines.append("[dim]Enter/Esc close[/dim]")
         return "\n".join(lines)

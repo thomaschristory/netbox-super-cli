@@ -7,21 +7,19 @@ This module is the agent contract. Field names, values of `ErrorType`, and the
 from __future__ import annotations
 
 import json
-import unicodedata
 from enum import Enum, StrEnum
 from typing import Any, Literal, TextIO
 
 from pydantic import BaseModel, ConfigDict, Field
 from rich import box
 from rich.console import Group, RenderableType
-from rich.markup import escape
 from rich.panel import Panel
 from rich.table import Table
-from rich.text import Text
 
 from nsc.config.models import OutputFormat
 from nsc.model.command_model import HttpMethod
 from nsc.output._console import make_console
+from nsc.output.sanitize import safe_markup, safe_text
 
 
 class ErrorType(StrEnum):
@@ -109,48 +107,33 @@ def render_to_rich_stderr(env: ErrorEnvelope, *, stream: TextIO, color: bool = F
     # which cut off e.g. the "re-run with --acknowledge-conflicts" hint.
     console = make_console(stream, color=color)
     # env.error/endpoint/operation_id/audit_log_path/details carry server- and
-    # user-sourced text: `_safe` neutralizes Rich markup and terminal control
+    # user-sourced text: `safe_markup` neutralizes Rich markup and terminal control
     # sequences (an object name must not retitle or clear the terminal).
     body_lines = [
-        f"[bold red]{env.type.value}[/]: {_safe(env.error)}",
+        f"[bold red]{env.type.value}[/]: {safe_markup(env.error)}",
     ]
     if env.endpoint:
-        body_lines.append(f"endpoint: {_safe(env.endpoint)}")
+        body_lines.append(f"endpoint: {safe_markup(env.endpoint)}")
     if env.method is not None:
         body_lines.append(f"method:   {env.method.value}")
     if env.status_code is not None:
         body_lines.append(f"status:   {env.status_code}")
     if env.operation_id:
-        body_lines.append(f"op:       {_safe(env.operation_id)}")
+        body_lines.append(f"op:       {safe_markup(env.operation_id)}")
     if env.attempt_n is not None:
         body_lines.append(f"attempt:  {env.attempt_n}")
     if env.audit_log_path:
-        body_lines.append(f"audit:    {_safe(env.audit_log_path)}")
+        body_lines.append(f"audit:    {safe_markup(env.audit_log_path)}")
     details = dict(env.details)
     conflicts = _conflict_table(details.get("conflicts"))
     if conflicts is not None:
         del details["conflicts"]
     if details:
-        body_lines.append(f"details:  {_safe(str(details))}")
+        body_lines.append(f"details:  {safe_markup(str(details))}")
     body: RenderableType = "\n".join(body_lines)
     if conflicts is not None:
         body = Group(body, conflicts)
     console.print(Panel(body, title="nsc error", border_style="red"))
-
-
-def _printable(text: str) -> str:
-    """Show control and format characters (ESC, BEL, bidi overrides, ...) as
-    visible escapes so server text cannot drive the terminal."""
-    return "".join(
-        ch
-        if ch in "\n\t" or not unicodedata.category(ch).startswith("C")
-        else ch.encode("unicode_escape").decode("ascii")
-        for ch in text
-    )
-
-
-def _safe(text: str) -> str:
-    return escape(_printable(text))
 
 
 _CONFLICT_SIDES = ("original", "branch", "main")
@@ -173,9 +156,8 @@ def _conflict_table(raw: Any) -> Table | None:
         names = [str(f) for f in fields] if isinstance(fields, list) and fields else [""]
         for i, name in enumerate(names):
             values = [_conflict_value(sides.get(side), name) for side in _CONFLICT_SIDES]
-            # Text cells are never parsed as markup; `_printable` handles control codes.
             cells = (obj if i == 0 else "", name, *values)
-            table.add_row(*(Text(_printable(c)) for c in cells))
+            table.add_row(*(safe_text(c) for c in cells))
     return table
 
 

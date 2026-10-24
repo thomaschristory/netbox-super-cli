@@ -202,8 +202,9 @@ async def test_staged_sensitive_field_renders_masked_in_table() -> None:
         table = screen._table
         auth_row = next(i for i, r in enumerate(screen._rows) if r.name == "auth_key")
         cell = table.get_cell_at(Coordinate(auth_row, 1))
-        assert cell == "****"
-        assert "topsecret" not in str(cell)
+        assert isinstance(cell, Text)
+        assert cell.plain == "****"
+        assert "topsecret" not in cell.plain
 
 
 @pytest.mark.asyncio

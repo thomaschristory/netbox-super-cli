@@ -10,9 +10,16 @@ from __future__ import annotations
 import json
 
 from nsc.http.errors import NetBoxAPIError, NetBoxClientError
+from nsc.output.sanitize import safe_markup
 
 
 def api_error_message(exc: Exception) -> str:
+    """The message as Textual markup: `notify` parses markup, and the text is
+    server data, so it is passed through `safe_markup` (#206)."""
+    return safe_markup(_message(exc))
+
+
+def _message(exc: Exception) -> str:
     if isinstance(exc, NetBoxAPIError):
         detail = _format_body(exc.body_snippet)
         return f"API {exc.status_code} — {detail}" if detail else f"API {exc.status_code}"

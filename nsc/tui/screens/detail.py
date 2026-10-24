@@ -22,6 +22,7 @@ from textual.widgets import DataTable, Footer, Header, Input, Label, Tab, Tabs
 from nsc.http.errors import NetBoxAPIError, NetBoxClientError
 from nsc.model.command_model import CommandModel, Resource
 from nsc.output.flatten import flatten
+from nsc.output.sanitize import safe_text
 from nsc.tui._bindings import textual_bindings
 from nsc.tui.errors import api_error_message
 from nsc.tui.fk import is_fk_value, resolve_fk_target
@@ -121,7 +122,9 @@ class DetailScreen(Screen[None]):
         for row in self._rows:
             dirty = row.name in patch
             label = f"* {row.name}" if dirty else row.name
-            table.add_row(label, self._value_display(row, flat))
+            value = self._value_display(row, flat)
+            # DataTable parses a plain `str` as markup; keys and values are server data.
+            table.add_row(safe_text(label), value if isinstance(value, Text) else safe_text(value))
         if table.row_count:
             table.move_cursor(row=min(cursor, table.row_count - 1))
 

@@ -14,6 +14,7 @@ from textual.widgets import Input, Label, ListItem, ListView
 
 from nsc.http.errors import NetBoxAPIError, NetBoxClientError
 from nsc.model.command_model import Operation
+from nsc.output.sanitize import safe_text
 from nsc.tui.errors import api_error_message
 
 _PAGE_LIMIT = 50
@@ -88,7 +89,7 @@ class RecordPicker(ModalScreen[tuple[int, str]]):
         await lv.clear()
         highlight = 0
         for idx, record in enumerate(records):
-            item = ListItem(Label(_label(record)))
+            item = ListItem(Label(safe_text(_label(record))))
             item.data = record  # type: ignore[attr-defined]
             lv.append(item)
             if self._current_id is not None and record.get("id") == self._current_id:
