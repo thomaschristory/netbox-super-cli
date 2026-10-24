@@ -4,6 +4,10 @@ All notable changes to netbox-super-cli are tracked here. Format follows [Keep a
 
 ## Unreleased
 
+## v1.8.6 — 2026-10-24
+
+Patch release. A `--schema`/`NSC_SCHEMA` override no longer leaks into later runs.
+
 ### Fixed
 
 - **A `--schema`/`NSC_SCHEMA` override no longer leaks into later runs** ([#196]).
