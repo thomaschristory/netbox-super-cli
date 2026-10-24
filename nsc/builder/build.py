@@ -119,16 +119,7 @@ def _assimilate(
     if tag_name is None:
         return  # untagged operations are skipped intentionally
 
-    plugin_route = _plugin_route(path)
-    if plugin_route is not None:
-        plugin_name, resource_name = plugin_route
-        # Issue #202: NetBox tags every plugin endpoint with the generic
-        # `plugins`; grouping on it merged all of a plugin's endpoints into one
-        # resource whose CRUD slots overwrote each other.
-        if tag_name == _GENERIC_PLUGIN_TAG:
-            tag_name = plugin_name
-    else:
-        resource_name, _ = _resource_from_path(path, tag_name)
+    tag_name, resource_name, _ = _route(path, tag_name)
     if resource_name is None:
         return  # paths that don't match the /api/<tag>/<resource>/... shape
 
@@ -146,17 +137,23 @@ def _assimilate(
     _attach(resource, _classify(http_method, path), op)
 
 
-def _plugin_route(path: str) -> tuple[str, str | None] | None:
-    """`(plugin, resource)` for `/api/plugins/<plugin>/<resource>/...`, else None.
+def _route(path: str, spec_tag: str) -> tuple[str, str | None, bool]:
+    """Return (tag, resource_name, is_collection_path) for an operation's path.
 
-    `resource` is None for the plugin's root view (`/api/plugins/<plugin>/`).
+    Issue #202: NetBox tags every plugin endpoint with the generic `plugins`;
+    grouping on it merged all of a plugin's endpoints into one resource whose
+    CRUD slots overwrote each other. For `/api/plugins/<plugin>/<resource>/...`
+    the resource comes from the path, and the generic tag becomes `<plugin>`.
     """
     parts = [p for p in path.split("/") if p]
     if len(parts) < _MIN_PATH_PARTS or parts[:2] != ["api", _GENERIC_PLUGIN_TAG]:
-        return None
+        resource, is_collection = _resource_from_path(path, spec_tag)
+        return spec_tag, resource, is_collection
+    tag = parts[2] if spec_tag == _GENERIC_PLUGIN_TAG else spec_tag
+    # `/api/plugins/<plugin>/` is the plugin's root view, not a resource.
     if len(parts) == _MIN_PATH_PARTS or _PARAM_SEGMENT.match(parts[3]):
-        return parts[2], None
-    return parts[2], parts[3]
+        return tag, None, False
+    return tag, parts[3], len(parts) == _MIN_PATH_PARTS + 1
 
 
 def _resource_from_path(path: str, tag: str) -> tuple[str | None, bool]:
@@ -176,7 +173,7 @@ def _resource_from_path(path: str, tag: str) -> tuple[str | None, bool]:
     # Expect: api / <tag-or-tag-with-dashes> / <resource> / [...]
     if len(parts) < _MIN_PATH_PARTS:
         return None, False
-    # Plugin paths are handled by `_plugin_route`. Otherwise the resource is
+    # Plugin paths are handled by `_route`. Otherwise the resource is
     # the first segment after the segment that begins the tag's path-form.
     tag_form = tag.replace(" ", "-").lower()
     try:
@@ -457,8 +454,7 @@ def _build_fk_resources(doc: OpenAPIDocument) -> dict[str, FkResourceRef]:
         get_op = doc.paths[path].get
         if get_op is None or not get_op.tags:
             continue
-        tag_name = get_op.tags[0]
-        resource_name, is_collection = _resource_from_path(path, tag_name)
+        tag_name, resource_name, is_collection = _route(path, get_op.tags[0])
         if resource_name is None or not is_collection:
             continue
         serializer = _list_serializer_name(get_op, doc)

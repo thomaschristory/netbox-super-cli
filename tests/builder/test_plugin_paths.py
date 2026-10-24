@@ -6,7 +6,7 @@ import json
 from typing import Any
 
 from nsc.builder.build import build_command_model
-from nsc.model.command_model import CommandModel
+from nsc.model.command_model import CommandModel, FkResourceRef
 from nsc.schema.hashing import canonical_sha256
 from nsc.schema.loader import LoadedSchema
 from nsc.schema.models import OpenAPIDocument
@@ -111,3 +111,40 @@ def test_two_plugins_under_the_generic_tag_stay_separate() -> None:
 def test_plugin_root_view_is_skipped() -> None:
     model = _build({"/api/plugins/branching/": {"get": _op("plugins_branching_root", "plugins")}})
     assert model.tags == {}
+
+
+def test_plugin_list_serializer_is_indexed_to_its_resource() -> None:
+    list_op = _op("plugins_branching_branches_list", "plugins")
+    list_op["responses"] = {
+        "200": {
+            "description": "OK",
+            "content": {
+                "application/json": {"schema": {"$ref": "#/components/schemas/PaginatedBranchList"}}
+            },
+        }
+    }
+    doc_dict: dict[str, Any] = {
+        "openapi": "3.0.3",
+        "info": {"title": "Test", "version": "0.0.1"},
+        "paths": {"/api/plugins/branching/branches/": {"get": list_op}},
+        "components": {
+            "schemas": {
+                "PaginatedBranchList": {
+                    "type": "object",
+                    "properties": {
+                        "results": {
+                            "type": "array",
+                            "items": {"$ref": "#/components/schemas/Branch"},
+                        }
+                    },
+                },
+                "Branch": {"type": "object", "properties": {"id": {"type": "integer"}}},
+            }
+        },
+    }
+    body = json.dumps(doc_dict).encode()
+    doc = OpenAPIDocument.model_validate(doc_dict)
+    model = build_command_model(
+        LoadedSchema(source="<test>", body=body, hash=canonical_sha256(body), document=doc)
+    )
+    assert model.fk_resources["Branch"] == FkResourceRef(tag="branching", resource="branches")
