@@ -4,6 +4,10 @@ All notable changes to netbox-super-cli are tracked here. Format follows [Keep a
 
 ## Unreleased
 
+## v1.9.0 — 2026-10-25
+
+Minor release. Plugin endpoints get correct per-resource commands (**plugin command paths change**). Branch conflicts render as a table, and server data can no longer drive your terminal.
+
 ### Added
 
 - **Branch merge/sync conflicts render as a table on a terminal** ([#169]). A
