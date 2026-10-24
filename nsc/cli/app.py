@@ -90,6 +90,12 @@ def _extract_global_overrides(args: list[str]) -> CLIOverrides:
             i += 1
             continue
         if a in two_arg and i + 1 < len(args):
+            if seen_subcommand and args[i + 1].startswith("-"):
+                # Issue #182: the prescan doesn't know the subcommand's own
+                # options, so in `create --name -o --dry-run` this `-o` is the
+                # value of `--name`, not a global flag. Click parses it that way.
+                i += 1
+                continue
             if not (seen_subcommand and a in root_only):
                 kwargs[two_arg[a]] = args[i + 1]
             i += 2

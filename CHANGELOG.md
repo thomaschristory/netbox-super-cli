@@ -4,6 +4,14 @@ All notable changes to netbox-super-cli are tracked here. Format follows [Keep a
 
 ## Unreleased
 
+### Fixed
+
+- **A literal `-o`/`--output` as another option's value is no longer read as
+  the output flag** ([#182]). For example, in `create --columns -o --field name=x`,
+  `-o` is the value of `--columns`. The early global-flag scan read it as
+  `--output --field` and failed with `invalid output format '--field'`. After the
+  subcommand, a global flag followed by another option is now left to Click.
+
 ## v1.8.6 — 2026-10-24
 
 Patch release. A `--schema`/`NSC_SCHEMA` override no longer leaks into later runs.
@@ -176,6 +184,7 @@ notices, and a fix for `nsc login` reporting the wrong user.
 [#1]: https://github.com/thomaschristory/netbox-super-cli/issues/1
 [#166]: https://github.com/thomaschristory/netbox-super-cli/issues/166
 [#170]: https://github.com/thomaschristory/netbox-super-cli/issues/170
+[#182]: https://github.com/thomaschristory/netbox-super-cli/issues/182
 [#186]: https://github.com/thomaschristory/netbox-super-cli/issues/186
 [#189]: https://github.com/thomaschristory/netbox-super-cli/issues/189
 [#192]: https://github.com/thomaschristory/netbox-super-cli/issues/192
