@@ -62,7 +62,9 @@ prints the active branch and where it came from (`flag`, `env` or `profile`),
 or `main`.
 
 Every request made in a branch is recorded in the [audit log](audit-log.md)
-with its `X-Netbox-Branch` header (the branch's schema_id). When a command
+with its `X-Netbox-Branch` header (the branch's schema_id) and a top-level
+`branch` key holding the branch's name, even if you selected it by schema_id.
+When a command
 fails while a branch is active, its error envelope names the branch in
 `details.branch`, whatever the failure is.
 
