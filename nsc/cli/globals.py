@@ -20,7 +20,7 @@ from nsc.cli.runtime import (
 )
 from nsc.config import default_paths
 from nsc.config.models import Config, ObjectColorMode
-from nsc.http.client import NetBoxClient
+from nsc.http.client import NetBoxClient, ResolvedBranch
 from nsc.output.render import select_format
 from nsc.schema.source import resolve_command_model
 
@@ -82,9 +82,10 @@ def build_runtime_context(state: GlobalState) -> RuntimeContext:
     )
 
 
-def _branch_resolver(ref: str) -> Callable[[NetBoxClient], str]:
-    def resolve(client: NetBoxClient) -> str:
-        return require_ready(get_branch(client, ref)).schema_id
+def _branch_resolver(ref: str) -> Callable[[NetBoxClient], ResolvedBranch]:
+    def resolve(client: NetBoxClient) -> ResolvedBranch:
+        branch = require_ready(get_branch(client, ref))
+        return ResolvedBranch(name=branch.name, schema_id=branch.schema_id)
 
     return resolve
 

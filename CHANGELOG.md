@@ -4,6 +4,13 @@ All notable changes to netbox-super-cli are tracked here. Format follows [Keep a
 
 ## Unreleased
 
+### Added
+
+- **Audit log entries record the branch name** ([#172]). A request made in a
+  branch now carries a top-level `branch` key with the branch's name next to the
+  `X-Netbox-Branch` schema_id header, including under `audit_redaction: full`.
+  Lines for requests on main are unchanged (no `branch` key).
+
 ## v1.9.0 — 2026-10-25
 
 Minor release. Plugin endpoints get correct per-resource commands (**plugin command paths change**). Branch conflicts render as a table, and server data can no longer drive your terminal.
@@ -239,6 +246,7 @@ notices, and a fix for `nsc login` reporting the wrong user.
 [#173]: https://github.com/thomaschristory/netbox-super-cli/issues/173
 [#150]: https://github.com/thomaschristory/netbox-super-cli/issues/150
 [#151]: https://github.com/thomaschristory/netbox-super-cli/issues/151
+[#172]: https://github.com/thomaschristory/netbox-super-cli/issues/172
 
 ## v1.7.0 — 2026-09-10
 

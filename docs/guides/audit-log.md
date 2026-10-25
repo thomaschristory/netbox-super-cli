@@ -5,6 +5,14 @@ JSON object per line), including dry-runs (flagged so you can tell they were
 never sent). The file is created owner-only (`0600`) inside a `0700` directory,
 so a co-located user on a shared host cannot read your mutations.
 
+## Branch name
+
+A request made in a [NetBox Branching](branching.md) branch carries a top-level
+`branch` key with the branch's name, next to the `X-Netbox-Branch` request
+header (the branch's schema_id). The key is set once `nsc` has resolved the
+branch, so the lookups it makes to resolve it are logged without it. Requests
+on main have no `branch` key at all, so their lines are unchanged.
+
 ## Redaction modes
 
 The `audit_redaction` setting under `defaults` in `~/.nsc/config.yaml` chooses
@@ -40,7 +48,8 @@ what NetBox returned, but sensitive values are masked **before write**:
 For compliance-sensitive deployments. Every body is **omitted entirely** (not
 truncated), regardless of shape or size — small JSON, large JSON, error
 envelopes, and multipart payloads all collapse to nothing. Each audit line
-contains exactly five keys:
+contains exactly five keys, plus `branch` when the request was made in a
+[branch](branching.md):
 
 ```json
 {"method":"POST","url":"https://nb/api/users/users/","status_code":201,"timestamp":"2026-06-25T12:00:00.000Z","profile":"prod"}
