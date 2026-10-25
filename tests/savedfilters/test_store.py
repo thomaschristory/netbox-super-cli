@@ -174,6 +174,88 @@ def test_delete_api_failure_falls_back_to_local_delete() -> None:
     assert errors
 
 
+_NOT_READY = "Selected branch is not ready."
+
+
+class _DeadBranchClient(_FakeClient):
+    """Every request answered with the branching middleware's plain-text 400."""
+
+    def paginate(
+        self, path: str, params: dict[str, Any] | None = None, *, limit: int | None = None
+    ) -> Iterator[dict[str, Any]]:
+        self.paginate_calls.append((path, params))
+        raise NetBoxAPIError(status_code=400, url=path, body_snippet=_NOT_READY, headers={})
+
+
+def _assert_names_branch(errors: list[str]) -> None:
+    assert len(errors) == 1, errors
+    assert "branch 'b1' is no longer usable" in errors[0]
+    assert "NetBox API 400" not in errors[0]
+    assert "using local config" in errors[0]
+
+
+def test_list_on_unusable_branch_names_the_branch() -> None:
+    fallback = _FakeFallback()
+    errors: list[str] = []
+    store = _store(_DeadBranchClient(), fallback, on_error=errors.append, branch="b1")
+    store.list("/api/dcim/devices/", "dcim", "devices")
+    assert fallback.list_calls == [("dcim", "devices")]
+    _assert_names_branch(errors)
+
+
+def test_save_on_unusable_branch_names_the_branch() -> None:
+    fallback = _FakeFallback()
+    errors: list[str] = []
+    store = _store(_DeadBranchClient(), fallback, on_error=errors.append, branch="b1")
+    store.save("/api/dcim/devices/", "dcim", "devices", "x", {"status": "active"})
+    assert fallback.save_calls == [("dcim", "devices", "x", {"status": "active"})]
+    _assert_names_branch(errors)
+
+
+def test_delete_on_unusable_branch_names_the_branch() -> None:
+    fallback = _FakeFallback()
+    errors: list[str] = []
+    store = _store(_DeadBranchClient(), fallback, on_error=errors.append, branch="b1")
+    store.delete("/api/dcim/devices/", "dcim", "devices", "x")
+    assert fallback.delete_calls == [("dcim", "devices", "x")]
+    _assert_names_branch(errors)
+
+
+def test_unusable_branch_during_object_type_lookup_is_reported() -> None:
+    fallback = _FakeFallback()
+    errors: list[str] = []
+    store = NativeSavedFilterStore(
+        _DeadBranchClient(), fallback, on_error=errors.append, branch="b1"
+    )
+    store.save("/api/dcim/devices/", "dcim", "devices", "x", {"status": "active"})
+    assert fallback.save_calls == [("dcim", "devices", "x", {"status": "active"})]
+    _assert_names_branch(errors)
+
+
+def test_object_type_lookup_failure_off_branch_stays_quiet() -> None:
+    errors: list[str] = []
+    store = NativeSavedFilterStore(_DeadBranchClient(), _FakeFallback(), on_error=errors.append)
+    store.list("/api/dcim/devices/", "dcim", "devices")
+    assert errors == []
+
+
+def test_validation_400_on_a_branch_keeps_the_generic_message() -> None:
+    class _BadRequestClient(_FakeClient):
+        def paginate(
+            self, path: str, params: dict[str, Any] | None = None, *, limit: int | None = None
+        ) -> Iterator[dict[str, Any]]:
+            raise NetBoxAPIError(
+                status_code=400, url=path, body_snippet='{"name": ["bad"]}', headers={}
+            )
+
+    errors: list[str] = []
+    store = _store(_BadRequestClient(), _FakeFallback(), on_error=errors.append, branch="b1")
+    store.list("/api/dcim/devices/", "dcim", "devices")
+    assert len(errors) == 1
+    assert "no longer usable" not in errors[0]
+    assert "NetBox API 400" in errors[0]
+
+
 def test_list_warns_on_duplicate_names_and_keeps_first() -> None:
     # NetBox permits same-named filters; list() keeps the first deterministically
     # (matching _find's save/delete target) and surfaces the ambiguity.

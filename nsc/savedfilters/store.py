@@ -12,6 +12,8 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any, Protocol, cast
 
+from nsc.branching.errors import BranchUnusableError
+from nsc.branching.unusable import branch_unusable_error
 from nsc.http.errors import NetBoxAPIError, NetBoxClientError
 from nsc.savedfilters.objecttypes import ObjectTypeResolver
 from nsc.savedfilters.params import (
@@ -43,11 +45,13 @@ class NativeSavedFilterStore:
         *,
         resolver: _ResolverLike | None = None,
         on_error: Callable[[str], None] | None = None,
+        branch: str | None = None,
     ) -> None:
         self._client = client
         self._fallback = fallback
-        self._resolver = resolver or ObjectTypeResolver(client)
+        self._resolver = resolver or ObjectTypeResolver(client, on_error=self._lookup_failed)
         self.on_error = on_error
+        self.branch = branch
 
     def list(self, list_path: str, tag: str, resource: str) -> dict[str, dict[str, str]]:
         object_type = self._resolver.resolve(list_path)
@@ -133,7 +137,23 @@ class NativeSavedFilterStore:
         return None
 
     def _report(self, action: str, exc: Exception) -> None:
+        unusable = self._branch_state(exc)
+        if unusable is not None:
+            self._notify(f"Could not {action} via NetBox: {unusable}; using local config.")
+            return
         self._notify(f"Could not {action} via NetBox ({exc}); using local config.")
+
+    def _lookup_failed(self, exc: NetBoxAPIError | NetBoxClientError) -> None:
+        # Other registry failures stay silent (a missing object type is routine);
+        # a dead branch would otherwise quietly divert every save to config.yaml.
+        unusable = self._branch_state(exc)
+        if unusable is not None:
+            self._notify(f"Could not use NetBox saved filters: {unusable}; using local config.")
+
+    def _branch_state(self, exc: Exception) -> BranchUnusableError | None:
+        if isinstance(exc, NetBoxAPIError):
+            return branch_unusable_error(exc, self.branch)
+        return None
 
     def _notify(self, message: str) -> None:
         if self.on_error is not None:

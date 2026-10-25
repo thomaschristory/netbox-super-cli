@@ -42,6 +42,7 @@ class NscTuiApp(App[None]):
         branch: str | None = None,
     ) -> None:
         super().__init__()
+        self.active_branch = branch
         if branch is not None:
             self.title = f"nsc ⎇ {branch}"
             self.add_class("-branch")
@@ -57,6 +58,12 @@ class NscTuiApp(App[None]):
         self._saved_filter_store = saved_filter_store
         if saved_filter_store is not None and getattr(saved_filter_store, "on_error", None) is None:
             saved_filter_store.on_error = self._notify_saved_filter_issue
+        if (
+            saved_filter_store is not None
+            and branch is not None
+            and getattr(saved_filter_store, "branch", ...) is None
+        ):
+            saved_filter_store.branch = branch
         from nsc.savedfilters.custom_fields import CustomFieldResolver  # noqa: PLC0415
         from nsc.savedfilters.tags import TagsResolver  # noqa: PLC0415
 

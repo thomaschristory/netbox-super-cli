@@ -15,7 +15,7 @@ from textual.widgets import DataTable, Footer, Header
 from nsc.http.errors import NetBoxAPIError, NetBoxClientError
 from nsc.model.command_model import CommandModel, Operation
 from nsc.tui._bindings import textual_bindings
-from nsc.tui.errors import api_error_message
+from nsc.tui.errors import active_branch, api_error_message
 from nsc.tui.nav import can_go_back
 from nsc.tui.selection import Selection
 from nsc.tui.view import build_rows, choose_columns, count_label
@@ -162,7 +162,9 @@ class ListScreen(Screen[None]):
         try:
             pager, records = await asyncio.to_thread(_first_chunk)
         except (NetBoxAPIError, NetBoxClientError) as exc:
-            self.notify(api_error_message(exc), severity="error", timeout=8)
+            self.notify(
+                api_error_message(exc, branch=active_branch(self.app)), severity="error", timeout=8
+            )
             table.loading = False
             self._loading = False
             return
@@ -198,7 +200,11 @@ class ListScreen(Screen[None]):
             self._has_more = _more_remaining(pager, got=len(records), wanted=want)
         else:
             self._has_more = getattr(pager, "has_more", True) is not False
-            self.notify(api_error_message(error), severity="error", timeout=8)
+            self.notify(
+                api_error_message(error, branch=active_branch(self.app)),
+                severity="error",
+                timeout=8,
+            )
         if not self._has_more:
             self._prune_selection(self._records)
         self._update_count()

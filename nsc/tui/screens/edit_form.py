@@ -22,7 +22,7 @@ from nsc.output.sanitize import safe_text
 from nsc.savedfilters.custom_fields import CustomFieldDef
 from nsc.savedfilters.tags import TagDef
 from nsc.tui._bindings import textual_bindings
-from nsc.tui.errors import api_error_message
+from nsc.tui.errors import active_branch, api_error_message
 from nsc.tui.fk import is_fk_value, resolve_fk_target
 from nsc.tui.forms import (
     SET_NULL,
@@ -329,7 +329,9 @@ class EditForm(Screen[None]):
                     sensitive_paths=sensitive_paths,
                 )
         except (NetBoxAPIError, NetBoxClientError) as exc:
-            self.notify(api_error_message(exc), severity="error", timeout=8)
+            self.notify(
+                api_error_message(exc, branch=active_branch(self.app)), severity="error", timeout=8
+            )
             return
         self.dismiss()
 
