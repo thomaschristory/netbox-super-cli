@@ -153,6 +153,7 @@ def _resolve_saved_filters(
         ctx.client,
         ConfigFileSavedSearchStore(ctx.config),
         on_error=lambda message: typer.echo(f"Warning: {message}", err=True),
+        branch=ctx.branch.name if ctx.branch else None,
     )
     available = store.list(list_path, tag_name, resource_name)
     saved = available.get(saved_name)

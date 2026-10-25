@@ -57,12 +57,16 @@ When a branch is active, every command prints one line to **stderr**:
 ```
 
 stdout is untouched, so `-o json` output piped elsewhere stays clean. The TUI
-shows the branch in its header in the warning colour. `nsc branch current`
+shows the branch in its header in the warning colour, and says so if the
+branch is merged or deleted while it is open (see
+[Interactive TUI](interactive-tui.md#working-in-a-branch)). `nsc branch current`
 prints the active branch and where it came from (`flag`, `env` or `profile`),
 or `main`.
 
 Every request made in a branch is recorded in the [audit log](audit-log.md)
-with its `X-Netbox-Branch` header (the branch's schema_id). When a command
+with its `X-Netbox-Branch` header (the branch's schema_id) and a top-level
+`branch` key holding the branch's name, even if you selected it by schema_id.
+When a command
 fails while a branch is active, its error envelope names the branch in
 `details.branch`, whatever the failure is.
 

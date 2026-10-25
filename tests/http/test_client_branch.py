@@ -8,7 +8,7 @@ import pytest
 import respx
 
 from nsc.branching.errors import BranchNotReadyError
-from nsc.http.client import NetBoxClient
+from nsc.http.client import NetBoxClient, ResolvedBranch
 
 SITES = "https://nb.example/api/dcim/sites/"
 LOOKUP = "https://nb.example/api/plugins/branching/branches/"
@@ -110,3 +110,50 @@ def test_concurrent_requests_wait_for_branch_resolution(httpx2_mock: respx.Route
         second.join(5)
     assert sites.call_count == 2
     assert all(c.request.headers["X-NetBox-Branch"] == "abcd1234" for c in sites.calls)
+
+
+def test_audit_entry_records_resolved_branch_name(
+    httpx2_mock: respx.Router, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("NSC_HOME", str(tmp_path))
+    httpx2_mock.post(SITES).respond(201, json={"id": 1})
+
+    def resolver(client: NetBoxClient) -> ResolvedBranch:
+        return ResolvedBranch(name="my-change", schema_id="abcd1234")
+
+    with NetBoxClient(_FakeProfile(), branch_resolver=resolver) as client:
+        client.post("/api/dcim/sites/", json={"name": "x"})
+    line = json.loads((tmp_path / "logs" / "audit.jsonl").read_text().splitlines()[-1])
+    assert line["branch"] == "my-change"
+    assert line["request"]["headers"]["X-Netbox-Branch"] == "abcd1234"
+
+
+def test_resolver_lookups_are_audited_without_branch(
+    httpx2_mock: respx.Router, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("NSC_HOME", str(tmp_path))
+    httpx2_mock.get(LOOKUP).respond(200, json={"results": []})
+    httpx2_mock.get(SITES).respond(200, json={"results": []})
+    seen: list[dict[str, object]] = []
+
+    def resolver(client: NetBoxClient) -> ResolvedBranch:
+        client.get("/api/plugins/branching/branches/", {"name": "my-change"})
+        seen.append(json.loads((tmp_path / "logs" / "last-request.json").read_text()))
+        return ResolvedBranch(name="my-change", schema_id="abcd1234")
+
+    with NetBoxClient(_FakeProfile(), branch_resolver=resolver) as client:
+        client.get("/api/dcim/sites/")
+    assert "branch" not in seen[0]
+    last = json.loads((tmp_path / "logs" / "last-request.json").read_text())
+    assert last["branch"] == "my-change"
+
+
+def test_no_branch_key_without_resolver(
+    httpx2_mock: respx.Router, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("NSC_HOME", str(tmp_path))
+    httpx2_mock.post(SITES).respond(201, json={"id": 1})
+    with NetBoxClient(_FakeProfile()) as client:
+        client.post("/api/dcim/sites/", json={"name": "x"})
+    line = json.loads((tmp_path / "logs" / "audit.jsonl").read_text().splitlines()[-1])
+    assert "branch" not in line

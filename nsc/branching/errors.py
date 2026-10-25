@@ -48,6 +48,22 @@ class BranchNotReadyError(BranchError):
         self.status = status
 
 
+class BranchUnusableError(BranchError):
+    """The server refused a request because the active branch went away mid-session.
+
+    `status` is the branch status when the server names it, else None.
+    """
+
+    def __init__(self, name: str, *, status: str | None, missing: bool = False) -> None:
+        state = "deleted or not found" if missing else f"status: {status or 'not ready'}"
+        super().__init__(
+            f"branch {name!r} is no longer usable ({state}); {_ESCAPE_HINT}",
+            branch=name,
+        )
+        self.status = status
+        self.missing = missing
+
+
 class BranchConflictError(BranchError):
     def __init__(self, name: str, conflicts: list[dict[str, Any]]) -> None:
         what = (
