@@ -11,6 +11,7 @@ schema-name noise (devices' schema is ``DeviceWithConfigContext``, not ``Device`
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any, Protocol
 from urllib.parse import urlsplit
 
@@ -73,9 +74,15 @@ def object_type_index(object_types: Any) -> dict[str, str]:
 class ObjectTypeResolver:
     """Looks up object types from the live registry, cached per app label."""
 
-    def __init__(self, client: _ClientLike) -> None:
+    def __init__(
+        self,
+        client: _ClientLike,
+        *,
+        on_error: Callable[[NetBoxAPIError | NetBoxClientError], None] | None = None,
+    ) -> None:
         self._client = client
         self._cache: dict[str, dict[str, str]] = {}
+        self._on_error = on_error
 
     def resolve(self, list_path: str) -> str | None:
         """``app_label.model`` for a list path, or None if it can't be resolved.
@@ -96,7 +103,9 @@ class ObjectTypeResolver:
             return self._cache[app_label]
         try:
             records = list(self._client.paginate(_OBJECT_TYPES_PATH, {"app_label": app_label}))
-        except (NetBoxAPIError, NetBoxClientError):
+        except (NetBoxAPIError, NetBoxClientError) as exc:
+            if self._on_error is not None:
+                self._on_error(exc)
             return None
         index = object_type_index(records)
         self._cache[app_label] = index

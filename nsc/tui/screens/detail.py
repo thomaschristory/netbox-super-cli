@@ -24,7 +24,7 @@ from nsc.model.command_model import CommandModel, Resource
 from nsc.output.flatten import flatten
 from nsc.output.sanitize import safe_text
 from nsc.tui._bindings import textual_bindings
-from nsc.tui.errors import api_error_message
+from nsc.tui.errors import active_branch, api_error_message
 from nsc.tui.fk import is_fk_value, resolve_fk_target
 from nsc.tui.forms import SET_NULL, WidgetSpec, compute_patch, diff_rows, field_to_widget
 from nsc.tui.relations import RelatedView, related_views
@@ -305,7 +305,9 @@ class DetailScreen(Screen[None]):
                 sensitive_paths=self._sensitive,
             )
         except (NetBoxAPIError, NetBoxClientError) as exc:
-            self.notify(api_error_message(exc), severity="error", timeout=8)
+            self.notify(
+                api_error_message(exc, branch=active_branch(self.app)), severity="error", timeout=8
+            )
             return
         self._record.update(patch)
         self.staged.clear()
@@ -388,7 +390,11 @@ class DetailScreen(Screen[None]):
             try:
                 self._client.delete(path, operation_id=delete_op.operation_id)
             except (NetBoxAPIError, NetBoxClientError) as exc:
-                self.notify(api_error_message(exc), severity="error", timeout=8)
+                self.notify(
+                    api_error_message(exc, branch=active_branch(self.app)),
+                    severity="error",
+                    timeout=8,
+                )
                 return
             self.app.pop_screen()
             self._reload_underlying_list()

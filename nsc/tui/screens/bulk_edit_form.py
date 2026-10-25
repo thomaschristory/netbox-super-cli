@@ -35,6 +35,7 @@ from nsc.savedfilters.custom_fields import CustomFieldDef
 from nsc.savedfilters.tags import TagDef
 from nsc.tui._bindings import textual_bindings
 from nsc.tui.bulk import RecordChange, shared_values
+from nsc.tui.errors import active_branch, api_error_text
 from nsc.tui.fk import is_fk_value, resolve_fk_target
 from nsc.tui.forms import (
     SET_NULL,
@@ -408,7 +409,14 @@ class BulkEditForm(Screen[None]):
             # apply_bulk runs in a worker thread; bump the bar on the UI thread.
             self.app.call_from_thread(_advance, index, total)
 
-        result = await asyncio.to_thread(apply_bulk, changes, _patch, _on_progress)
+        branch = active_branch(self.app)
+        result = await asyncio.to_thread(
+            apply_bulk,
+            changes,
+            _patch,
+            _on_progress,
+            describe=lambda exc: api_error_text(exc, branch=branch),
+        )
         self.app.push_screen(BulkSummaryModal(result), self._on_summary_dismissed)
 
     def _on_summary_dismissed(self, _: None) -> None:

@@ -23,6 +23,7 @@ from nsc.http.errors import NetBoxAPIError, NetBoxClientError
 from nsc.model.command_model import CommandModel
 from nsc.output.sanitize import safe_text
 from nsc.tui.catalog import ResourceRef
+from nsc.tui.errors import active_branch, api_error_message, branch_state_error
 from nsc.tui.search import global_search_targets, search_target
 from nsc.tui.widgets.nav_tree import NavTree
 
@@ -104,7 +105,15 @@ class GlobalSearchScreen(ModalScreen[None]):
                 rows = await asyncio.to_thread(
                     search_target, self._client, ref, term, _PER_TYPE_LIMIT
                 )
-            except (NetBoxAPIError, NetBoxClientError):
+            except (NetBoxAPIError, NetBoxClientError) as exc:
+                # Every other target would fail the same way on a dead branch.
+                if branch_state_error(exc, active_branch(self.app)) is not None:
+                    self.notify(
+                        api_error_message(exc, branch=active_branch(self.app)),
+                        severity="error",
+                        timeout=8,
+                    )
+                    break
                 continue  # one bad endpoint must not abort the whole search
             if rows:
                 self._add_group(ref, rows)
