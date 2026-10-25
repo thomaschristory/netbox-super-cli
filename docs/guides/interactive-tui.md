@@ -201,7 +201,16 @@ profile's sticky branch), the header reads `nsc ⎇ <branch>` on the warning
 colour, and every read and edit happens inside that branch. The TUI checks
 the branch before it opens. If the branch is merged, missing or not ready,
 `nsc tui` exits with the same error as any other command instead of showing
-main's data. See [NetBox Branching](branching.md).
+main's data.
+
+If the branch is merged, archived or deleted while the TUI is open, NetBox
+refuses every later request. Instead of a bare `API 400`, the TUI then says
+`branch '<name>' is no longer usable (status: …)` and suggests switching back
+to main. Global search stops after the first such failure rather than trying
+every resource, and a bulk edit lists the same message for each failed record.
+Quit and relaunch on another branch (or main) to carry on. Other 400s, such
+as a bad filter value, still show NetBox's own message. See
+[NetBox Branching](branching.md).
 
 ## Loading and errors
 

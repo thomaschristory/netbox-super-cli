@@ -57,7 +57,9 @@ When a branch is active, every command prints one line to **stderr**:
 ```
 
 stdout is untouched, so `-o json` output piped elsewhere stays clean. The TUI
-shows the branch in its header in the warning colour. `nsc branch current`
+shows the branch in its header in the warning colour, and says so if the
+branch is merged or deleted while it is open (see
+[Interactive TUI](interactive-tui.md#working-in-a-branch)). `nsc branch current`
 prints the active branch and where it came from (`flag`, `env` or `profile`),
 or `main`.
 

@@ -42,6 +42,7 @@ class NscTuiApp(App[None]):
         branch: str | None = None,
     ) -> None:
         super().__init__()
+        self.active_branch = branch
         if branch is not None:
             self.title = f"nsc ⎇ {branch}"
             self.add_class("-branch")
