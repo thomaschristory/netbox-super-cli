@@ -8,7 +8,7 @@ import time
 from collections.abc import Callable
 from datetime import UTC, datetime
 from types import TracebackType
-from typing import TYPE_CHECKING, Any, Protocol, cast
+from typing import TYPE_CHECKING, Any, NamedTuple, Protocol, cast
 from urllib.parse import urlsplit
 
 from nsc.config.models import AuditRedaction
@@ -45,6 +45,11 @@ class _ProfileLike(Protocol):
     timeout: float
 
 
+class ResolvedBranch(NamedTuple):
+    name: str
+    schema_id: str
+
+
 class NetBoxClient:
     def __init__(
         self,
@@ -53,7 +58,7 @@ class NetBoxClient:
         debug: bool = False,
         redaction: AuditRedaction = AuditRedaction.SAFE,
         profile_name: str | None = None,
-        branch_resolver: Callable[[NetBoxClient], str] | None = None,
+        branch_resolver: Callable[[NetBoxClient], str | ResolvedBranch] | None = None,
     ) -> None:
         import httpx2  # noqa: PLC0415  # deferred: keeps httpx2 off the CLI-startup path.
 
@@ -68,6 +73,7 @@ class NetBoxClient:
         self._branch_error: BaseException | None = None
         self._branch_lock = threading.Lock()
         self._branch_resolving_thread: int | None = None
+        self._branch_name: str | None = None
         self._client = httpx2.Client(
             base_url=self._url,
             headers={
@@ -275,13 +281,17 @@ class NetBoxClient:
                 return
             self._branch_resolving_thread = threading.get_ident()
             try:
-                schema_id = resolver(self)
+                resolved = resolver(self)
             except BaseException as exc:
                 self._branch_error = exc
                 raise
             finally:
                 self._branch_resolving_thread = None
-            self._client.headers[BRANCH_HEADER] = schema_id
+            if isinstance(resolved, ResolvedBranch):
+                self._branch_name = resolved.name
+                self._client.headers[BRANCH_HEADER] = resolved.schema_id
+            else:
+                self._client.headers[BRANCH_HEADER] = resolved
             self._branch_pending = False
 
     def _absolute(self, path: str, params: dict[str, Any] | None) -> str:
@@ -363,6 +373,7 @@ class NetBoxClient:
             applied=is_write,
             explain=False,
             profile=self._profile_name,
+            branch=self._branch_name,
             redaction=self._redaction,
         )
         log_dir = default_paths().logs_dir

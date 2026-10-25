@@ -15,7 +15,7 @@ from textual.widgets import Input, Label, ListItem, ListView
 from nsc.http.errors import NetBoxAPIError, NetBoxClientError
 from nsc.model.command_model import Operation
 from nsc.output.sanitize import safe_text
-from nsc.tui.errors import api_error_message
+from nsc.tui.errors import active_branch, api_error_message
 
 _PAGE_LIMIT = 50
 _DEBOUNCE = 0.25
@@ -76,7 +76,9 @@ class RecordPicker(ModalScreen[tuple[int, str]]):
                 lambda: list(self._client.paginate(self._op.path, params, limit=_PAGE_LIMIT))
             )
         except (NetBoxAPIError, NetBoxClientError) as exc:
-            self.notify(api_error_message(exc), severity="error", timeout=8)
+            self.notify(
+                api_error_message(exc, branch=active_branch(self.app)), severity="error", timeout=8
+            )
             await self._populate([])
             listing.loading = False
             return

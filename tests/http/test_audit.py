@@ -169,3 +169,26 @@ def test_write_failure_emits_stderr_warning(
         target.parent.chmod(0o700)
     err = capsys.readouterr().err
     assert "audit log" in err.lower() or "could not write" in err.lower()
+
+
+def test_branch_name_serialized_when_set(tmp_path: Path) -> None:
+    path = tmp_path / "audit.jsonl"
+    append_audit_jsonl(_entry(branch="my-change"), path=path)
+    assert json.loads(path.read_text())["branch"] == "my-change"
+
+
+def test_branch_key_omitted_when_unset(tmp_path: Path) -> None:
+    path = tmp_path / "audit.jsonl"
+    append_audit_jsonl(_entry(), path=path)
+    assert "branch" not in json.loads(path.read_text())
+
+
+def test_full_redaction_keeps_branch_name(tmp_path: Path) -> None:
+    from nsc.config.models import AuditRedaction  # noqa: PLC0415
+
+    path = tmp_path / "audit.jsonl"
+    append_audit_jsonl(_entry(branch="my-change", redaction=AuditRedaction.FULL), path=path)
+    append_audit_jsonl(_entry(redaction=AuditRedaction.FULL), path=path)
+    branched, plain = (json.loads(x) for x in path.read_text().splitlines())
+    assert branched["branch"] == "my-change"
+    assert "branch" not in plain

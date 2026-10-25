@@ -96,3 +96,17 @@ def test_app_wires_store_error_notifier() -> None:
     app = NscTuiApp(_model(), _FakeClient(), saved_filter_store=store)
     assert store.on_error is not None
     assert app is not None
+
+
+def test_app_hands_its_branch_to_the_store() -> None:
+    store = NativeSavedFilterStore(_FakeClient(), ConfigFileSavedSearchStore(Config()))
+    NscTuiApp(_model(), _FakeClient(), saved_filter_store=store, branch="b1")
+    assert store.branch == "b1"
+
+
+def test_app_keeps_a_branch_the_store_already_has() -> None:
+    store = NativeSavedFilterStore(
+        _FakeClient(), ConfigFileSavedSearchStore(Config()), branch="other"
+    )
+    NscTuiApp(_model(), _FakeClient(), saved_filter_store=store, branch="b1")
+    assert store.branch == "other"
