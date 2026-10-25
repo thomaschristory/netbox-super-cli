@@ -327,3 +327,33 @@ def test_ignored_profile_branch_prints_notice(httpx2_mock: respx.Router, _home: 
     assert result.exit_code == 0, result.output
     assert "keep-me" in result.stderr
     assert "ignored" in result.stderr
+
+
+@pytest.mark.httpx2(assert_all_called=False)
+def test_branched_write_audit_records_branch_name(httpx2_mock: respx.Router, _home: Path) -> None:
+    # Selected by schema_id: the audit must still carry the resolved human name.
+    _mock_schema(httpx2_mock)
+    data = branch_json()
+    httpx2_mock.get(BRANCHES, params={"name": "abcd1234"}).respond(200, json=page())
+    httpx2_mock.get(BRANCHES, params={"schema_id": "abcd1234"}).respond(200, json=page(data))
+    httpx2_mock.post(f"{NB}/api/dcim/sites/").respond(201, json={"id": 1, "name": "x"})
+    result = _invoke(
+        "--branch",
+        "abcd1234",
+        "dcim",
+        "sites",
+        "create",
+        "--field",
+        "name=x",
+        "--field",
+        "slug=x",
+        "--apply",
+        "--output",
+        "json",
+    )
+    assert result.exit_code == 0, result.output
+    lines = (_home / "logs" / "audit.jsonl").read_text().splitlines()
+    entry = json.loads(lines[-1])
+    assert entry["method"] == "POST"
+    assert entry["branch"] == "my-change"
+    assert entry["request"]["headers"]["X-Netbox-Branch"] == "abcd1234"

@@ -90,6 +90,8 @@ def apply_bulk(
     changes: list[RecordChange],
     patch_fn: Callable[[RecordChange], None],
     on_progress: Callable[[int, int], None] | None = None,
+    *,
+    describe: Callable[[NetBoxAPIError | NetBoxClientError], str] | None = None,
 ) -> BulkResult:
     """Apply ``patch_fn`` to each change, aggregating per-record outcomes.
 
@@ -112,7 +114,8 @@ def apply_bulk(
         try:
             patch_fn(change)
         except (NetBoxAPIError, NetBoxClientError) as exc:
-            failures.append(BulkFailure(record_id=change.record_id, error=exc.render_for_cli()))
+            error = describe(exc) if describe is not None else exc.render_for_cli()
+            failures.append(BulkFailure(record_id=change.record_id, error=error))
         else:
             successes.append(change.record_id)
     return BulkResult(successes=successes, failures=failures, skipped=skipped)

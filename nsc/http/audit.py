@@ -69,6 +69,7 @@ class AuditEntry(_Frozen):
     applied: bool = False
     explain: bool = False
     profile: str | None = None
+    branch: str | None = None
     redaction: AuditRedaction = AuditRedaction.SAFE
 
 
@@ -156,13 +157,23 @@ def _to_dict_full(entry: AuditEntry) -> dict[str, Any]:
     so neither query params nor `user:pass@` userinfo leak. Only `status_code`
     is taken from the response object.
     """
-    return {
-        "method": entry.method.value,
-        "url": _sanitize_url(entry.url),
-        "status_code": entry.response_status_code,
-        "timestamp": entry.timestamp,
-        "profile": entry.profile,
-    }
+    return _with_branch(
+        {
+            "method": entry.method.value,
+            "url": _sanitize_url(entry.url),
+            "status_code": entry.response_status_code,
+            "timestamp": entry.timestamp,
+            "profile": entry.profile,
+        },
+        entry,
+    )
+
+
+def _with_branch(line: dict[str, Any], entry: AuditEntry) -> dict[str, Any]:
+    # Omitted (not null) off-branch so unbranched lines keep their pre-#172 shape.
+    if entry.branch is not None:
+        line["branch"] = entry.branch
+    return line
 
 
 def _to_dict(entry: AuditEntry) -> dict[str, Any]:
@@ -171,7 +182,7 @@ def _to_dict(entry: AuditEntry) -> dict[str, Any]:
         return _to_dict_full(entry)
     req_body, req_trunc = truncate_body(redact_body(entry.request_body, entry.sensitive_paths))
     resp_body, resp_trunc = truncate_body(entry.response_body)
-    return {
+    line: dict[str, Any] = {
         "schema_version": SCHEMA_VERSION,
         "timestamp": entry.timestamp,
         "operation_id": entry.operation_id,
@@ -203,6 +214,7 @@ def _to_dict(entry: AuditEntry) -> dict[str, Any]:
         "applied": entry.applied,
         "explain": entry.explain,
     }
+    return _with_branch(line, entry)
 
 
 def _warn(msg: str) -> None:

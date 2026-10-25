@@ -4,6 +4,28 @@ All notable changes to netbox-super-cli are tracked here. Format follows [Keep a
 
 ## Unreleased
 
+### Added
+
+- **Audit log entries record the branch name** ([#172]). A request made in a
+  branch now carries a top-level `branch` key with the branch's name next to the
+  `X-Netbox-Branch` schema_id header, including under `audit_redaction: full`.
+  Lines for requests on main are unchanged (no `branch` key).
+
+### Fixed
+
+- **The TUI explains a branch that became unusable mid-session** ([#176]). If
+  the active branch is merged, archived or deleted while `nsc tui` is open,
+  NetBox Branching refuses later requests with a plain-text 400. List, detail,
+  edit, record-picker and bulk-edit errors now read
+  `branch '<name>' is no longer usable (status: …)` and point back to main,
+  instead of `API 400 — Selected branch is not ready.`. Global search stops at
+  the first such failure instead of silently reporting no matches. Saved
+  searches that fall back to `config.yaml` (in the TUI or with `--saved`) now
+  say the branch is the reason, including when the object-type lookup is the
+  request that fails. Only the
+  Branching middleware's exact messages are matched, and only while a branch is
+  active, so other 400s such as validation errors look the same as before.
+
 ## v1.9.0 — 2026-10-25
 
 Minor release. Plugin endpoints get correct per-resource commands (**plugin command paths change**). Branch conflicts render as a table, and server data can no longer drive your terminal.
@@ -234,11 +256,13 @@ notices, and a fix for `nsc login` reporting the wrong user.
 [#196]: https://github.com/thomaschristory/netbox-super-cli/issues/196
 [#202]: https://github.com/thomaschristory/netbox-super-cli/issues/202
 [#206]: https://github.com/thomaschristory/netbox-super-cli/issues/206
+[#176]: https://github.com/thomaschristory/netbox-super-cli/issues/176
 [#171]: https://github.com/thomaschristory/netbox-super-cli/issues/171
 [#179]: https://github.com/thomaschristory/netbox-super-cli/issues/179
 [#173]: https://github.com/thomaschristory/netbox-super-cli/issues/173
 [#150]: https://github.com/thomaschristory/netbox-super-cli/issues/150
 [#151]: https://github.com/thomaschristory/netbox-super-cli/issues/151
+[#172]: https://github.com/thomaschristory/netbox-super-cli/issues/172
 
 ## v1.7.0 — 2026-09-10
 
