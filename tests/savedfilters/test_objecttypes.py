@@ -110,6 +110,15 @@ def test_resolver_returns_none_on_api_error() -> None:
     assert resolver.resolve("/api/dcim/devices/") is None
 
 
+def test_resolver_hands_registry_failures_to_on_error() -> None:
+    client = _FakeClient(_OBJECT_TYPES, fail=True)
+    seen: list[Exception] = []
+    resolver = ObjectTypeResolver(client, on_error=seen.append)
+    assert resolver.resolve("/api/dcim/devices/") is None
+    assert len(seen) == 1
+    assert isinstance(seen[0], NetBoxAPIError)
+
+
 def test_resolver_returns_none_for_unknown_endpoint() -> None:
     client = _FakeClient(_OBJECT_TYPES)
     resolver = ObjectTypeResolver(client)

@@ -107,7 +107,8 @@ with `nsc <app> <resource> list --saved <name>`.
 
 If NetBox is unreachable (offline, or you lack permission on
 `extras.savedfilter`), saves and loads transparently fall back to a local store in
-`~/.nsc/config.yaml` and a toast tells you the fallback was used.
+`~/.nsc/config.yaml` and a toast tells you the fallback was used. If the active
+branch has been merged or deleted, the toast names the branch as the cause.
 
 ## Viewing and editing a record
 
@@ -208,6 +209,8 @@ refuses every later request. Instead of a bare `API 400`, the TUI then says
 `branch '<name>' is no longer usable (status: …)` and suggests switching back
 to main. Global search stops after the first such failure rather than trying
 every resource, and a bulk edit lists the same message for each failed record.
+Saving, loading or deleting a saved search still falls back to
+`~/.nsc/config.yaml`, and the warning says the branch is the reason.
 Quit and relaunch on another branch (or main) to carry on. Other 400s, such
 as a bad filter value, still show NetBox's own message. See
 [NetBox Branching](branching.md).
